@@ -50,6 +50,14 @@ Open `http://localhost:8080` and choose **Try the sample score**.
 
 An internet connection is currently required to load the four pinned browser libraries. No score or microphone data is sent to those services.
 
+## Checks
+
+The dependency-free Node test suite covers pitch conversion and colour boundaries, note-level analysis, empty-sample handling, and GitHub Pages asset paths. Run the full syntax and regression check with Node 20 or newer:
+
+```sh
+npm run check
+```
+
 ## Deploy to GitHub Pages
 
 The included `.github/workflows/pages.yml` deploys the repository root whenever `main` changes. In the repository settings, select **GitHub Actions** as the Pages source if it is not selected automatically.
@@ -59,7 +67,7 @@ All app and sample-score paths are relative, so the site works at a project URL 
 ## Browser support and limitations
 
 - Current Chrome, Edge, Firefox, and Safari releases with Web Audio and `getUserMedia` are the target. Microphone behaviour varies by device and browser.
-- Headphones are strongly recommended. This prototype does not separate accompaniment leaking from device speakers into the microphone.
+- Headphones are strongly recommended. This prototype does not separate accompaniment leakage from device speakers into the microphone.
 - Partwise MusicXML is supported. Timewise MusicXML is rejected with an explanation.
 - The parser supports common divisions, time signatures, rests, chords, backups/forwards, chromatic transposition, multiple voices/staves, and ties. Complex repeats, jumps, tuplets, changing tempo maps, ornaments, and every notation-software extension are not yet interpreted for playback.
 - For a polyphonic selected part, the most populated voice is used as the assessment timeline; simultaneous pitches collapse to the upper pitch. True divisi assessment is future work.

@@ -1,0 +1,13 @@
+{
+  "name": "vocal-coach",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check app.js && node --check src/config.js && node --check src/musicxml.js && node --check src/audio-engine.js && node --check src/analysis.js && node --test",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
