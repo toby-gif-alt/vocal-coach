@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#17382f" />
+    <meta name="description" content="Upload MusicXML, practise your vocal line, and see pitch feedback against the score." />
+    <meta property="og:title" content="Vocal Coach — Practise from the score" />
+    <meta property="og:description" content="A private, score-led vocal practice studio that runs entirely in your browser." />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="https://toby-gif-alt.github.io/vocal-coach/og.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Vocal Coach — Practise from the score" />
+    <meta name="twitter:description" content="Upload MusicXML, choose your part, and see your pitch against every note." />
+    <meta name="twitter:image" content="https://toby-gif-alt.github.io/vocal-coach/og.png" />
+    <title>Vocal Coach — Practise from the score</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%2317382f'/%3E%3Cpath d='M14 34c7 0 7-15 14-15s7 27 14 27 7-16 8-16' fill='none' stroke='%23d7ff72' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@2.1.2/build/opensheetmusicdisplay.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/tone@15.1.22/build/Tone.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" defer></script>
+    <script type="module" src="./app.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to the app</a>
+
+    <header class="topbar">
+      <a class="brand" href="./" aria-label="Vocal Coach home">
+        <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 40 40"><path d="M6 22c4.8 0 4.8-9 9.6-9s4.8 16 9.6 16S30 19 34 19" /></svg></span>
+        <span>Vocal Coach</span>
+      </a>
+      <div class="topbar-actions">
+        <span class="local-pill"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V7a5 5 0 0 1 10 0v3M5 10h14v10H5z" /></svg>Private by design</span>
+        <button class="icon-button" id="helpButton" type="button" aria-label="Open help"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M9.8 9a2.4 2.4 0 1 1 3.2 2.3c-.7.3-1 1-1 1.7M12 17h.01" /></svg></button>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="upload-view" id="uploadView" aria-labelledby="homeTitle">
+        <div class="hero-copy">
+          <p class="eyebrow"><span></span> Your score. Your voice. In sync.</p>
+          <h1 id="homeTitle">Practise the music<br /><em>that matters to you.</em></h1>
+          <p class="hero-lede">Upload a MusicXML score, choose the line you sing, and see how each note lands — while the accompaniment plays with you.</p>
+          <div class="hero-actions">
+            <label class="upload-primary" for="scoreInput"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L8 8m4-4 4 4M5 14v5h14v-5" /></svg>Upload MusicXML</label>
+            <input id="scoreInput" type="file" accept=".musicxml,.xml,.mxl,application/vnd.recordare.musicxml+xml,application/vnd.recordare.musicxml" />
+            <button class="sample-button" id="sampleButton" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 7 8 5-8 5V7Z" /></svg>Try the sample score</button>
+          </div>
+          <p class="file-note">MusicXML, XML, or MXL · Your files never leave this browser</p>
+          <div class="flow-list" aria-label="How it works">
+            <div><span>01</span><p><strong>Bring a score</strong><small>Export MusicXML from MuseScore, Sibelius, Dorico, or Finale.</small></p></div>
+            <div><span>02</span><p><strong>Choose your line</strong><small>We separate the vocal target from every accompaniment part.</small></p></div>
+            <div><span>03</span><p><strong>Sing and see</strong><small>Follow the score cursor and watch your raw pitch trace take shape.</small></p></div>
+          </div>
+        </div>
+        <div class="hero-visual" aria-label="Illustration of pitch feedback against music notation">
+          <div class="visual-label"><span></span> Live assessment</div>
+          <div class="staff-card">
+            <div class="staff-lines" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+            <div class="note-shape n1" aria-hidden="true"><i></i></div><div class="note-shape n2" aria-hidden="true"><i></i></div><div class="note-shape n3" aria-hidden="true"><i></i></div><div class="note-shape n4" aria-hidden="true"><i></i></div>
+            <div class="score-cursor" aria-hidden="true"></div>
+            <svg class="pitch-swoop" viewBox="0 0 440 170" preserveAspectRatio="none" aria-hidden="true"><path class="target-path" d="M0 95 L105 95 L105 70 L205 70 L205 110 L315 110 L315 55 L440 55" /><path class="voice-path" d="M0 128 C30 120 42 108 62 101 S91 96 105 96 C126 98 142 86 160 78 S185 72 205 71 C235 71 245 102 270 108 S300 112 315 109 C334 103 347 72 371 63 S410 57 440 59" /></svg>
+            <div class="feedback-chip"><span></span><strong>C4</strong><small>8 cents sharp</small></div>
+          </div>
+          <div class="visual-footer"><span>Pitch stays raw</span><span>Analysis stays local</span></div>
+        </div>
+      </section>
+
+      <section class="loading-view" id="loadingView" hidden aria-live="polite">
+        <span class="loading-mark"><i></i></span><p class="eyebrow"><span></span> Reading your score</p><h2 id="loadingTitle">Finding parts and phrases…</h2><p id="loadingMessage">MusicXML keeps the voice and accompaniment as separate musical data.</p>
+      </section>
+
+      <section class="part-view" id="partView" hidden aria-labelledby="partTitle">
+        <div class="part-card">
+          <button class="back-link" id="partBackButton" type="button">← Choose another file</button>
+          <p class="eyebrow"><span></span> Score ready</p><h2 id="partTitle">Which part are you singing?</h2>
+          <p>We detected <strong id="partCount">0 parts</strong> in <span id="scoreTitle">your score</span>. Select the line Vocal Coach should assess.</p>
+          <div class="part-options" id="partOptions" role="radiogroup" aria-label="Detected score parts"></div>
+          <div class="part-separation"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18V8m6 10V4m6 14v-7" /></svg><p><strong>The chosen line stays separate.</strong><span>Other parts remain available as synthesized accompaniment.</span></p></div>
+          <button class="continue-button" id="continueButton" type="button" disabled>Use this as my vocal part <span>→</span></button>
+        </div>
+      </section>
+
+      <section class="studio-view" id="studioView" hidden aria-labelledby="studioTitle">
+        <header class="studio-titlebar">
+          <div><button class="back-link" id="newScoreButton" type="button">← New score</button><p class="eyebrow"><span></span> Score studio</p><h1 id="studioTitle">Untitled score</h1><p id="studioMeta">Vocal part · 0 target notes</p></div>
+          <div class="selected-badge"><span aria-hidden="true">♪</span><p><small>I am singing</small><strong id="selectedPartName">Voice</strong></p></div>
+        </header>
+
+        <section class="studio-layout">
+          <aside class="control-panel panel" aria-label="Practice controls">
+            <div class="panel-heading"><span>01</span><div><p class="kicker">Session setup</p><h2>Choose a mode</h2></div></div>
+            <div class="mode-switch" role="radiogroup" aria-label="Session mode">
+              <button type="button" class="active" data-mode="practice" role="radio" aria-checked="true"><strong>Practice</strong><small>Guide available</small></button>
+              <button type="button" data-mode="assessment" role="radio" aria-checked="false"><strong>Assessment</strong><small>Microphone on</small></button>
+            </div>
+            <label class="toggle-row" for="guideToggle"><span><strong>Vocal guide</strong><small>Hear the selected line</small></span><input id="guideToggle" type="checkbox" checked /><i aria-hidden="true"></i></label>
+            <div class="accompaniment-block"><div class="setting-label"><span>Accompaniment</span><button id="toggleAllParts" type="button">Mute all</button></div><div class="accompaniment-list" id="accompanimentList"></div></div>
+            <label class="tempo-field" for="tempoSlider"><span><strong>Tempo</strong><output id="tempoOutput">100%</output></span><input id="tempoSlider" type="range" min="50" max="125" value="100" step="5" /><span class="range-labels"><small>Slower</small><small id="bpmLabel">120 BPM</small><small>Faster</small></span></label>
+            <div class="headphone-note"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14v-2a8 8 0 0 1 16 0v2M4 14h4v6H5a1 1 0 0 1-1-1v-5Zm16 0h-4v6h3a1 1 0 0 0 1-1v-5Z" /></svg><p><strong>Headphones recommended</strong><span>They prevent accompaniment leaking into pitch assessment.</span></p></div>
+          </aside>
+
+          <div class="score-column">
+            <section class="transport panel" aria-label="Playback controls">
+              <div class="transport-buttons"><button class="play-button" id="playButton" type="button" aria-label="Play"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7V5Z" /></svg></button><button class="transport-button" id="pauseButton" type="button" aria-label="Pause" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6v12M16 6v12" /></svg></button><button class="transport-button" id="stopButton" type="button" aria-label="Stop" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v10H7z" /></svg></button></div>
+              <div class="transport-progress"><span><strong id="transportState">Ready</strong><time id="currentTime">00:00</time><small>/</small><time id="totalTime">00:00</time></span><div class="progress-track" aria-hidden="true"><i id="progressFill"></i></div></div>
+              <div class="view-switch" role="group" aria-label="Score view"><button type="button" class="active" data-view="vocal">Vocal focus</button><button type="button" data-view="full">Full score</button></div>
+            </section>
+            <section class="score-panel panel" aria-labelledby="scoreHeading">
+              <div class="score-panel-head"><div><p class="kicker">Following</p><h2 id="scoreHeading">Selected vocal line</h2></div><span class="measure-pill">Measure <strong id="measureNumber">1</strong></span></div>
+              <div class="score-banner"><span></span><strong id="scoreBannerPart">Voice</strong> is highlighted as your assessment target</div>
+              <div id="scoreContainer" class="score-container" aria-label="Rendered sheet music"></div>
+            </section>
+            <section class="trace-panel panel" aria-labelledby="traceHeading">
+              <div class="trace-head"><div><p class="kicker">Raw pitch trace</p><h2 id="traceHeading">Your voice against the note</h2></div><div class="tolerance-legend" aria-label="Pitch tolerance colours"><span><i class="green"></i>±15¢</span><span><i class="yellow"></i>±30¢</span><span><i class="orange"></i>±45¢</span><span><i class="red"></i>45¢+</span></div></div>
+              <div class="trace-wrap"><canvas id="traceCanvas" aria-label="Pitch error trace in cents over time"></canvas><div class="trace-empty" id="traceEmpty"><span>Sing in Assessment mode to draw a trace</span><small>Raw pitch is preserved — including natural vibrato</small></div><span class="trace-label high">Sharp</span><span class="trace-label centre">Target</span><span class="trace-label low">Flat</span></div>
+            </section>
+            <section class="results-panel panel" id="resultsPanel" hidden aria-labelledby="resultsHeading">
+              <div class="results-head"><div><p class="kicker">Note-level review</p><h2 id="resultsHeading">How each note developed</h2></div><p id="resultsSummary">Results preserve the shape of each note instead of reducing it to pass or fail.</p></div>
+              <div class="results-table-wrap"><table><thead><tr><th>Note</th><th>Measure</th><th>Initial</th><th>Average</th><th>Settle time</th><th>Sustained</th><th>In zone</th></tr></thead><tbody id="resultsBody"></tbody></table></div>
+            </section>
+          </div>
+
+          <aside class="monitor-panel panel" aria-labelledby="monitorHeading">
+            <div class="panel-heading"><span>02</span><div><p class="kicker">Live feedback</p><h2 id="monitorHeading">Pitch monitor</h2></div></div>
+            <div class="expected-card"><span>Expected note</span><strong id="expectedNote">—</strong><small id="expectedPosition">Press play to begin</small></div>
+            <div class="detected-card"><span>You’re singing</span><strong id="detectedNote">—</strong><small id="detectedFrequency">Waiting for your voice</small><div class="cent-gauge" aria-hidden="true"><span>-50</span><i><b id="gaugeNeedle"></b></i><span>+50</span></div><output id="centsOutput">—</output></div>
+            <div class="status-card" id="statusCard" data-status="idle"><span class="status-icon">•</span><p><strong id="statusTitle">Ready when you are</strong><small id="statusCopy">Choose a mode, then press play.</small></p></div>
+            <div class="session-data"><div><span>Usable samples</span><strong id="sampleCount">0</strong></div><div><span>Current measure</span><strong id="sideMeasure">1</strong></div></div>
+            <button class="finish-button" id="finishButton" type="button" disabled>Finish &amp; review</button>
+            <p class="privacy-copy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V7a5 5 0 0 1 10 0v3M5 10h14v10H5z" /></svg>Microphone samples stay in browser memory and are cleared when you load a new score.</p>
+          </aside>
+        </section>
+      </section>
+    </main>
+
+    <dialog class="dialog" id="helpDialog"><form method="dialog"><button class="dialog-close" value="close" aria-label="Close help">×</button><p class="eyebrow"><span></span> Prototype guide</p><h2>From MusicXML to useful feedback.</h2><ol><li><span>1</span><p><strong>Export MusicXML.</strong> In your notation software, export the full score as MusicXML or compressed MXL.</p></li><li><span>2</span><p><strong>Choose exactly what you sing.</strong> Vocal Coach never assumes a part named “Voice” exists.</p></li><li><span>3</span><p><strong>Practise, then assess.</strong> Practice can play the guide. Assessment mutes it and listens through your microphone.</p></li><li><span>4</span><p><strong>Review the shape.</strong> See how each note started, settled, and sustained.</p></li></ol><p class="dialog-note">This first prototype assesses fundamental pitch only. It does not yet grade rhythm, vibrato, breath, diction, or voice type.</p><button class="continue-button" value="close">Got it</button></form></dialog>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <noscript><p class="noscript">Vocal Coach needs JavaScript to read MusicXML and analyse pitch.</p></noscript>
+  </body>
+</html>

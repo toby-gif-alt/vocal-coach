@@ -1,0 +1,512 @@
+import { AudioEngine } from "./src/audio-engine.js";
+import { analysePerformance, performanceSummary } from "./src/analysis.js";
+import { colourForCents, formatTime, frequencyToMidi, midiToName, PITCH_THRESHOLDS } from "./src/config.js";
+import { measureAtQuarter, noteAtQuarter, readScoreFile, readScoreUrl, suggestVocalPart } from "./src/musicxml.js";
+
+const $ = (selector) => document.querySelector(selector);
+const els = {
+  uploadView: $("#uploadView"), loadingView: $("#loadingView"), partView: $("#partView"), studioView: $("#studioView"),
+  loadingTitle: $("#loadingTitle"), loadingMessage: $("#loadingMessage"), scoreInput: $("#scoreInput"), sampleButton: $("#sampleButton"),
+  partBackButton: $("#partBackButton"), partCount: $("#partCount"), scoreTitle: $("#scoreTitle"), partOptions: $("#partOptions"), continueButton: $("#continueButton"),
+  newScoreButton: $("#newScoreButton"), studioTitle: $("#studioTitle"), studioMeta: $("#studioMeta"), selectedPartName: $("#selectedPartName"), scoreBannerPart: $("#scoreBannerPart"),
+  modeButtons: [...document.querySelectorAll("[data-mode]")], guideToggle: $("#guideToggle"), accompanimentList: $("#accompanimentList"), toggleAllParts: $("#toggleAllParts"),
+  tempoSlider: $("#tempoSlider"), tempoOutput: $("#tempoOutput"), bpmLabel: $("#bpmLabel"),
+  playButton: $("#playButton"), pauseButton: $("#pauseButton"), stopButton: $("#stopButton"), transportState: $("#transportState"), currentTime: $("#currentTime"), totalTime: $("#totalTime"), progressFill: $("#progressFill"),
+  viewButtons: [...document.querySelectorAll("[data-view]")], scoreHeading: $("#scoreHeading"), measureNumber: $("#measureNumber"), sideMeasure: $("#sideMeasure"), scoreContainer: $("#scoreContainer"),
+  traceCanvas: $("#traceCanvas"), traceEmpty: $("#traceEmpty"), resultsPanel: $("#resultsPanel"), resultsBody: $("#resultsBody"), resultsSummary: $("#resultsSummary"),
+  expectedNote: $("#expectedNote"), expectedPosition: $("#expectedPosition"), detectedNote: $("#detectedNote"), detectedFrequency: $("#detectedFrequency"), gaugeNeedle: $("#gaugeNeedle"), centsOutput: $("#centsOutput"),
+  statusCard: $("#statusCard"), statusTitle: $("#statusTitle"), statusCopy: $("#statusCopy"), sampleCount: $("#sampleCount"), finishButton: $("#finishButton"),
+  helpButton: $("#helpButton"), helpDialog: $("#helpDialog"), toast: $("#toast"),
+};
+
+const state = {
+  score: null,
+  selectedPartId: null,
+  mode: "practice",
+  scoreView: "vocal",
+  enabledParts: new Set(),
+  samples: [],
+  osmd: null,
+  cursor: null,
+  cursorQuarter: -1,
+  syncFrame: null,
+  toastTimer: null,
+  rendering: false,
+};
+
+const audio = new AudioEngine({
+  onPitchSample: handlePitchSample,
+  onMicrophoneState: handleMicrophoneState,
+  onPlaybackEnd: handlePlaybackEnd,
+});
+
+function showView(name) {
+  els.uploadView.hidden = name !== "upload";
+  els.loadingView.hidden = name !== "loading";
+  els.partView.hidden = name !== "parts";
+  els.studioView.hidden = name !== "studio";
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function toast(message) {
+  clearTimeout(state.toastTimer);
+  els.toast.textContent = message;
+  els.toast.classList.add("show");
+  state.toastTimer = setTimeout(() => els.toast.classList.remove("show"), 3400);
+}
+
+async function loadScore(loader) {
+  showView("loading");
+  els.loadingTitle.textContent = "Finding parts and phrases…";
+  els.loadingMessage.textContent = "MusicXML keeps the voice and accompaniment as separate musical data.";
+  try {
+    state.score = await loader();
+    state.samples = [];
+    state.selectedPartId = suggestVocalPart(state.score.parts);
+    renderPartChoices();
+    showView("parts");
+  } catch (error) {
+    console.error(error);
+    toast(error.message || "This score could not be opened.");
+    showView("upload");
+  }
+}
+
+function renderPartChoices() {
+  els.partOptions.innerHTML = "";
+  els.partCount.textContent = `${state.score.parts.length} ${state.score.parts.length === 1 ? "part" : "parts"}`;
+  els.scoreTitle.textContent = state.score.title;
+  for (const part of state.score.parts) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `part-option${part.id === state.selectedPartId ? " selected" : ""}`;
+    button.dataset.partId = part.id;
+    button.role = "radio";
+    button.setAttribute("aria-checked", String(part.id === state.selectedPartId));
+    button.innerHTML = `<span aria-hidden="true">♪</span><span><strong>${escapeHtml(part.name)}</strong><small>${part.vocalTimeline.length} pitched events detected</small></span><i aria-hidden="true"></i>`;
+    els.partOptions.append(button);
+  }
+  els.continueButton.disabled = !state.selectedPartId;
+}
+
+function selectPart(partId) {
+  state.selectedPartId = partId;
+  for (const button of els.partOptions.querySelectorAll(".part-option")) {
+    const selected = button.dataset.partId === partId;
+    button.classList.toggle("selected", selected);
+    button.setAttribute("aria-checked", String(selected));
+  }
+  els.continueButton.disabled = false;
+}
+
+async function enterStudio() {
+  const vocalPart = selectedPart();
+  if (!vocalPart) return;
+  state.enabledParts = new Set(state.score.parts.filter((part) => part.id !== vocalPart.id).map((part) => part.id));
+  state.mode = "practice";
+  state.scoreView = "vocal";
+  state.samples = [];
+  audio.setScore(state.score);
+  audio.setTempo(100);
+  els.studioTitle.textContent = state.score.title;
+  els.studioMeta.textContent = `${state.score.creator ? `${state.score.creator} · ` : ""}${vocalPart.name} · ${vocalPart.vocalTimeline.length} target notes`;
+  els.selectedPartName.textContent = vocalPart.name;
+  els.scoreBannerPart.textContent = vocalPart.name;
+  els.scoreHeading.textContent = `${vocalPart.name} — vocal focus`;
+  renderAccompaniment();
+  resetControls();
+  showView("studio");
+  await renderScore();
+  drawTrace();
+}
+
+function selectedPart() {
+  return state.score?.parts.find((part) => part.id === state.selectedPartId) || null;
+}
+
+function renderAccompaniment() {
+  els.accompanimentList.innerHTML = "";
+  const accompaniment = state.score.parts.filter((part) => part.id !== state.selectedPartId);
+  if (!accompaniment.length) {
+    els.accompanimentList.innerHTML = '<span class="empty-parts">No separate accompaniment parts</span>';
+    els.toggleAllParts.disabled = true;
+    return;
+  }
+  els.toggleAllParts.disabled = false;
+  for (const part of accompaniment) {
+    const label = document.createElement("label");
+    label.className = "part-toggle";
+    label.innerHTML = `<span>${escapeHtml(part.name)}</span><input type="checkbox" data-part-id="${escapeHtml(part.id)}" ${state.enabledParts.has(part.id) ? "checked" : ""} /><i aria-hidden="true"></i>`;
+    els.accompanimentList.append(label);
+  }
+  updateMuteAllLabel();
+}
+
+function updateMuteAllLabel() {
+  const accompaniment = state.score?.parts.filter((part) => part.id !== state.selectedPartId) || [];
+  els.toggleAllParts.textContent = accompaniment.length && accompaniment.every((part) => state.enabledParts.has(part.id)) ? "Mute all" : "Play all";
+}
+
+async function renderScore() {
+  if (state.rendering || !state.score) return;
+  state.rendering = true;
+  els.scoreContainer.setAttribute("aria-busy", "true");
+  try {
+    const OSMD = window.opensheetmusicdisplay?.OpenSheetMusicDisplay;
+    if (!OSMD) throw new Error("The notation renderer did not load. Check your connection and refresh.");
+    if (!state.osmd) {
+      state.osmd = new OSMD(els.scoreContainer, {
+        autoResize: true,
+        backend: "svg",
+        drawTitle: true,
+        drawPartNames: true,
+        followCursor: true,
+        drawingParameters: "compact",
+        cursorsOptions: [{ color: "#d8ff78", alpha: 0.72, follow: true }],
+      });
+      await state.osmd.load(state.score.xmlText);
+    }
+    state.osmd.Sheet.Instruments.forEach((instrument, index) => {
+      instrument.Visible = state.scoreView === "full" || state.score.parts[index]?.id === state.selectedPartId;
+    });
+    state.osmd.render();
+    state.cursor = state.osmd.cursor || state.osmd.cursors?.[0] || null;
+    resetCursor();
+    els.scoreHeading.textContent = state.scoreView === "vocal" ? `${selectedPart().name} — vocal focus` : "Full score";
+  } catch (error) {
+    console.error(error);
+    els.scoreContainer.innerHTML = `<p class="score-error">${escapeHtml(error.message || "The score could not be rendered.")}</p>`;
+    toast(error.message || "The score could not be rendered.");
+  } finally {
+    state.rendering = false;
+    els.scoreContainer.removeAttribute("aria-busy");
+  }
+}
+
+function resetCursor() {
+  state.cursorQuarter = -1;
+  try {
+    state.cursor?.reset();
+    state.cursor?.show();
+    state.cursorQuarter = cursorTimestamp();
+  } catch (error) {
+    console.warn("Score cursor is unavailable", error);
+  }
+}
+
+function cursorTimestamp() {
+  const iterator = state.cursor?.Iterator || state.cursor?.iterator;
+  const value = iterator?.currentTimeStamp?.RealValue ?? iterator?.CurrentSourceTimestamp?.RealValue;
+  return Number.isFinite(value) ? value : state.cursorQuarter;
+}
+
+function syncCursor(quarter) {
+  if (!state.cursor) return;
+  if (quarter + 0.01 < state.cursorQuarter) resetCursor();
+  let steps = 0;
+  try {
+    while (cursorTimestamp() + 0.001 < quarter && steps < 120) {
+      state.cursor.next();
+      state.cursorQuarter = cursorTimestamp();
+      steps += 1;
+    }
+  } catch (error) {
+    console.warn("Could not advance score cursor", error);
+  }
+}
+
+function setMode(mode) {
+  if (audio.isPlaying || audio.isPaused) return;
+  state.mode = mode;
+  els.modeButtons.forEach((button) => {
+    const active = button.dataset.mode === mode;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-checked", String(active));
+  });
+  const assessment = mode === "assessment";
+  els.guideToggle.disabled = assessment;
+  els.guideToggle.checked = !assessment;
+  els.transportState.textContent = assessment ? "Assessment ready" : "Practice ready";
+  setStatus("idle", assessment ? "Microphone ready" : "Ready when you are", assessment ? "Press play to allow microphone access." : "The vocal guide is available in Practice mode.");
+}
+
+async function play() {
+  if (!state.score || state.rendering) return;
+  const freshAssessment = state.mode === "assessment" && !audio.isPaused && audio.currentQuarter < 0.01;
+  if (freshAssessment) {
+    state.samples = [];
+    els.resultsPanel.hidden = true;
+    els.sampleCount.textContent = "0";
+    drawTrace();
+  }
+  setTransportBusy(true);
+  try {
+    await audio.play({
+      vocalPartId: state.selectedPartId,
+      guideEnabled: els.guideToggle.checked,
+      enabledPartIds: [...state.enabledParts],
+      assessmentMode: state.mode === "assessment",
+    });
+    setPlaybackState("playing");
+    startSync();
+  } catch (error) {
+    console.error(error);
+    if (error?.name === "NotAllowedError") toast("Microphone permission was blocked. Allow access or switch to Practice mode.");
+    else toast(error.message || "Playback could not start.");
+    setStatus("off", "Couldn’t start", error?.name === "NotAllowedError" ? "Microphone permission is required for Assessment." : "Check the browser console or try Practice mode.");
+  } finally {
+    setTransportBusy(false);
+  }
+}
+
+function pause() {
+  audio.pause();
+  cancelAnimationFrame(state.syncFrame);
+  setPlaybackState("paused");
+  setStatus("idle", "Paused", "Your place in the score is saved.");
+}
+
+function stop({ keepSamples = true } = {}) {
+  audio.stop({ reset: true, microphone: true });
+  cancelAnimationFrame(state.syncFrame);
+  setPlaybackState("stopped");
+  resetCursor();
+  updatePosition(0);
+  if (!keepSamples) {
+    state.samples = [];
+    els.sampleCount.textContent = "0";
+    els.resultsPanel.hidden = true;
+    drawTrace();
+  }
+}
+
+function setTransportBusy(busy) {
+  els.playButton.disabled = busy;
+  els.pauseButton.disabled = busy || !audio.isPlaying;
+  els.stopButton.disabled = busy || (!audio.isPlaying && !audio.isPaused);
+}
+
+function setPlaybackState(status) {
+  const playing = status === "playing";
+  const paused = status === "paused";
+  els.playButton.disabled = playing;
+  els.pauseButton.disabled = !playing;
+  els.stopButton.disabled = !(playing || paused);
+  els.finishButton.disabled = state.mode !== "assessment" || (!state.samples.length && !playing && !paused);
+  els.tempoSlider.disabled = playing || paused;
+  els.modeButtons.forEach((button) => { button.disabled = playing || paused; });
+  els.guideToggle.disabled = playing || paused || state.mode === "assessment";
+  for (const input of els.accompanimentList.querySelectorAll("input")) input.disabled = playing || paused;
+  els.toggleAllParts.disabled = playing || paused || !state.score.parts.some((part) => part.id !== state.selectedPartId);
+  els.transportState.textContent = playing ? (state.mode === "assessment" ? "Assessing" : "Playing") : paused ? "Paused" : "Ready";
+  if (playing) setStatus("idle", state.mode === "assessment" ? "Listening" : "Playing your score", state.mode === "assessment" ? "Sing the selected line while the cursor moves." : "Follow the guide and accompaniment.");
+}
+
+function startSync() {
+  cancelAnimationFrame(state.syncFrame);
+  const frame = () => {
+    if (!audio.isPlaying) return;
+    updatePosition(audio.currentQuarter);
+    state.syncFrame = requestAnimationFrame(frame);
+  };
+  state.syncFrame = requestAnimationFrame(frame);
+}
+
+function updatePosition(quarter) {
+  const part = selectedPart();
+  const seconds = quarter * 60 / audio.bpm;
+  const duration = audio.durationSeconds;
+  els.currentTime.textContent = formatTime(seconds);
+  els.totalTime.textContent = formatTime(duration);
+  els.progressFill.style.width = `${Math.min(100, duration ? seconds / duration * 100 : 0)}%`;
+  const measure = measureAtQuarter(part, quarter);
+  els.measureNumber.textContent = String(measure);
+  els.sideMeasure.textContent = String(measure);
+  const expected = noteAtQuarter(part.vocalTimeline, quarter);
+  if (expected) {
+    els.expectedNote.textContent = expected.displayPitch;
+    els.expectedPosition.textContent = `Measure ${expected.measureNumber} · beat ${formatBeat(expected.beatPosition)}`;
+  } else {
+    els.expectedNote.textContent = "Rest";
+    els.expectedPosition.textContent = `Measure ${measure}`;
+  }
+  syncCursor(quarter);
+  drawTrace();
+}
+
+function handlePitchSample(sample) {
+  if (state.mode !== "assessment" || !audio.isPlaying) return;
+  const target = noteAtQuarter(selectedPart().vocalTimeline, sample.scoreQuarter);
+  if (!target) {
+    setStatus("idle", "Rest", "Breathe and prepare for the next entrance.");
+    return;
+  }
+  const midi = frequencyToMidi(sample.frequency);
+  const cents = (midi - target.midi) * 100;
+  const enriched = { ...sample, midi, cents, targetId: target.id, targetMidi: target.midi, measureNumber: target.measureNumber };
+  state.samples.push(enriched);
+  els.sampleCount.textContent = state.samples.length.toLocaleString();
+  els.detectedNote.textContent = midiToName(midi);
+  els.detectedFrequency.textContent = `${sample.frequency.toFixed(1)} Hz · ${(sample.clarity * 100).toFixed(0)}% clarity`;
+  els.centsOutput.textContent = Math.abs(cents) < 1 ? "Centred" : `${Math.abs(cents).toFixed(0)} cents ${cents > 0 ? "sharp" : "flat"}`;
+  els.centsOutput.style.color = colourForCents(cents);
+  els.gaugeNeedle.style.left = `${Math.max(0, Math.min(100, 50 + cents))}%`;
+  const error = Math.abs(cents);
+  if (error <= PITCH_THRESHOLDS.green) setStatus("good", "In the centre", "Keep the airflow and shape just like this.");
+  else if (error <= PITCH_THRESHOLDS.yellow) setStatus("warn", "Nearly there", cents > 0 ? "Ease the pitch down a touch." : "Lift the pitch gently from the breath.");
+  else setStatus("off", cents > 0 ? "Running sharp" : "Running flat", "Keep listening — the trace preserves how this note settles.");
+  els.finishButton.disabled = false;
+}
+
+function handleMicrophoneState(status) {
+  if (status === "requesting") setStatus("idle", "Microphone permission", "Allow access so assessment can listen locally.");
+  if (status === "active") setStatus("idle", "Microphone active", "Audio is analysed on this device only.");
+}
+
+function handlePlaybackEnd() {
+  if (state.mode === "assessment" && state.samples.length) finishAssessment();
+  else stop();
+}
+
+function finishAssessment() {
+  const hadSamples = state.samples.length > 0;
+  audio.stop({ reset: true, microphone: true });
+  cancelAnimationFrame(state.syncFrame);
+  setPlaybackState("stopped");
+  resetCursor();
+  updatePosition(0);
+  if (!hadSamples) {
+    toast("No clear pitch samples were captured. Try again in a quieter room.");
+    return;
+  }
+  const results = analysePerformance(selectedPart().vocalTimeline, state.samples, audio.bpm);
+  renderResults(results);
+  els.resultsPanel.hidden = false;
+  els.resultsPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+  setStatus("good", "Assessment complete", "Review how each note started, settled, and sustained.");
+}
+
+function renderResults(results) {
+  els.resultsBody.innerHTML = "";
+  const assessed = results.filter((result) => result.sampleCount > 0);
+  if (!assessed.length) {
+    els.resultsBody.innerHTML = '<tr><td colspan="7" class="result-empty">No target notes had enough usable samples.</td></tr>';
+  } else {
+    for (const result of assessed) {
+      const row = document.createElement("tr");
+      row.innerHTML = `<td>${escapeHtml(result.note.displayPitch)}</td><td>${result.note.measureNumber}</td><td>${formatCents(result.initialError)}</td><td>${formatCents(result.averageError)}</td><td>${result.settleTime === null ? "—" : `${result.settleTime.toFixed(2)}s`}</td><td>${formatCents(result.sustainedError)}</td><td><span class="result-value">${Math.round(result.inZonePercent)}%</span></td>`;
+      els.resultsBody.append(row);
+    }
+  }
+  els.resultsSummary.textContent = performanceSummary(results);
+}
+
+function setStatus(status, title, copy) {
+  els.statusCard.dataset.status = status;
+  els.statusTitle.textContent = title;
+  els.statusCopy.textContent = copy;
+  els.statusCard.querySelector(".status-icon").textContent = status === "good" ? "✓" : status === "warn" ? "~" : status === "off" ? "!" : "•";
+}
+
+function drawTrace() {
+  const canvas = els.traceCanvas;
+  const rect = canvas.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  if (canvas.width !== Math.round(rect.width * dpr) || canvas.height !== Math.round(rect.height * dpr)) {
+    canvas.width = Math.round(rect.width * dpr);
+    canvas.height = Math.round(rect.height * dpr);
+  }
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, rect.width, rect.height);
+  const pad = { top: 17, right: 13, bottom: 17, left: 13 };
+  const height = rect.height - pad.top - pad.bottom;
+  const width = rect.width - pad.left - pad.right;
+  const yFor = (cents) => pad.top + (80 - Math.max(-80, Math.min(80, cents))) / 160 * height;
+  for (const cents of [-45, -30, -15, 0, 15, 30, 45]) {
+    ctx.beginPath(); ctx.moveTo(pad.left, yFor(cents)); ctx.lineTo(rect.width - pad.right, yFor(cents));
+    ctx.strokeStyle = cents === 0 ? "rgba(216,255,120,.42)" : "rgba(255,255,255,.075)"; ctx.lineWidth = cents === 0 ? 1.5 : 1; ctx.stroke();
+  }
+  els.traceEmpty.hidden = state.samples.length > 0;
+  if (!state.samples.length) return;
+  const latest = audio.isPlaying ? audio.currentSeconds : state.samples[state.samples.length - 1].scoreSeconds;
+  const start = Math.max(0, latest - 12);
+  const visible = state.samples.filter((sample) => sample.scoreSeconds >= start && sample.scoreSeconds <= latest + .1);
+  const xFor = (seconds) => pad.left + (seconds - start) / 12 * width;
+  ctx.save(); ctx.beginPath(); ctx.rect(pad.left, pad.top, width, height); ctx.clip(); ctx.lineWidth = 3; ctx.lineCap = "round"; ctx.lineJoin = "round";
+  for (let index = 1; index < visible.length; index += 1) {
+    const previous = visible[index - 1], current = visible[index];
+    if (current.targetId !== previous.targetId || current.scoreSeconds - previous.scoreSeconds > .2) continue;
+    ctx.beginPath(); ctx.moveTo(xFor(previous.scoreSeconds), yFor(previous.cents)); ctx.lineTo(xFor(current.scoreSeconds), yFor(current.cents)); ctx.strokeStyle = colourForCents(current.cents); ctx.shadowColor = ctx.strokeStyle; ctx.shadowBlur = 6; ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function resetControls() {
+  els.tempoSlider.value = "100";
+  els.tempoOutput.textContent = "100%";
+  els.bpmLabel.textContent = `${Math.round(state.score.originalTempo)} BPM`;
+  els.totalTime.textContent = formatTime(audio.durationSeconds);
+  els.currentTime.textContent = "00:00";
+  els.progressFill.style.width = "0%";
+  els.expectedNote.textContent = "—";
+  els.expectedPosition.textContent = "Press play to begin";
+  els.detectedNote.textContent = "—";
+  els.detectedFrequency.textContent = "Waiting for your voice";
+  els.centsOutput.textContent = "—";
+  els.centsOutput.style.color = "";
+  els.gaugeNeedle.style.left = "50%";
+  els.sampleCount.textContent = "0";
+  els.resultsPanel.hidden = true;
+  state.mode = "practice";
+  els.modeButtons.forEach((button) => { const active = button.dataset.mode === "practice"; button.classList.toggle("active", active); button.setAttribute("aria-checked", String(active)); });
+  els.guideToggle.checked = true;
+  setPlaybackState("stopped");
+  setStatus("idle", "Ready when you are", "Choose a mode, then press play.");
+  updatePosition(0);
+}
+
+function resetToUpload() {
+  audio.destroy();
+  cancelAnimationFrame(state.syncFrame);
+  state.score = null; state.selectedPartId = null; state.samples = []; state.osmd = null; state.cursor = null;
+  els.scoreContainer.innerHTML = "";
+  els.scoreInput.value = "";
+  showView("upload");
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character]);
+}
+
+function formatCents(value) {
+  if (value === null || !Number.isFinite(value)) return "—";
+  if (Math.abs(value) < .5) return "0¢";
+  return `${value > 0 ? "+" : ""}${Math.round(value)}¢`;
+}
+
+function formatBeat(value) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+function wireEvents() {
+  els.scoreInput.addEventListener("change", () => { const file = els.scoreInput.files?.[0]; if (file) loadScore(() => readScoreFile(file)); });
+  els.sampleButton.addEventListener("click", () => loadScore(() => readScoreUrl("./samples/first-flight.musicxml", "First Flight")));
+  els.partBackButton.addEventListener("click", resetToUpload);
+  els.newScoreButton.addEventListener("click", resetToUpload);
+  els.partOptions.addEventListener("click", (event) => { const button = event.target.closest("[data-part-id]"); if (button) selectPart(button.dataset.partId); });
+  els.continueButton.addEventListener("click", enterStudio);
+  els.modeButtons.forEach((button) => button.addEventListener("click", () => setMode(button.dataset.mode)));
+  els.accompanimentList.addEventListener("change", (event) => { const input = event.target.closest("input[data-part-id]"); if (!input) return; if (input.checked) state.enabledParts.add(input.dataset.partId); else state.enabledParts.delete(input.dataset.partId); updateMuteAllLabel(); });
+  els.toggleAllParts.addEventListener("click", () => { const parts = state.score.parts.filter((part) => part.id !== state.selectedPartId); const all = parts.every((part) => state.enabledParts.has(part.id)); state.enabledParts = new Set(all ? [] : parts.map((part) => part.id)); renderAccompaniment(); });
+  els.tempoSlider.addEventListener("input", () => { audio.setTempo(els.tempoSlider.value); els.tempoOutput.textContent = `${els.tempoSlider.value}%`; els.bpmLabel.textContent = `${Math.round(audio.bpm)} BPM`; els.totalTime.textContent = formatTime(audio.durationSeconds); });
+  els.playButton.addEventListener("click", play); els.pauseButton.addEventListener("click", pause); els.stopButton.addEventListener("click", () => stop()); els.finishButton.addEventListener("click", finishAssessment);
+  els.viewButtons.forEach((button) => button.addEventListener("click", async () => { if (audio.isPlaying || audio.isPaused) return; state.scoreView = button.dataset.view; els.viewButtons.forEach((item) => item.classList.toggle("active", item === button)); await renderScore(); }));
+  els.helpButton.addEventListener("click", () => els.helpDialog.showModal());
+  window.addEventListener("resize", drawTrace);
+  window.addEventListener("beforeunload", () => audio.destroy());
+}
+
+wireEvents();
+showView("upload");
