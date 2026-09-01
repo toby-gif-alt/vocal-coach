@@ -64,3 +64,24 @@ export function applyMeasureTimingEvent(state, event) {
 export function measureDurationQuarters(state) {
   return state.furthest;
 }
+
+/**
+ * Returns the musical pulse used by the count-in. Simple meters click the
+ * notated beat; compound x/8 meters count dotted-quarter pulses (6/8 = 2),
+ * rather than six quarter-note-length clicks.
+ */
+export function countInPattern(timeSignature = { beats: 4, beatType: 4 }, bars = 1) {
+  const beats = Math.max(1, Number(timeSignature.beats) || 4);
+  const beatType = Math.max(1, Number(timeSignature.beatType) || 4);
+  const barCount = Math.max(0, Math.min(2, Number(bars) || 0));
+  const compound = beatType === 8 && beats >= 6 && beats % 3 === 0;
+  const pulsesPerBar = compound ? beats / 3 : beats;
+  const pulseQuarters = compound ? 1.5 : 4 / beatType;
+  const pulses = [];
+  for (let bar = 1; bar <= barCount; bar += 1) {
+    for (let beat = 1; beat <= pulsesPerBar; beat += 1) {
+      pulses.push({ bar, beat, accent: beat === 1, pulseQuarters });
+    }
+  }
+  return { bars: barCount, pulsesPerBar, pulseQuarters, compound, pulses };
+}

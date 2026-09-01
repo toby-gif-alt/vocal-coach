@@ -102,7 +102,8 @@ export function parseMusicXml(xmlText, fallbackName = "Untitled score") {
     return parsePart(partElement, meta, originalTempo);
   });
   const durationQuarters = Math.max(0, ...parts.map((part) => part.durationQuarters));
-  return { xmlText, documentNode, title, creator, originalTempo, durationQuarters, parts };
+  const initialTimeSignature = findInitialTimeSignature(root);
+  return { xmlText, documentNode, title, creator, originalTempo, initialTimeSignature, durationQuarters, parts };
 }
 
 function findInitialTempo(root) {
@@ -115,6 +116,16 @@ function findInitialTempo(root) {
     if (value > 0) return value;
   }
   return null;
+}
+
+function findInitialTimeSignature(root) {
+  for (const time of descendants(root, "time")) {
+    const beatsText = textOf(time, "beats", "4");
+    const beats = beatsText.split("+").reduce((sum, value) => sum + (Number(value) || 0), 0);
+    const beatType = numberOf(time, "beat-type", 4);
+    if (beats > 0 && beatType > 0) return { beats, beatType };
+  }
+  return { beats: 4, beatType: 4 };
 }
 
 function parsePart(partElement, meta, tempo) {

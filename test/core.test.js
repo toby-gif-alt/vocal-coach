@@ -8,6 +8,7 @@ import {
   frequencyToMidi,
   midiToFrequency,
   midiToName,
+  SESSION_MODES,
 } from "../src/config.js";
 
 test("MIDI and frequency conversions round-trip across a vocal range", () => {
@@ -23,6 +24,17 @@ test("pitch colours include their documented tolerance boundaries", () => {
   assert.equal(colourForCents(-30), "#d8c743");
   assert.equal(colourForCents(45), "#ee8b3b");
   assert.equal(colourForCents(45.01), "#df5f55");
+});
+
+test("playback modes keep guide and microphone behaviour unambiguous", () => {
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(SESSION_MODES).map(([key, value]) => [key, { guide: value.guide, microphone: value.microphone }])),
+    {
+      practice: { guide: true, microphone: false },
+      assisted: { guide: true, microphone: true },
+      assessment: { guide: false, microphone: true },
+    },
+  );
 });
 
 test("note analysis preserves onset, settling, sustain, and in-zone metrics", () => {
@@ -79,4 +91,10 @@ test("GitHub Pages entry point references only present local assets", async () =
   assert.match(html, /<link rel="stylesheet" href="\.\/styles\.css" \/>/);
   assert.match(html, /id="tempoSlider"[^>]+max="150"/);
   for (const level of ["low", "normal", "high"]) assert.match(html, new RegExp(`data-sensitivity="${level}"`));
+  for (const mode of ["practice", "assisted", "assessment"]) assert.match(html, new RegExp(`data-mode="${mode}"`));
+  for (const bars of ["0", "1", "2"]) assert.match(html, new RegExp(`data-count-in="${bars}"`));
+  for (const shift of ["-12", "0", "12"]) assert.match(html, new RegExp(`data-octave="${shift}"`));
+  for (const diagnostic of ["diagRawHz", "diagRawMidi", "diagFilteredHz", "diagFilteredMidi", "diagClarity", "diagRms", "diagTarget", "diagCents"]) {
+    assert.match(html, new RegExp(`id="${diagnostic}"`));
+  }
 });

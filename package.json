@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check app.js && node --check src/config.js && node --check src/timing.js && node --check src/noise-gate.js && node --check src/musicxml.js && node --check src/audio-engine.js && node --check src/analysis.js && node --test",
+    "check": "node --check app.js && node --check src/config.js && node --check src/timing.js && node --check src/noise-gate.js && node --check src/pitch-tracker.js && node --check src/musicxml.js && node --check src/audio-engine.js && node --check src/analysis.js && node --test",
     "test": "node --test"
   },
   "engines": {

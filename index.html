@@ -50,7 +50,7 @@
           <div class="flow-list" aria-label="How it works">
             <div><span>01</span><p><strong>Bring a score</strong><small>Export MusicXML from MuseScore, Sibelius, Dorico, or Finale.</small></p></div>
             <div><span>02</span><p><strong>Choose your line</strong><small>We separate the vocal target from every accompaniment part.</small></p></div>
-            <div><span>03</span><p><strong>Sing and see</strong><small>Follow the score cursor and watch your raw pitch trace take shape.</small></p></div>
+            <div><span>03</span><p><strong>Sing and see</strong><small>Follow the score cursor and watch a reliable pitch trace take shape.</small></p></div>
           </div>
         </div>
         <div class="hero-visual" aria-label="Illustration of pitch feedback against music notation">
@@ -91,10 +91,31 @@
           <aside class="control-panel panel" aria-label="Practice controls">
             <div class="panel-heading"><span>01</span><div><p class="kicker">Session setup</p><h2>Choose a mode</h2></div></div>
             <div class="mode-switch" role="radiogroup" aria-label="Session mode">
-              <button type="button" class="active" data-mode="practice" role="radio" aria-checked="true"><strong>Practice</strong><small>Guide available</small></button>
-              <button type="button" data-mode="assessment" role="radio" aria-checked="false"><strong>Assessment</strong><small>Microphone on</small></button>
+              <button type="button" class="active" data-mode="practice" role="radio" aria-checked="true"><strong>Practice</strong><small>Guide + piano</small></button>
+              <button type="button" data-mode="assisted" role="radio" aria-checked="false"><strong>Assisted Assessment</strong><small>Guide + scoring</small></button>
+              <button type="button" data-mode="assessment" role="radio" aria-checked="false"><strong>Assessment</strong><small>Piano + scoring</small></button>
             </div>
-            <label class="toggle-row" for="guideToggle"><span><strong>Vocal guide</strong><small>Hear the selected line</small></span><input id="guideToggle" type="checkbox" checked /><i aria-hidden="true"></i></label>
+            <div class="volume-block">
+              <label class="volume-field" for="guideVolume"><span><strong>Vocal Guide</strong><output id="guideVolumeOutput">92%</output></span><input id="guideVolume" type="range" min="0" max="100" value="92" step="2" /></label>
+              <label class="volume-field" for="accompanimentVolume"><span><strong>Accompaniment</strong><output id="accompanimentVolumeOutput">72%</output></span><input id="accompanimentVolume" type="range" min="0" max="100" value="72" step="2" /></label>
+            </div>
+            <div class="compact-setting">
+              <div class="setting-label"><span>Count-in</span><output id="countInOutput">1 bar</output></div>
+              <div class="option-switch" role="radiogroup" aria-label="Count-in length">
+                <button type="button" data-count-in="0" role="radio" aria-checked="false">Off</button>
+                <button type="button" class="active" data-count-in="1" role="radio" aria-checked="true">1 bar</button>
+                <button type="button" data-count-in="2" role="radio" aria-checked="false">2 bars</button>
+              </div>
+            </div>
+            <div class="compact-setting octave-setting">
+              <div class="setting-label"><span>Singing octave</span><output id="octaveOutput">Written</output></div>
+              <div class="option-switch" role="radiogroup" aria-label="Singing octave">
+                <button type="button" data-octave="-12" role="radio" aria-checked="false">Octave lower</button>
+                <button type="button" class="active" data-octave="0" role="radio" aria-checked="true">Written</button>
+                <button type="button" data-octave="12" role="radio" aria-checked="false">Octave higher</button>
+              </div>
+              <p id="octaveHint">Sing written pitch — sounding target appears here during playback.</p>
+            </div>
             <div class="sensitivity-block">
               <div class="setting-label"><span>Microphone sensitivity</span><output id="sensitivityOutput">Normal</output></div>
               <div class="sensitivity-switch" role="radiogroup" aria-label="Microphone sensitivity">
@@ -106,7 +127,7 @@
             </div>
             <div class="accompaniment-block"><div class="setting-label"><span>Accompaniment</span><button id="toggleAllParts" type="button">Mute all</button></div><div class="accompaniment-list" id="accompanimentList"></div></div>
             <label class="tempo-field" for="tempoSlider"><span><strong>Tempo</strong><output id="tempoOutput">100%</output></span><input id="tempoSlider" type="range" min="50" max="150" value="100" step="5" /><span class="range-labels"><small>Slower</small><small id="bpmLabel">120 BPM</small><small>Faster</small></span></label>
-            <div class="headphone-note"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14v-2a8 8 0 0 1 16 0v2M4 14h4v6H5a1 1 0 0 1-1-1v-5Zm16 0h-4v6h3a1 1 0 0 0 1-1v-5Z" /></svg><p><strong>Headphones recommended</strong><span>They prevent accompaniment leaking into pitch assessment.</span></p></div>
+            <div class="headphone-note" id="headphoneNote" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14v-2a8 8 0 0 1 16 0v2M4 14h4v6H5a1 1 0 0 1-1-1v-5Zm16 0h-4v6h3a1 1 0 0 0 1-1v-5Z" /></svg><p><strong>Use headphones for reliable scoring</strong><span>They stop the vocal guide and accompaniment from being mistaken for your voice.</span></p></div>
           </aside>
 
           <div class="score-column">
@@ -114,6 +135,7 @@
               <div class="transport-buttons"><button class="play-button" id="playButton" type="button" aria-label="Play"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7V5Z" /></svg></button><button class="transport-button" id="pauseButton" type="button" aria-label="Pause" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6v12M16 6v12" /></svg></button><button class="transport-button" id="stopButton" type="button" aria-label="Stop" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v10H7z" /></svg></button></div>
               <div class="transport-progress"><span><strong id="transportState">Ready</strong><time id="currentTime">00:00</time><small>/</small><time id="totalTime">00:00</time></span><div class="progress-track" aria-hidden="true"><i id="progressFill"></i></div></div>
               <div class="view-switch" role="group" aria-label="Score view"><button type="button" class="active" data-view="vocal">Vocal focus</button><button type="button" data-view="full">Full score</button></div>
+              <div class="count-in-display" id="countInDisplay" hidden aria-live="assertive"><small id="countInBar">Count-in</small><div id="countInBeats"></div></div>
             </section>
             <section class="score-panel panel" aria-labelledby="scoreHeading">
               <div class="score-panel-head"><div><p class="kicker">Following</p><h2 id="scoreHeading">Selected vocal line</h2></div><span class="measure-pill">Measure <strong id="measureNumber">1</strong></span></div>
@@ -121,8 +143,8 @@
               <div id="scoreContainer" class="score-container" aria-label="Rendered sheet music"></div>
             </section>
             <section class="trace-panel panel" aria-labelledby="traceHeading">
-              <div class="trace-head"><div><p class="kicker">Raw pitch trace</p><h2 id="traceHeading">Your voice against the note</h2></div><div class="tolerance-legend" aria-label="Pitch tolerance colours"><span><i class="green"></i>±15¢</span><span><i class="yellow"></i>±30¢</span><span><i class="orange"></i>±45¢</span><span><i class="red"></i>45¢+</span></div></div>
-              <div class="trace-wrap"><canvas id="traceCanvas" aria-label="Pitch error trace in cents over time"></canvas><div class="trace-empty" id="traceEmpty"><span>Sing in Assessment mode to draw a trace</span><small>Raw pitch is preserved — including natural vibrato</small></div><span class="trace-label high">Sharp</span><span class="trace-label centre">Target</span><span class="trace-label low">Flat</span></div>
+              <div class="trace-head"><div><p class="kicker">Stabilised pitch trace</p><h2 id="traceHeading">Your voice against the note</h2></div><div class="tolerance-legend" aria-label="Pitch tolerance colours"><span><i class="green"></i>±15¢</span><span><i class="yellow"></i>±30¢</span><span><i class="orange"></i>±45¢</span><span><i class="red"></i>45¢+</span></div></div>
+              <div class="trace-wrap"><canvas id="traceCanvas" aria-label="Pitch error trace in cents over time"></canvas><div class="trace-empty" id="traceEmpty"><span>Sing in an assessment mode to draw a trace</span><small>Unreliable frames are omitted; raw and stabilised values remain available in diagnostics.</small></div><span class="trace-label high" id="traceHigh">Sharp</span><span class="trace-label centre">Target</span><span class="trace-label low" id="traceLow">Flat</span></div>
             </section>
             <section class="results-panel panel" id="resultsPanel" hidden aria-labelledby="resultsHeading">
               <div class="results-head"><div><p class="kicker">Note-level review</p><h2 id="resultsHeading">How each note developed</h2></div><p id="resultsSummary">Results preserve the shape of each note instead of reducing it to pass or fail.</p></div>
@@ -136,6 +158,18 @@
             <div class="detected-card"><span>You’re singing</span><strong id="detectedNote">—</strong><small id="detectedFrequency">Waiting for your voice</small><div class="cent-gauge" aria-hidden="true"><span>-50</span><i><b id="gaugeNeedle"></b></i><span>+50</span></div><output id="centsOutput">—</output></div>
             <div class="status-card" id="statusCard" data-status="idle"><span class="status-icon">•</span><p><strong id="statusTitle">Ready when you are</strong><small id="statusCopy">Choose a mode, then press play.</small></p></div>
             <div class="session-data"><div><span>Usable samples</span><strong id="sampleCount">0</strong></div><div><span>Current measure</span><strong id="sideMeasure">1</strong></div></div>
+            <details class="diagnostics" id="pitchDiagnostics">
+              <summary>Pitch-detector diagnostics</summary>
+              <dl>
+                <div><dt>Raw Hz</dt><dd id="diagRawHz">—</dd></div><div><dt>Raw MIDI</dt><dd id="diagRawMidi">—</dd></div>
+                <div><dt>Filtered Hz</dt><dd id="diagFilteredHz">—</dd></div><div><dt>Filtered MIDI</dt><dd id="diagFilteredMidi">—</dd></div>
+                <div><dt>Clarity</dt><dd id="diagClarity">—</dd></div><div><dt>RMS</dt><dd id="diagRms">—</dd></div>
+                <div><dt>Target</dt><dd id="diagTarget">—</dd></div><div><dt>Cents error</dt><dd id="diagCents">—</dd></div>
+              </dl>
+              <p id="diagState">No reliable pitch</p>
+              <button type="button" id="pitchSelfTest">Run isolated-tone self-test</button>
+              <output id="pitchSelfTestResult">Not run</output>
+            </details>
             <button class="finish-button" id="finishButton" type="button" disabled>Finish &amp; review</button>
             <p class="privacy-copy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V7a5 5 0 0 1 10 0v3M5 10h14v10H5z" /></svg>Microphone samples stay in browser memory and are cleared when you load a new score.</p>
           </aside>
@@ -143,7 +177,7 @@
       </section>
     </main>
 
-    <dialog class="dialog" id="helpDialog"><form method="dialog"><button class="dialog-close" value="close" aria-label="Close help">×</button><p class="eyebrow"><span></span> Prototype guide</p><h2>From MusicXML to useful feedback.</h2><ol><li><span>1</span><p><strong>Export MusicXML.</strong> In your notation software, export the full score as MusicXML or compressed MXL.</p></li><li><span>2</span><p><strong>Choose exactly what you sing.</strong> Vocal Coach never assumes a part named “Voice” exists.</p></li><li><span>3</span><p><strong>Practise, then assess.</strong> Practice can play the guide. Assessment mutes it and listens through your microphone.</p></li><li><span>4</span><p><strong>Review the shape.</strong> See how each note started, settled, and sustained.</p></li></ol><p class="dialog-note">This first prototype assesses fundamental pitch only. It does not yet grade rhythm, vibrato, breath, diction, or voice type.</p><button class="continue-button" value="close">Got it</button></form></dialog>
+    <dialog class="dialog" id="helpDialog"><form method="dialog"><button class="dialog-close" value="close" aria-label="Close help">×</button><p class="eyebrow"><span></span> Prototype guide</p><h2>From MusicXML to useful feedback.</h2><ol><li><span>1</span><p><strong>Export MusicXML.</strong> In your notation software, export the full score as MusicXML or compressed MXL.</p></li><li><span>2</span><p><strong>Choose exactly what you sing.</strong> Vocal Coach never assumes a part named “Voice” exists.</p></li><li><span>3</span><p><strong>Choose how much help you need.</strong> Practice plays the guide, Assisted Assessment scores with the guide, and Assessment scores with accompaniment alone.</p></li><li><span>4</span><p><strong>Review the shape.</strong> See how each note started, settled, and sustained.</p></li></ol><p class="dialog-note">This prototype assesses fundamental pitch only. It does not yet grade rhythm, vibrato, breath, diction, or voice type.</p><button class="continue-button" value="close">Got it</button></form></dialog>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <noscript><p class="noscript">Vocal Coach needs JavaScript to read MusicXML and analyse pitch.</p></noscript>
   </body>
