@@ -1,5 +1,6 @@
 import { AudioEngine } from "./src/audio-engine.js";
-import { analysePerformance, performanceSummary } from "./src/analysis.js";
+import { analysePerformance, performanceSummary } from "./src/analysis.js?v=2";
+import { buildCoachingFeedback } from "./src/coaching.js?v=1";
 import {
   colourForCents,
   DEBUG_CONFIG,
@@ -15,6 +16,12 @@ import {
 } from "./src/config.js";
 import { measureAtQuarter, noteAtQuarter, readScoreFile, readScoreUrl, suggestVocalPart } from "./src/musicxml.js";
 import { detectAutocorrelationPitch, StablePitchTracker } from "./src/pitch-tracker.js";
+import {
+  appendScoreTraceSample,
+  buildScoreGeometry,
+  focusScoreTarget,
+  renderScoreTrace,
+} from "./src/score-overlay.js?v=1";
 import { cursorIndexAtTimestamp, osmdTimestampToQuarters, quartersToOsmdTimestamp } from "./src/timing.js";
 
 const TIMING_DEBUG_ENABLED = new URLSearchParams(window.location.search).get("debugTiming") === "1";
@@ -36,10 +43,11 @@ const els = {
   tempoSlider: $("#tempoSlider"), tempoOutput: $("#tempoOutput"), bpmLabel: $("#bpmLabel"),
   playButton: $("#playButton"), pauseButton: $("#pauseButton"), stopButton: $("#stopButton"), transportState: $("#transportState"), currentTime: $("#currentTime"), totalTime: $("#totalTime"), progressFill: $("#progressFill"),
   viewButtons: [...document.querySelectorAll("[data-view]")], scoreHeading: $("#scoreHeading"), measureNumber: $("#measureNumber"), sideMeasure: $("#sideMeasure"), scoreContainer: $("#scoreContainer"),
-  traceCanvas: $("#traceCanvas"), traceEmpty: $("#traceEmpty"), resultsPanel: $("#resultsPanel"), resultsBody: $("#resultsBody"), resultsSummary: $("#resultsSummary"),
+  resultsPanel: $("#resultsPanel"), resultsBody: $("#resultsBody"), resultsSummary: $("#resultsSummary"),
+  coachLevel: $("#coachLevel"), coachIntro: $("#coachIntro"), coachObservations: $("#coachObservations"),
   expectedNote: $("#expectedNote"), expectedPosition: $("#expectedPosition"), detectedNote: $("#detectedNote"), detectedFrequency: $("#detectedFrequency"), gaugeNeedle: $("#gaugeNeedle"), centsOutput: $("#centsOutput"),
   statusCard: $("#statusCard"), statusTitle: $("#statusTitle"), statusCopy: $("#statusCopy"), sampleCount: $("#sampleCount"), finishButton: $("#finishButton"),
-  pitchDiagnostics: $("#pitchDiagnostics"), diagRawHz: $("#diagRawHz"), diagRawMidi: $("#diagRawMidi"), diagFilteredHz: $("#diagFilteredHz"), diagFilteredMidi: $("#diagFilteredMidi"), diagClarity: $("#diagClarity"), diagRms: $("#diagRms"), diagTarget: $("#diagTarget"), diagCents: $("#diagCents"), diagState: $("#diagState"), pitchSelfTest: $("#pitchSelfTest"), pitchSelfTestResult: $("#pitchSelfTestResult"), traceHigh: $("#traceHigh"), traceLow: $("#traceLow"),
+  pitchDiagnostics: $("#pitchDiagnostics"), diagRawHz: $("#diagRawHz"), diagRawMidi: $("#diagRawMidi"), diagFilteredHz: $("#diagFilteredHz"), diagFilteredMidi: $("#diagFilteredMidi"), diagClarity: $("#diagClarity"), diagRms: $("#diagRms"), diagTarget: $("#diagTarget"), diagCents: $("#diagCents"), diagState: $("#diagState"), pitchSelfTest: $("#pitchSelfTest"), pitchSelfTestResult: $("#pitchSelfTestResult"),
   helpButton: $("#helpButton"), helpDialog: $("#helpDialog"), toast: $("#toast"),
 };
 
@@ -57,6 +65,8 @@ const state = {
   cursorQuarter: -1,
   cursorTimeline: [],
   cursorIndex: 0,
+  scoreGeometry: new Map(),
+  overlayResizeTimer: null,
   syncFrame: null,
   toastTimer: null,
   rendering: false,
@@ -160,7 +170,6 @@ async function enterStudio() {
   resetControls();
   showView("studio");
   await renderScore();
-  drawTrace();
 }
 
 function selectedPart() {
@@ -216,6 +225,7 @@ async function renderScore() {
     state.cursor = state.osmd.cursor || state.osmd.cursors?.[0] || null;
     indexCursorTimeline();
     resetCursor();
+    rebuildScoreTrace();
     els.scoreHeading.textContent = state.scoreView === "vocal" ? `${selectedPart().name} — vocal focus` : "Full score";
   } catch (error) {
     console.error(error);
@@ -225,6 +235,24 @@ async function renderScore() {
     state.rendering = false;
     els.scoreContainer.removeAttribute("aria-busy");
   }
+}
+
+function rebuildScoreTrace() {
+  if (!state.osmd || !state.score || !selectedPart()) return;
+  try {
+    const instrumentIndex = state.score.parts.findIndex((part) => part.id === state.selectedPartId);
+    state.scoreGeometry = buildScoreGeometry(state.osmd, selectedPart().vocalTimeline, instrumentIndex);
+    renderScoreTrace(els.scoreContainer, state.scoreGeometry, state.samples);
+    els.scoreContainer.dataset.mappedNotes = String(state.scoreGeometry.size);
+  } catch (error) {
+    state.scoreGeometry = new Map();
+    console.warn("Could not map the vocal trace to the rendered score", error);
+  }
+}
+
+function scheduleScoreTraceRefresh() {
+  clearTimeout(state.overlayResizeTimer);
+  state.overlayResizeTimer = setTimeout(rebuildScoreTrace, 320);
 }
 
 function resetCursor() {
@@ -351,7 +379,7 @@ function setOctaveShift(value) {
     els.detectedNote.textContent = "—";
     els.detectedFrequency.textContent = "Waiting for your voice";
     els.centsOutput.textContent = "—";
-    drawTrace();
+    renderScoreTrace(els.scoreContainer, state.scoreGeometry, []);
   }
   state.octaveShift = nextShift;
   els.octaveButtons.forEach((button) => {
@@ -419,7 +447,7 @@ async function play() {
     state.acceptedSamples = [];
     els.resultsPanel.hidden = true;
     els.sampleCount.textContent = "0";
-    drawTrace();
+    renderScoreTrace(els.scoreContainer, state.scoreGeometry, []);
   }
   setTransportBusy(true);
   try {
@@ -465,7 +493,7 @@ function stop({ keepSamples = true } = {}) {
     state.samples = [];
     els.sampleCount.textContent = "0";
     els.resultsPanel.hidden = true;
-    drawTrace();
+    renderScoreTrace(els.scoreContainer, state.scoreGeometry, []);
   }
 }
 
@@ -536,7 +564,6 @@ function updatePosition(quarter) {
   updateOctaveHint(expected);
   syncCursor(quarter);
   logTimingDebug(quarter);
-  drawTrace();
 }
 
 function handlePitchSample(sample) {
@@ -551,7 +578,9 @@ function handlePitchSample(sample) {
   const targetMidi = target.midi + state.octaveShift;
   const cents = (midi - targetMidi) * 100;
   const enriched = { ...sample, midi, cents, targetId: target.id, targetMidi, measureNumber: target.measureNumber };
+  const previousSample = state.samples.at(-1);
   state.samples.push(enriched);
+  appendScoreTraceSample(els.scoreContainer, state.scoreGeometry, enriched, previousSample);
   els.sampleCount.textContent = state.samples.length.toLocaleString();
   els.detectedNote.textContent = midiToName(midi);
   els.detectedFrequency.textContent = `${sample.frequency.toFixed(1)} Hz · ${(sample.clarity * 100).toFixed(0)}% clarity`;
@@ -651,15 +680,62 @@ function renderResults(results) {
   els.resultsBody.innerHTML = "";
   const assessed = results.filter((result) => result.sampleCount > 0);
   if (!assessed.length) {
-    els.resultsBody.innerHTML = '<tr><td colspan="7" class="result-empty">No target notes had enough usable samples.</td></tr>';
+    els.resultsBody.innerHTML = '<tr><td colspan="11" class="result-empty">No target notes had enough usable samples.</td></tr>';
   } else {
     for (const result of assessed) {
       const row = document.createElement("tr");
-      row.innerHTML = `<td>${escapeHtml(result.note.displayPitch)}</td><td>${result.note.measureNumber}</td><td>${formatCents(result.initialError)}</td><td>${formatCents(result.averageError)}</td><td>${result.settleTime === null ? "—" : `${result.settleTime.toFixed(2)}s`}</td><td>${formatCents(result.sustainedError)}</td><td><span class="result-value">${Math.round(result.inZonePercent)}%</span></td>`;
+      row.innerHTML = `<td>${escapeHtml(result.note.displayPitch)}</td><td>${result.note.measureNumber}</td><td>${formatCents(result.initialError)}</td><td>${formatCents(result.averageError)}</td><td>${result.settleTime === null ? "—" : `${result.settleTime.toFixed(2)}s`}</td><td>${formatCents(result.sustainedError)}</td><td><span class="result-value">${Math.round(result.inZonePercent)}%</span></td><td>${result.pitchStability === null ? "—" : `${Math.round(result.pitchStability)}¢`}</td><td>${Math.round(result.voicedCoveragePercent)}%</td><td>${result.fragmentationCount}</td><td>${formatCents(result.directionalDriftCents)}</td>`;
       els.resultsBody.append(row);
     }
   }
   els.resultsSummary.textContent = performanceSummary(results);
+  renderCoaching(results);
+}
+
+function renderCoaching(results) {
+  const { profile, observations } = buildCoachingFeedback(results);
+  els.resultsPanel.dataset.level = profile.level;
+  els.coachLevel.textContent = `${profile.label} · ${Math.round(profile.score)}%`;
+  els.coachIntro.textContent = profile.level === "excellent"
+    ? "A highly secure performance. These strengths and fine refinements come from the notes you just sang."
+    : profile.level === "strong"
+      ? "A confident performance with a few specific details that can make it even more consistent."
+      : profile.level === "developing"
+        ? "You have clear strengths to keep and a focused set of next priorities."
+        : profile.level === "foundation"
+          ? "There are useful notes to build from. Work through the priorities one at a time."
+          : "Start with the genuine successes below, then use the achievable next steps to build a steadier line.";
+  els.coachObservations.innerHTML = "";
+  observations.forEach((item, index) => {
+    const card = document.createElement(item.noteId || item.measureNumber ? "button" : "article");
+    if (card instanceof HTMLButtonElement) {
+      card.type = "button";
+      if (item.noteId) card.dataset.noteId = item.noteId;
+      if (item.measureNumber !== null) card.dataset.measureNumber = String(item.measureNumber);
+      card.setAttribute("aria-label", `${item.title}. Show this note in the score.`);
+    }
+    card.className = `coach-card ${item.tone}`;
+    const number = document.createElement("span");
+    number.className = "coach-card-number";
+    number.textContent = String(index + 1).padStart(2, "0");
+    const copy = document.createElement("span");
+    copy.className = "coach-card-copy";
+    const kind = document.createElement("small");
+    kind.textContent = item.tone === "positive" ? "Keep" : "Next focus";
+    const title = document.createElement("strong");
+    title.textContent = item.title;
+    const body = document.createElement("span");
+    body.textContent = item.body;
+    copy.append(kind, title, body);
+    card.append(number, copy);
+    if (card instanceof HTMLButtonElement) {
+      const cue = document.createElement("span");
+      cue.className = "coach-card-cue";
+      cue.textContent = "Show in score ↑";
+      card.append(cue);
+    }
+    els.coachObservations.append(card);
+  });
 }
 
 function setStatus(status, title, copy) {
@@ -667,45 +743,6 @@ function setStatus(status, title, copy) {
   els.statusTitle.textContent = title;
   els.statusCopy.textContent = copy;
   els.statusCard.querySelector(".status-icon").textContent = status === "good" ? "✓" : status === "warn" ? "~" : status === "off" ? "!" : "•";
-}
-
-function drawTrace() {
-  const canvas = els.traceCanvas;
-  const rect = canvas.getBoundingClientRect();
-  if (!rect.width || !rect.height) return;
-  const dpr = Math.min(devicePixelRatio || 1, 2);
-  if (canvas.width !== Math.round(rect.width * dpr) || canvas.height !== Math.round(rect.height * dpr)) {
-    canvas.width = Math.round(rect.width * dpr);
-    canvas.height = Math.round(rect.height * dpr);
-  }
-  const ctx = canvas.getContext("2d");
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, rect.width, rect.height);
-  const pad = { top: 17, right: 13, bottom: 17, left: 13 };
-  const height = rect.height - pad.top - pad.bottom;
-  const width = rect.width - pad.left - pad.right;
-  els.traceEmpty.hidden = state.samples.length > 0;
-  const latest = state.samples.length ? (audio.isPlaying ? audio.currentSeconds : state.samples[state.samples.length - 1].scoreSeconds) : 0;
-  const start = Math.max(0, latest - 12);
-  const visible = state.samples.filter((sample) => sample.scoreSeconds >= start && sample.scoreSeconds <= latest + .1);
-  const largestError = Math.max(0, ...visible.map((sample) => Math.abs(sample.cents)));
-  const traceRange = Math.max(80, Math.ceil(largestError / 100) * 100);
-  els.traceHigh.textContent = `Sharp +${traceRange}¢`;
-  els.traceLow.textContent = `Flat −${traceRange}¢`;
-  const yFor = (cents) => pad.top + (traceRange - cents) / (traceRange * 2) * height;
-  for (const cents of [-45, -30, -15, 0, 15, 30, 45]) {
-    ctx.beginPath(); ctx.moveTo(pad.left, yFor(cents)); ctx.lineTo(rect.width - pad.right, yFor(cents));
-    ctx.strokeStyle = cents === 0 ? "rgba(216,255,120,.42)" : "rgba(255,255,255,.075)"; ctx.lineWidth = cents === 0 ? 1.5 : 1; ctx.stroke();
-  }
-  if (!state.samples.length) return;
-  const xFor = (seconds) => pad.left + (seconds - start) / 12 * width;
-  ctx.save(); ctx.beginPath(); ctx.rect(pad.left, pad.top, width, height); ctx.clip(); ctx.lineWidth = 3; ctx.lineCap = "round"; ctx.lineJoin = "round";
-  for (let index = 1; index < visible.length; index += 1) {
-    const previous = visible[index - 1], current = visible[index];
-    if (current.targetId !== previous.targetId || current.scoreSeconds - previous.scoreSeconds > .2) continue;
-    ctx.beginPath(); ctx.moveTo(xFor(previous.scoreSeconds), yFor(previous.cents)); ctx.lineTo(xFor(current.scoreSeconds), yFor(current.cents)); ctx.strokeStyle = colourForCents(current.cents); ctx.shadowColor = ctx.strokeStyle; ctx.shadowBlur = 6; ctx.stroke();
-  }
-  ctx.restore();
 }
 
 function resetControls() {
@@ -749,7 +786,8 @@ function resetControls() {
 function resetToUpload() {
   audio.destroy();
   cancelAnimationFrame(state.syncFrame);
-  state.score = null; state.selectedPartId = null; state.samples = []; state.rawSamples = []; state.acceptedSamples = []; state.osmd = null; state.cursor = null; state.cursorTimeline = []; state.cursorIndex = 0;
+  clearTimeout(state.overlayResizeTimer);
+  state.score = null; state.selectedPartId = null; state.samples = []; state.rawSamples = []; state.acceptedSamples = []; state.osmd = null; state.cursor = null; state.cursorTimeline = []; state.cursorIndex = 0; state.scoreGeometry = new Map();
   els.scoreContainer.innerHTML = "";
   els.scoreInput.value = "";
   showView("upload");
@@ -822,9 +860,16 @@ function wireEvents() {
   els.tempoSlider.addEventListener("input", () => { audio.setTempo(els.tempoSlider.value); els.tempoOutput.textContent = `${els.tempoSlider.value}%`; els.bpmLabel.textContent = `${Math.round(audio.bpm)} BPM`; els.totalTime.textContent = formatTime(audio.durationSeconds); });
   els.playButton.addEventListener("click", play); els.pauseButton.addEventListener("click", pause); els.stopButton.addEventListener("click", () => stop()); els.finishButton.addEventListener("click", finishAssessment);
   els.viewButtons.forEach((button) => button.addEventListener("click", async () => { if (audio.isPlaying || audio.isPaused || audio.isCountingIn) return; state.scoreView = button.dataset.view; els.viewButtons.forEach((item) => item.classList.toggle("active", item === button)); await renderScore(); }));
+  els.coachObservations.addEventListener("click", (event) => {
+    const card = event.target.closest("[data-note-id], [data-measure-number]");
+    if (!card) return;
+    if (!focusScoreTarget(els.scoreContainer, card.dataset.noteId || null, card.dataset.measureNumber || null)) {
+      toast("That note is not visible in the current score rendering.");
+    }
+  });
   els.helpButton.addEventListener("click", () => els.helpDialog.showModal());
   els.pitchSelfTest.addEventListener("click", runPitchSelfTest);
-  window.addEventListener("resize", drawTrace);
+  window.addEventListener("resize", scheduleScoreTraceRefresh);
   window.addEventListener("beforeunload", () => audio.destroy());
 }
 

@@ -11,7 +11,8 @@ No account, backend, upload service, or build step is required. Score files and 
 3. View the selected part by itself or switch to the full score.
 4. Choose **Practice** (guide + accompaniment, no scoring), **Assisted Assessment** (guide + accompaniment + scoring), or **Assessment** (accompaniment + scoring).
 5. Choose an Off/1-bar/2-bar musical count-in and, when needed, sing an octave below or above the untouched printed notation.
-6. Balance separate Vocal Guide and Accompaniment volume controls, then review the stabilised colour-coded pitch trace and note-level measurements.
+6. Balance separate Vocal Guide and Accompaniment volume controls, then review the stabilised colour-coded pitch trace directly on the written staff.
+7. Use the ten adaptive **Your Vocal Coach** observations as the main review, with the full note metrics available under **Detailed analysis**.
 
 A small two-part MusicXML score is included so the complete flow can be tried immediately.
 
@@ -24,9 +25,11 @@ The app deliberately keeps musical concerns separate:
 - `src/audio-engine.js` owns Tone.js transport scheduling, gain-controlled accompaniment/guide synthesizers, count-in clicks outside score time, microphone calibration, the RMS noise gate, and raw Pitchy samples.
 - `src/noise-gate.js` measures RMS amplitude, derives a room-aware threshold for Low/Normal/High sensitivity, and applies gate hysteresis before pitch detection.
 - `src/pitch-tracker.js` keeps raw detector history, corroborates octave ambiguities, rejects isolated jumps, applies a short robust median, and returns either a stabilised fundamental or an explicit no-reliable-pitch state.
-- `src/analysis.js` groups usable samples by target note and derives initial, average, settling, sustained, and in-tolerance measurements.
+- `src/analysis.js` groups usable samples by target note and derives onset, settling, sustained centre, green-zone percentage, stability, voiced coverage, fragmentation, and directional drift measurements. It also produces a five-dimension performance level used only to tune coaching.
+- `src/coaching.js` ranks performance-specific strengths and next priorities, balances them for the singer's current level, and produces approximately ten observations tied to actual notes and measures.
+- `src/score-overlay.js` maps parsed target-note timestamps to OSMD graphical staff entries and systems, then draws accepted samples as a live SVG trace over the written notes. Missing reliable pitch remains a visible gap.
 - `src/config.js` contains pitch thresholds and audio-analysis settings so today’s placeholder tolerances can be replaced without changing the assessment code.
-- `app.js` coordinates the views, OpenSheetMusicDisplay renderer/cursor, controls, pitch monitor, trace, and results table.
+- `app.js` coordinates the views, OpenSheetMusicDisplay renderer/cursor, controls, pitch monitor, score overlay, coaching cards, and detailed results.
 
 Raw and accepted timestamped pitch samples are kept separately in memory. The tracker uses the target only as supporting evidence in an octave ambiguity and never snaps a performance to the expected note. This preserves genuine wrong notes, scoops, slides, and small movements for future analysis.
 
@@ -55,7 +58,7 @@ An internet connection is currently required to load the four pinned browser lib
 
 ## Checks
 
-The dependency-free Node test suite covers generated harmonic A3/C4/A4/C5 tones, octave-error correction, wrong-note preservation, short-window movement, pitch conversion and colour boundaries, count-in meters, note-level analysis, Tone/OSMD time conversion, pickup and multi-staff MusicXML timing, RMS gating, empty-sample handling, and GitHub Pages asset paths. Run the full syntax and regression check with Node 20 or newer:
+The dependency-free Node test suite covers generated harmonic A3/C4/A4/C5 tones, octave-error correction, wrong-note preservation, score-trace gaps and colour boundaries, count-in meters, extended note analysis, three distinct coaching profiles, Tone/OSMD time conversion, pickup and multi-staff MusicXML timing, RMS gating, empty-sample handling, and GitHub Pages asset paths. Run the full syntax and regression check with Node 20 or newer:
 
 ```sh
 npm run check
@@ -87,7 +90,7 @@ All app and sample-score paths are relative, so the site works at a project URL 
 - The parser supports common divisions, time signatures, rests, chords, backups/forwards, chromatic transposition, multiple voices/staves, and ties. Complex repeats, jumps, tuplets, changing tempo maps, ornaments, and every notation-software extension are not yet interpreted for playback.
 - For a polyphonic selected part, the most populated voice is used as the assessment timeline; simultaneous pitches collapse to the upper pitch. True divisi assessment is future work.
 - Playback uses simple synthesized tones rather than a sampled piano or phoneme-aware vocal sound.
-- Pitch detection estimates one fundamental frequency. It does not yet grade vibrato, rhythm, consonants, dynamics, breath, stability, scoops, vocal range, tessitura, or voice type.
+- Pitch detection estimates one fundamental frequency. It reports sustained-pitch stability and coverage, but it does not yet interpret vibrato or grade rhythm, consonants, dynamics, breathing technique, scoops, vocal range, tessitura, or voice type.
 - Note-level metrics are useful prototype signals, not clinical or pedagogical verdicts. The colour thresholds are intentionally configurable placeholders.
 - Session data is not persisted after a new score or page reload; profiles and progression are future features.
 

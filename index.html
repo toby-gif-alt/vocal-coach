@@ -19,7 +19,7 @@
     <script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@2.1.2/build/opensheetmusicdisplay.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/tone@15.1.22/build/Tone.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" defer></script>
-    <script type="module" src="./app.js"></script>
+    <script type="module" src="./app.js?v=9"></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to the app</a>
@@ -138,17 +138,18 @@
               <div class="count-in-display" id="countInDisplay" hidden aria-live="assertive"><small id="countInBar">Count-in</small><div id="countInBeats"></div></div>
             </section>
             <section class="score-panel panel" aria-labelledby="scoreHeading">
-              <div class="score-panel-head"><div><p class="kicker">Following</p><h2 id="scoreHeading">Selected vocal line</h2></div><span class="measure-pill">Measure <strong id="measureNumber">1</strong></span></div>
-              <div class="score-banner"><span></span><strong id="scoreBannerPart">Voice</strong> is highlighted as your assessment target</div>
+              <div class="score-panel-head"><div><p class="kicker">Following</p><h2 id="scoreHeading">Selected vocal line</h2></div><div class="score-head-meta"><span class="measure-pill">Measure <strong id="measureNumber">1</strong></span><div class="tolerance-legend" aria-label="Pitch trace colours"><span><i class="green"></i>±15¢</span><span><i class="yellow"></i>±30¢</span><span><i class="orange"></i>±45¢</span><span><i class="red"></i>45¢+</span></div></div></div>
+              <div class="score-banner"><span></span><strong id="scoreBannerPart">Voice</strong> is the target · your accepted pitch draws directly across its notes</div>
               <div id="scoreContainer" class="score-container" aria-label="Rendered sheet music"></div>
             </section>
-            <section class="trace-panel panel" aria-labelledby="traceHeading">
-              <div class="trace-head"><div><p class="kicker">Stabilised pitch trace</p><h2 id="traceHeading">Your voice against the note</h2></div><div class="tolerance-legend" aria-label="Pitch tolerance colours"><span><i class="green"></i>±15¢</span><span><i class="yellow"></i>±30¢</span><span><i class="orange"></i>±45¢</span><span><i class="red"></i>45¢+</span></div></div>
-              <div class="trace-wrap"><canvas id="traceCanvas" aria-label="Pitch error trace in cents over time"></canvas><div class="trace-empty" id="traceEmpty"><span>Sing in an assessment mode to draw a trace</span><small>Unreliable frames are omitted; raw and stabilised values remain available in diagnostics.</small></div><span class="trace-label high" id="traceHigh">Sharp</span><span class="trace-label centre">Target</span><span class="trace-label low" id="traceLow">Flat</span></div>
-            </section>
             <section class="results-panel panel" id="resultsPanel" hidden aria-labelledby="resultsHeading">
-              <div class="results-head"><div><p class="kicker">Note-level review</p><h2 id="resultsHeading">How each note developed</h2></div><p id="resultsSummary">Results preserve the shape of each note instead of reducing it to pass or fail.</p></div>
-              <div class="results-table-wrap"><table><thead><tr><th>Note</th><th>Measure</th><th>Initial</th><th>Average</th><th>Settle time</th><th>Sustained</th><th>In zone</th></tr></thead><tbody id="resultsBody"></tbody></table></div>
+              <div class="results-head"><div><p class="kicker">Personalised assessment</p><h2 id="resultsHeading">Your Vocal Coach</h2></div><strong class="coach-level" id="coachLevel">Developing</strong></div>
+              <p class="coach-intro" id="coachIntro">Your most useful strengths and next priorities will appear here.</p>
+              <div class="coach-observations" id="coachObservations"></div>
+              <details class="detailed-analysis">
+                <summary><span>Detailed analysis</span><small id="resultsSummary">Results preserve the shape of each note instead of reducing it to pass or fail.</small></summary>
+                <div class="results-table-wrap"><table><thead><tr><th>Note</th><th>Measure</th><th>Initial</th><th>Average</th><th>Settle</th><th>Sustained</th><th>Green</th><th>Stability</th><th>Coverage</th><th>Dropouts</th><th>Drift</th></tr></thead><tbody id="resultsBody"></tbody></table></div>
+              </details>
             </section>
           </div>
 
@@ -177,7 +178,7 @@
       </section>
     </main>
 
-    <dialog class="dialog" id="helpDialog"><form method="dialog"><button class="dialog-close" value="close" aria-label="Close help">×</button><p class="eyebrow"><span></span> Prototype guide</p><h2>From MusicXML to useful feedback.</h2><ol><li><span>1</span><p><strong>Export MusicXML.</strong> In your notation software, export the full score as MusicXML or compressed MXL.</p></li><li><span>2</span><p><strong>Choose exactly what you sing.</strong> Vocal Coach never assumes a part named “Voice” exists.</p></li><li><span>3</span><p><strong>Choose how much help you need.</strong> Practice plays the guide, Assisted Assessment scores with the guide, and Assessment scores with accompaniment alone.</p></li><li><span>4</span><p><strong>Review the shape.</strong> See how each note started, settled, and sustained.</p></li></ol><p class="dialog-note">This prototype assesses fundamental pitch only. It does not yet grade rhythm, vibrato, breath, diction, or voice type.</p><button class="continue-button" value="close">Got it</button></form></dialog>
+    <dialog class="dialog" id="helpDialog"><form method="dialog"><button class="dialog-close" value="close" aria-label="Close help">×</button><p class="eyebrow"><span></span> Prototype guide</p><h2>From MusicXML to useful feedback.</h2><ol><li><span>1</span><p><strong>Export MusicXML.</strong> In your notation software, export the full score as MusicXML or compressed MXL.</p></li><li><span>2</span><p><strong>Choose exactly what you sing.</strong> Vocal Coach never assumes a part named “Voice” exists.</p></li><li><span>3</span><p><strong>Choose how much help you need.</strong> Practice plays the guide, Assisted Assessment scores with the guide, and Assessment scores with accompaniment alone.</p></li><li><span>4</span><p><strong>Review the shape.</strong> Your accepted pitch stays on the written staff, while Your Vocal Coach connects strengths and priorities to specific notes.</p></li></ol><p class="dialog-note">This prototype assesses fundamental pitch only. It does not yet grade rhythm, vibrato, breath, diction, or voice type.</p><button class="continue-button" value="close">Got it</button></form></dialog>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <noscript><p class="noscript">Vocal Coach needs JavaScript to read MusicXML and analyse pitch.</p></noscript>
   </body>

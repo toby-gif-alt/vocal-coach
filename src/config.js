@@ -56,6 +56,14 @@ export const DEBUG_CONFIG = Object.freeze({
   timingLogIntervalMs: 400,
 });
 
+export const SCORE_TRACE_CONFIG = Object.freeze({
+  // OSMD's graphical boxes use tenths of an SVG pixel.
+  osmdPixelsPerUnit: 10,
+  centsToPixels: 0.07,
+  maximumConnectedGapSeconds: 0.18,
+  minimumRegionWidth: 9,
+});
+
 export const NOTE_NAMES = ["C", "C♯", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B"];
 
 export function midiToFrequency(midi) {
