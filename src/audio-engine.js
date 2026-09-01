@@ -1,5 +1,7 @@
 import { PitchDetector } from "https://cdn.jsdelivr.net/npm/pitchy@4.1.0/+esm";
-import { AUDIO_CONFIG } from "./config.js";
+import { AUDIO_CONFIG, DEFAULT_MICROPHONE_SENSITIVITY, MICROPHONE_SENSITIVITY } from "./config.js";
+import { calculateRms, deriveNoiseGate, estimateAmbientRms, isPitchFrameUsable, RmsNoiseGate } from "./noise-gate.js";
+import { quartersToTransportTicks, transportTicksToQuarters } from "./timing.js";
 
 export class AudioEngine {
   constructor({ onPitchSample, onMicrophoneState, onPlaybackEnd } = {}) {
@@ -11,9 +13,16 @@ export class AudioEngine {
     this.guideSynth = null;
     this.stream = null;
     this.analyser = null;
+    this.mediaSource = null;
     this.pitchDetector = null;
+    this.inputFrame = null;
     this.pitchFrame = null;
+    this.calibrationFrame = null;
+    this.calibrationResolve = null;
     this.lastPitchSampleAt = 0;
+    this.microphoneSensitivity = DEFAULT_MICROPHONE_SENSITIVITY;
+    this.noiseGateSettings = deriveNoiseGate(0, this.microphoneSensitivity);
+    this.noiseGate = new RmsNoiseGate(this.noiseGateSettings);
     this.isPlaying = false;
     this.isPaused = false;
     this.tempoPercent = 100;
@@ -47,9 +56,16 @@ export class AudioEngine {
     if (window.Tone) this.transport.bpm.value = this.bpm;
   }
 
+  setMicrophoneSensitivity(level) {
+    if (!MICROPHONE_SENSITIVITY[level]) return;
+    this.microphoneSensitivity = level;
+    this.noiseGateSettings = deriveNoiseGate(this.noiseGateSettings.ambientRms, level);
+    this.noiseGate.configure(this.noiseGateSettings);
+  }
+
   get currentQuarter() {
     if (!window.Tone) return 0;
-    return this.transport.ticks / this.transport.PPQ;
+    return transportTicksToQuarters(this.transport.ticks, this.transport.PPQ);
   }
 
   get currentSeconds() {
@@ -118,20 +134,21 @@ export class AudioEngine {
       if ((!isVocal && !enabled.has(part.id)) || (isVocal && !guideEnabled)) continue;
       const synth = isVocal ? this.guideSynth : this.synths.get(part.id);
       for (const note of part.notes) {
-        const when = `${Math.round(note.onsetQuarters * ticksPerQuarter)}i`;
+        const when = `${quartersToTransportTicks(note.onsetQuarters, ticksPerQuarter)}i`;
         transport.schedule((time) => {
-          const duration = Math.max(0.045, note.durationQuarters * 60 / this.bpm * 0.92);
+          const durationTicks = Math.max(1, quartersToTransportTicks(note.durationQuarters * 0.92, ticksPerQuarter));
+          const duration = `${durationTicks}i`;
           synth.triggerAttackRelease(note.frequency, duration, time, isVocal ? 0.38 : 0.25);
         }, when);
       }
     }
-    const endWhen = `${Math.round(this.score.durationQuarters * ticksPerQuarter)}i`;
+    const endWhen = `${quartersToTransportTicks(this.score.durationQuarters, ticksPerQuarter)}i`;
     transport.scheduleOnce(() => {
       this.isPlaying = false;
       this.isPaused = false;
       queueMicrotask(() => this.onPlaybackEnd());
     }, endWhen);
-    transport.ticks = resumeQuarter * ticksPerQuarter;
+    transport.ticks = quartersToTransportTicks(resumeQuarter, ticksPerQuarter);
   }
 
   async startMicrophone() {
@@ -148,33 +165,80 @@ export class AudioEngine {
       this.analyser = context.createAnalyser();
       this.analyser.fftSize = AUDIO_CONFIG.analyserSize;
       this.analyser.smoothingTimeConstant = 0;
-      context.createMediaStreamSource(this.stream).connect(this.analyser);
+      this.mediaSource = context.createMediaStreamSource(this.stream);
+      this.mediaSource.connect(this.analyser);
       this.pitchDetector = PitchDetector.forFloat32Array(this.analyser.fftSize);
+      this.inputFrame = new Float32Array(this.analyser.fftSize);
       this.lastPitchSampleAt = 0;
-      this.onMicrophoneState("active");
+      this.onMicrophoneState("calibrating", { durationMs: AUDIO_CONFIG.calibrationDurationMs });
+      const calibrated = await this.calibrateMicrophone();
+      if (!calibrated || !this.stream) {
+        const error = new Error("Microphone calibration was cancelled.");
+        error.name = "AbortError";
+        throw error;
+      }
+      this.onMicrophoneState("active", this.noiseGateSettings);
       this.pitchFrame = requestAnimationFrame((time) => this.samplePitch(time));
     } catch (error) {
-      this.onMicrophoneState("error", error);
+      if (error.name !== "AbortError") this.onMicrophoneState("error", error);
       this.stopMicrophone();
       throw error;
     }
   }
 
+  calibrateMicrophone() {
+    const frameRmsValues = [];
+    const startedAt = performance.now();
+    return new Promise((resolve) => {
+      this.calibrationResolve = resolve;
+      const finish = (completed) => {
+        cancelAnimationFrame(this.calibrationFrame);
+        this.calibrationFrame = null;
+        this.calibrationResolve = null;
+        if (completed) {
+          const ambientRms = estimateAmbientRms(frameRmsValues);
+          this.noiseGateSettings = deriveNoiseGate(ambientRms, this.microphoneSensitivity);
+          this.noiseGate.configure(this.noiseGateSettings);
+        }
+        resolve(completed);
+      };
+      const collect = (now) => {
+        if (!this.analyser || !this.inputFrame) {
+          finish(false);
+          return;
+        }
+        this.analyser.getFloatTimeDomainData(this.inputFrame);
+        frameRmsValues.push(calculateRms(this.inputFrame));
+        if (now - startedAt >= AUDIO_CONFIG.calibrationDurationMs) {
+          finish(true);
+          return;
+        }
+        this.calibrationFrame = requestAnimationFrame(collect);
+      };
+      this.calibrationFrame = requestAnimationFrame(collect);
+    });
+  }
+
   samplePitch(now) {
     if (!this.analyser || !this.pitchDetector) return;
     if (now - this.lastPitchSampleAt >= AUDIO_CONFIG.sampleIntervalMs) {
-      const input = new Float32Array(this.analyser.fftSize);
-      this.analyser.getFloatTimeDomainData(input);
-      const sampleRate = (this.tone.getContext().rawContext || this.tone.getContext()).sampleRate;
-      const [frequency, clarity] = this.pitchDetector.findPitch(input, sampleRate);
-      if (clarity >= AUDIO_CONFIG.minimumClarity && frequency >= AUDIO_CONFIG.minimumFrequency && frequency <= AUDIO_CONFIG.maximumFrequency) {
-        this.onPitchSample({
-          frequency,
-          clarity,
-          capturedAt: performance.now(),
-          scoreQuarter: this.currentQuarter,
-          scoreSeconds: this.currentSeconds,
-        });
+      this.analyser.getFloatTimeDomainData(this.inputFrame);
+      const rms = calculateRms(this.inputFrame);
+      const gateOpen = this.noiseGate.accepts(rms);
+      if (gateOpen) {
+        const sampleRate = (this.tone.getContext().rawContext || this.tone.getContext()).sampleRate;
+        const [frequency, clarity] = this.pitchDetector.findPitch(this.inputFrame, sampleRate);
+        if (isPitchFrameUsable({ gateOpen, clarity, frequency })) {
+          this.onPitchSample({
+            frequency,
+            clarity,
+            rms,
+            noiseGate: this.noiseGateSettings.openThreshold,
+            capturedAt: performance.now(),
+            scoreQuarter: this.currentQuarter,
+            scoreSeconds: this.currentSeconds,
+          });
+        }
       }
       this.lastPitchSampleAt = now;
     }
@@ -184,10 +248,18 @@ export class AudioEngine {
   stopMicrophone() {
     cancelAnimationFrame(this.pitchFrame);
     this.pitchFrame = null;
+    cancelAnimationFrame(this.calibrationFrame);
+    this.calibrationFrame = null;
+    this.calibrationResolve?.(false);
+    this.calibrationResolve = null;
+    this.mediaSource?.disconnect();
+    this.mediaSource = null;
     if (this.stream) this.stream.getTracks().forEach((track) => track.stop());
     this.stream = null;
     this.analyser = null;
     this.pitchDetector = null;
+    this.inputFrame = null;
+    this.noiseGate.configure(this.noiseGateSettings);
     this.onMicrophoneState("idle");
   }
 

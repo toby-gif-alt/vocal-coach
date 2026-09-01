@@ -20,7 +20,9 @@ A small two-part MusicXML score is included so the complete flow can be tried im
 The app deliberately keeps musical concerns separate:
 
 - `src/musicxml.js` reads MusicXML/MXL, detects parts, and builds independent note timelines. Each note includes written pitch, MIDI pitch, frequency, onset, duration, measure, beat, voice/staff, and tie data.
-- `src/audio-engine.js` owns Tone.js transport scheduling, separate accompaniment/guide synthesizers, microphone lifecycle, and raw Pitchy samples.
+- `src/timing.js` defines the exact bridge between Tone.Transport quarter notes and OSMD whole-note-fraction timestamps, and applies MusicXML backup/forward/chord measure timing.
+- `src/audio-engine.js` owns Tone.js transport scheduling, separate accompaniment/guide synthesizers, microphone calibration, the RMS noise gate, and raw Pitchy samples.
+- `src/noise-gate.js` measures RMS amplitude, derives a room-aware threshold for Low/Normal/High sensitivity, and applies gate hysteresis before pitch detection.
 - `src/analysis.js` groups usable samples by target note and derives initial, average, settling, sustained, and in-tolerance measurements.
 - `src/config.js` contains pitch thresholds and audio-analysis settings so today’s placeholder tolerances can be replaced without changing the assessment code.
 - `app.js` coordinates the views, OpenSheetMusicDisplay renderer/cursor, controls, pitch monitor, trace, and results table.
@@ -52,11 +54,19 @@ An internet connection is currently required to load the four pinned browser lib
 
 ## Checks
 
-The dependency-free Node test suite covers pitch conversion and colour boundaries, note-level analysis, empty-sample handling, and GitHub Pages asset paths. Run the full syntax and regression check with Node 20 or newer:
+The dependency-free Node test suite covers pitch conversion and colour boundaries, note-level analysis, Tone/OSMD time conversion, pickup and multi-staff MusicXML timing, RMS gating, empty-sample handling, and GitHub Pages asset paths. Run the full syntax and regression check with Node 20 or newer:
 
 ```sh
 npm run check
 ```
+
+For cursor diagnostics, add `?debugTiming=1` to the app URL. The console then logs:
+
+```text
+transport quarter | OSMD timestamp | measure | expected note
+```
+
+Tone.Transport remains the playback clock. OSMD timestamps are whole-note fractions, so the app converts one transport quarter to `0.25` OSMD time before advancing the notation cursor.
 
 ## Deploy to GitHub Pages
 
@@ -68,6 +78,7 @@ All app and sample-score paths are relative, so the site works at a project URL 
 
 - Current Chrome, Edge, Firefox, and Safari releases with Web Audio and `getUserMedia` are the target. Microphone behaviour varies by device and browser.
 - Headphones are strongly recommended. This prototype does not separate accompaniment leakage from device speakers into the microphone.
+- Assessment calibrates ambient noise for about one second before playback. Low sensitivity rejects more room sound, Normal is the default, and High permits quieter singing; both the calibrated RMS gate and Pitchy clarity threshold must pass before a sample is stored.
 - Partwise MusicXML is supported. Timewise MusicXML is rejected with an explanation.
 - The parser supports common divisions, time signatures, rests, chords, backups/forwards, chromatic transposition, multiple voices/staves, and ties. Complex repeats, jumps, tuplets, changing tempo maps, ornaments, and every notation-software extension are not yet interpreted for playback.
 - For a polyphonic selected part, the most populated voice is used as the assessment timeline; simultaneous pitches collapse to the upper pitch. True divisi assessment is future work.

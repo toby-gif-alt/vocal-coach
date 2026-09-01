@@ -77,4 +77,6 @@ test("GitHub Pages entry point references only present local assets", async () =
   await Promise.all(references.map((reference) => readFile(new URL(reference, new URL("../index.html", import.meta.url)))));
   assert.match(html, /<script type="module" src="\.\/app\.js"><\/script>/);
   assert.match(html, /<link rel="stylesheet" href="\.\/styles\.css" \/>/);
+  assert.match(html, /id="tempoSlider"[^>]+max="150"/);
+  for (const level of ["low", "normal", "high"]) assert.match(html, new RegExp(`data-sensitivity="${level}"`));
 });

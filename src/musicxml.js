@@ -1,4 +1,9 @@
 import { midiToFrequency, midiToName } from "./config.js";
+import {
+  applyMeasureTimingEvent,
+  createMeasureCursor,
+  measureDurationQuarters,
+} from "./timing.js";
 
 const VOCAL_WORDS = /\b(voice|vocal|singer|soprano|mezzo|alto|contralto|countertenor|tenor|baritone|bass|melody|choir|chorus)\b/i;
 const ACCOMPANIMENT_WORDS = /\b(piano|keyboard|organ|guitar|accompaniment|orchestra|strings|violin|cello|flute|clarinet|drum|percussion)\b/i;
@@ -114,7 +119,6 @@ function findInitialTempo(root) {
 
 function parsePart(partElement, meta, tempo) {
   let divisions = 1;
-  let beats = 4;
   let beatType = 4;
   let transposition = 0;
   let partQuarter = 0;
@@ -125,39 +129,40 @@ function parsePart(partElement, meta, tempo) {
     const measureNumberText = measureElement.getAttribute("number") || String(measureIndex + 1);
     const measureNumber = Number.parseInt(measureNumberText, 10) || measureIndex + 1;
     measureStarts.push({ measureNumber, onsetQuarters: partQuarter });
-    let cursor = 0;
-    let furthest = 0;
-    let previousOnset = 0;
+    const measureTiming = createMeasureCursor();
 
     for (const element of measureElement.children) {
       if (element.localName === "attributes") {
         divisions = numberOf(element, "divisions", divisions) || divisions;
         const time = directChild(element, "time");
-        beats = numberOf(time, "beats", beats) || beats;
         beatType = numberOf(time, "beat-type", beatType) || beatType;
         const transpose = directChild(element, "transpose");
         transposition = numberOf(transpose, "chromatic", transposition);
         continue;
       }
       if (element.localName === "backup") {
-        cursor = Math.max(0, cursor - numberOf(element, "duration", 0) / divisions);
+        applyMeasureTimingEvent(measureTiming, {
+          type: "backup",
+          durationQuarters: numberOf(element, "duration", 0) / divisions,
+        });
         continue;
       }
       if (element.localName === "forward") {
-        cursor += numberOf(element, "duration", 0) / divisions;
-        furthest = Math.max(furthest, cursor);
+        applyMeasureTimingEvent(measureTiming, {
+          type: "forward",
+          durationQuarters: numberOf(element, "duration", 0) / divisions,
+        });
         continue;
       }
       if (element.localName !== "note") continue;
 
       const durationQuarters = numberOf(element, "duration", 0) / divisions;
       const isChord = Boolean(directChild(element, "chord"));
-      const onsetInMeasure = isChord ? previousOnset : cursor;
-      if (!isChord) {
-        previousOnset = cursor;
-        cursor += durationQuarters;
-        furthest = Math.max(furthest, cursor);
-      }
+      const onsetInMeasure = applyMeasureTimingEvent(measureTiming, {
+        type: "note",
+        durationQuarters,
+        isChord,
+      });
       if (directChild(element, "rest") || directChild(element, "unpitched")) continue;
       const pitch = directChild(element, "pitch");
       if (!pitch) continue;
@@ -186,8 +191,9 @@ function parsePart(partElement, meta, tempo) {
         tied: ties.length > 0,
       });
     }
-    const nominalMeasureLength = beats * 4 / beatType;
-    partQuarter += Math.max(furthest, nominalMeasureLength);
+    // MusicXML cursor duration is authoritative. Padding to the nominal time
+    // signature length adds false silence to pickups and incomplete measures.
+    partQuarter += measureDurationQuarters(measureTiming);
   });
 
   const notes = mergeTies(rawNotes, tempo);

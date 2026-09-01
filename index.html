@@ -95,8 +95,17 @@
               <button type="button" data-mode="assessment" role="radio" aria-checked="false"><strong>Assessment</strong><small>Microphone on</small></button>
             </div>
             <label class="toggle-row" for="guideToggle"><span><strong>Vocal guide</strong><small>Hear the selected line</small></span><input id="guideToggle" type="checkbox" checked /><i aria-hidden="true"></i></label>
+            <div class="sensitivity-block">
+              <div class="setting-label"><span>Microphone sensitivity</span><output id="sensitivityOutput">Normal</output></div>
+              <div class="sensitivity-switch" role="radiogroup" aria-label="Microphone sensitivity">
+                <button type="button" data-sensitivity="low" role="radio" aria-checked="false"><strong>Low</strong><small>Busy rooms</small></button>
+                <button type="button" class="active" data-sensitivity="normal" role="radio" aria-checked="true"><strong>Normal</strong><small>Most spaces</small></button>
+                <button type="button" data-sensitivity="high" role="radio" aria-checked="false"><strong>High</strong><small>Quiet singing</small></button>
+              </div>
+              <p>Low blocks more room noise. High keeps softer singing available.</p>
+            </div>
             <div class="accompaniment-block"><div class="setting-label"><span>Accompaniment</span><button id="toggleAllParts" type="button">Mute all</button></div><div class="accompaniment-list" id="accompanimentList"></div></div>
-            <label class="tempo-field" for="tempoSlider"><span><strong>Tempo</strong><output id="tempoOutput">100%</output></span><input id="tempoSlider" type="range" min="50" max="125" value="100" step="5" /><span class="range-labels"><small>Slower</small><small id="bpmLabel">120 BPM</small><small>Faster</small></span></label>
+            <label class="tempo-field" for="tempoSlider"><span><strong>Tempo</strong><output id="tempoOutput">100%</output></span><input id="tempoSlider" type="range" min="50" max="150" value="100" step="5" /><span class="range-labels"><small>Slower</small><small id="bpmLabel">120 BPM</small><small>Faster</small></span></label>
             <div class="headphone-note"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14v-2a8 8 0 0 1 16 0v2M4 14h4v6H5a1 1 0 0 1-1-1v-5Zm16 0h-4v6h3a1 1 0 0 0 1-1v-5Z" /></svg><p><strong>Headphones recommended</strong><span>They prevent accompaniment leaking into pitch assessment.</span></p></div>
           </aside>
 

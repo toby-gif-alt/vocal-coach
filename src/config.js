@@ -10,6 +10,20 @@ export const AUDIO_CONFIG = Object.freeze({
   minimumFrequency: 65,
   maximumFrequency: 1400,
   sampleIntervalMs: 55,
+  calibrationDurationMs: 1000,
+  calibrationPercentile: 0.75,
+});
+
+export const DEFAULT_MICROPHONE_SENSITIVITY = "normal";
+
+export const MICROPHONE_SENSITIVITY = Object.freeze({
+  low: Object.freeze({ minimumRms: 0.024, noiseMultiplier: 3.4, closeRatio: 0.72 }),
+  normal: Object.freeze({ minimumRms: 0.012, noiseMultiplier: 2.7, closeRatio: 0.68 }),
+  high: Object.freeze({ minimumRms: 0.006, noiseMultiplier: 2.1, closeRatio: 0.62 }),
+});
+
+export const DEBUG_CONFIG = Object.freeze({
+  timingLogIntervalMs: 400,
 });
 
 export const NOTE_NAMES = ["C", "C♯", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B"];
