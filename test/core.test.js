@@ -101,7 +101,9 @@ test("GitHub Pages entry point references only present local assets", async () =
   for (const label of ["Sharp", "+50c", "+30c", "+15c", "0 / centre", "−15c", "−30c", "−50c", "Flat"]) assert.match(html, new RegExp(label.replace("+", "\\+")));
   assert.doesNotMatch(html, /class="cent-gauge"/);
   assert.match(html, />Hear my performance</);
-  assert.match(html, />Voice only</);
+  for (const layer of ["voice", "accompaniment", "melody"]) assert.match(html, new RegExp(`data-review-layer="${layer}"`));
+  assert.match(html, /id="automaticOctave"/);
+  assert.match(html, /id="hearStartingNote"/);
   assert.match(html, />Detailed analysis</);
   assert.doesNotMatch(html, /id="traceCanvas"/);
   for (const diagnostic of ["diagRawHz", "diagRawMidi", "diagFilteredHz", "diagFilteredMidi", "diagClarity", "diagRms", "diagTarget", "diagCents"]) {

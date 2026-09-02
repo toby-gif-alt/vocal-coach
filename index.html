@@ -15,11 +15,11 @@
     <meta name="twitter:image" content="https://toby-gif-alt.github.io/vocal-coach/og.png" />
     <title>Vocal Coach — Practise from the score</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%2317382f'/%3E%3Cpath d='M14 34c7 0 7-15 14-15s7 27 14 27 7-16 8-16' fill='none' stroke='%23d7ff72' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="./styles.css?v=14" />
+    <link rel="stylesheet" href="./styles.css?v=15" />
     <script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@2.1.2/build/opensheetmusicdisplay.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/tone@15.1.22/build/Tone.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" defer></script>
-    <script type="module" src="./app.js?v=16"></script>
+    <script type="module" src="./app.js?v=17"></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to the app</a>
@@ -107,15 +107,21 @@
                 <button type="button" data-count-in="2" role="radio" aria-checked="false">2 bars</button>
               </div>
             </div>
-            <div class="compact-setting octave-setting">
-              <div class="setting-label"><span>Singing octave</span><output id="octaveOutput">Written</output></div>
-              <div class="option-switch" role="radiogroup" aria-label="Singing octave">
-                <button type="button" data-octave="-12" role="radio" aria-checked="false">Octave lower</button>
-                <button type="button" class="active" data-octave="0" role="radio" aria-checked="true">Written</button>
-                <button type="button" data-octave="12" role="radio" aria-checked="false">Octave higher</button>
-              </div>
-              <p id="octaveHint">Sing written pitch — sounding target appears here during playback.</p>
+            <div class="starting-note-setting">
+              <div><span>Starting note</span><strong id="startingNoteName">—</strong></div>
+              <button id="hearStartingNote" type="button">🔊 Hear starting note</button>
+              <p id="octaveConfirmation" role="status">We’ll choose a comfortable octave automatically when you sing it back.</p>
             </div>
+            <details class="octave-setting">
+              <summary><span>Advanced / manual octave</span><output id="octaveOutput">Automatic</output></summary>
+              <label class="automatic-octave"><input id="automaticOctave" type="checkbox" checked /> Choose automatically</label>
+              <div class="option-switch" role="radiogroup" aria-label="Manual singing octave">
+                <button type="button" data-octave="-12" role="radio" aria-checked="false" disabled>Octave lower</button>
+                <button type="button" class="active" data-octave="0" role="radio" aria-checked="true" disabled>Written</button>
+                <button type="button" data-octave="12" role="radio" aria-checked="false" disabled>Octave higher</button>
+              </div>
+              <p id="octaveHint">Automatic — sounding target appears here during preparation.</p>
+            </details>
             <div class="microphone-check-setting">
               <div class="setting-label"><span>Microphone Check</span><output id="microphoneCheckStatus">Not checked</output></div>
               <p id="microphoneCheckCopy">A quick room-and-voice check runs before your first assessment on this device.</p>
@@ -175,8 +181,13 @@
               <div class="results-head"><div><p class="kicker">Personalised assessment</p><h2 id="resultsHeading">Your Vocal Coach</h2></div><strong class="coach-level" id="coachLevel">Developing</strong></div>
               <p class="coach-intro" id="coachIntro">Your most useful strengths and next priorities will appear here.</p>
               <section class="performance-playback" id="performancePlayback" hidden aria-labelledby="performancePlaybackHeading">
-                <div class="performance-playback-head"><div><p class="kicker">Captured locally</p><h3 id="performancePlaybackHeading">Hear my performance</h3></div><span>Voice only</span></div>
+                <div class="performance-playback-head"><div><p class="kicker">Captured locally</p><h3 id="performancePlaybackHeading">Hear my performance</h3></div><span>Synced to score</span></div>
                 <audio id="performanceAudio" preload="metadata"></audio>
+                <fieldset class="performance-layers"><legend>Review layers</legend>
+                  <label><input type="checkbox" data-review-layer="voice" checked /><span>My voice</span></label>
+                  <label><input type="checkbox" data-review-layer="accompaniment" checked /><span>Accompaniment</span></label>
+                  <label><input type="checkbox" data-review-layer="melody" /><span>Melody guide</span></label>
+                </fieldset>
                 <div class="performance-buttons">
                   <button id="performanceRestart" type="button">⏮ <span>Restart</span></button>
                   <button id="performancePlay" type="button">▶ <span>Play</span></button>
@@ -208,6 +219,10 @@
                 <div><dt>Target</dt><dd id="diagTarget">—</dd></div><div><dt>Cents error</dt><dd id="diagCents">—</dd></div>
               </dl>
               <p id="diagState">No reliable pitch</p>
+              <section class="diagnostic-breakdown" aria-label="Current take rejection breakdown">
+                <strong>Usable vocal frames: <span id="diagUsableFrames">0%</span></strong>
+                <dl><div><dt>Below gate</dt><dd id="diagBelowGate">0</dd></div><div><dt>Low clarity</dt><dd id="diagLowClarity">0</dd></div><div><dt>Isolated jump</dt><dd id="diagIsolatedJump">0</dd></div><div><dt>Octave ambiguity</dt><dd id="diagOctaveAmbiguity">0</dd></div><div><dt>Out of range</dt><dd id="diagOutOfRange">0</dd></div><div><dt>Accepted</dt><dd id="diagAccepted">0</dd></div></dl>
+              </section>
               <button type="button" id="pitchSelfTest">Run isolated-tone self-test</button>
               <output id="pitchSelfTestResult">Not run</output>
             </details>

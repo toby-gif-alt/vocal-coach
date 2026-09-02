@@ -5,14 +5,16 @@ import {
   MICROPHONE_SENSITIVITY,
   PITCH_TRACKER_CONFIG,
   PLAYBACK_CONFIG,
+  REVIEW_CONFIG,
   frequencyToMidi,
   midiToFrequency,
-} from "./config.js?v=15";
+} from "./config.js?v=16";
 import { calculateRms, deriveNoiseGate, RmsNoiseGate } from "./noise-gate.js?v=15";
 import { applyMicrophoneSensitivity, deriveMicrophoneCalibration } from "./microphone-calibration.js?v=15";
 import { SessionPerformanceRecorder } from "./performance-recorder.js?v=15";
-import { detectAutocorrelationPitch, StablePitchTracker } from "./pitch-tracker.js?v=15";
+import { detectAutocorrelationPitch, StablePitchTracker } from "./pitch-tracker.js?v=16";
 import { countInPattern, quartersToTransportTicks, transportTicksToQuarters } from "./timing.js?v=15";
+import { reviewDriftSeconds } from "./review-playback.js?v=16";
 
 export class AudioEngine {
   constructor({ onPitchSample, onRawPitchSample, onPitchDiagnostic, onMicrophoneState, onMicrophoneCalibration, onRecordingState, onCountIn, onPlaybackEnd } = {}) {
@@ -54,6 +56,8 @@ export class AudioEngine {
     this.tempoPercent = 100;
     this.guideVolume = PLAYBACK_CONFIG.defaultGuideVolume;
     this.accompanimentVolume = PLAYBACK_CONFIG.defaultAccompanimentVolume;
+    this.review = null;
+    this.lastReviewDriftCheckAt = 0;
   }
 
   get tone() {
@@ -163,6 +167,7 @@ export class AudioEngine {
     targetMidiAtQuarter = () => null,
   }) {
     if (!this.score) throw new Error("Load a score before playing.");
+    this.stopReview({ reset: false });
     const resuming = this.isPaused;
     await this.tone.start();
     this.targetMidiAtQuarter = targetMidiAtQuarter;
@@ -197,6 +202,8 @@ export class AudioEngine {
   pause() {
     if (!this.isPlaying) return;
     this.transport.pause();
+    this.synths.forEach((synth) => synth.releaseAll?.());
+    this.guideSynth?.releaseAll?.();
     this.isPlaying = false;
     this.isPaused = true;
     this.performanceRecorder.pause();
@@ -246,9 +253,15 @@ export class AudioEngine {
     }).toDestination();
   }
 
-  scheduleScore({ vocalPartId, guideEnabled, enabledPartIds, vocalOctaveSemitones = 0 }) {
+  scheduleScore({
+    vocalPartId,
+    guideEnabled,
+    enabledPartIds,
+    vocalOctaveSemitones = 0,
+    resumeQuarter = this.currentQuarter,
+    notifyEnd = true,
+  }) {
     const transport = this.transport;
-    const resumeQuarter = this.currentQuarter;
     transport.cancel(0);
     const ticksPerQuarter = transport.PPQ;
     const enabled = new Set(enabledPartIds || []);
@@ -257,22 +270,101 @@ export class AudioEngine {
       if ((!isVocal && !enabled.has(part.id)) || (isVocal && !guideEnabled)) continue;
       const synth = isVocal ? this.guideSynth : this.synths.get(part.id);
       for (const note of part.notes) {
-        const when = `${quartersToTransportTicks(note.onsetQuarters, ticksPerQuarter)}i`;
+        const noteEnd = note.onsetQuarters + note.durationQuarters;
+        if (noteEnd <= resumeQuarter) continue;
+        const resumingSustain = note.onsetQuarters < resumeQuarter;
+        const scheduledOnset = resumingSustain ? resumeQuarter + 1 / ticksPerQuarter : note.onsetQuarters;
+        const soundingDuration = resumingSustain
+          ? Math.max(1 / ticksPerQuarter, noteEnd - resumeQuarter)
+          : note.durationQuarters * 0.92;
+        const when = `${quartersToTransportTicks(scheduledOnset, ticksPerQuarter)}i`;
         transport.schedule((time) => {
-          const durationTicks = Math.max(1, quartersToTransportTicks(note.durationQuarters * 0.92, ticksPerQuarter));
+          const durationTicks = Math.max(1, quartersToTransportTicks(soundingDuration, ticksPerQuarter));
           const duration = `${durationTicks}i`;
           const frequency = isVocal ? midiToFrequency(note.midi + vocalOctaveSemitones) : note.frequency;
           synth.triggerAttackRelease(frequency, duration, time, isVocal ? 0.52 : 0.28);
         }, when);
       }
     }
-    const endWhen = `${quartersToTransportTicks(this.score.durationQuarters, ticksPerQuarter)}i`;
-    transport.scheduleOnce(() => {
-      this.isPlaying = false;
-      this.isPaused = false;
-      queueMicrotask(() => this.onPlaybackEnd());
-    }, endWhen);
+    if (notifyEnd) {
+      const endWhen = `${quartersToTransportTicks(this.score.durationQuarters, ticksPerQuarter)}i`;
+      transport.scheduleOnce(() => {
+        this.isPlaying = false;
+        this.isPaused = false;
+        queueMicrotask(() => this.onPlaybackEnd());
+      }, endWhen);
+    }
     transport.ticks = quartersToTransportTicks(resumeQuarter, ticksPerQuarter);
+  }
+
+  async previewPitch(midi, durationSeconds = 0.7) {
+    if (!Number.isFinite(midi)) return;
+    await this.tone.start();
+    this.ensureSynths();
+    this.guideSynth.triggerAttackRelease(midiToFrequency(midi), durationSeconds, this.tone.now(), 0.5);
+  }
+
+  reviewSettingsAt(seconds, take, layers) {
+    const bpm = Number(take?.bpm) || this.baseTempo;
+    return {
+      vocalPartId: take?.vocalPartId,
+      guideEnabled: Boolean(layers?.melody),
+      enabledPartIds: layers?.accompaniment ? [...(take?.enabledPartIds || [])] : [],
+      vocalOctaveSemitones: Number(take?.octaveShift) || 0,
+      resumeQuarter: Math.max(0, Number(seconds) || 0) * bpm / 60,
+      notifyEnd: false,
+      bpm,
+    };
+  }
+
+  async startReview({ currentSeconds = 0, take, layers } = {}) {
+    if (!this.score || !take) return;
+    await this.tone.start();
+    this.ensureSynths();
+    const settings = this.reviewSettingsAt(currentSeconds, take, layers);
+    this.synths.forEach((synth) => synth.releaseAll?.());
+    this.guideSynth?.releaseAll?.();
+    this.transport.stop();
+    this.transport.bpm.value = settings.bpm;
+    this.scheduleScore(settings);
+    this.review = { take, layers: { ...layers } };
+    this.lastReviewDriftCheckAt = performance.now();
+    this.transport.start();
+  }
+
+  pauseReview() {
+    if (!this.review) return;
+    this.transport.pause();
+    this.synths.forEach((synth) => synth.releaseAll?.());
+    this.guideSynth?.releaseAll?.();
+  }
+
+  stopReview({ reset = true } = {}) {
+    if (!this.review) return;
+    if (window.Tone) {
+      this.transport.stop();
+      this.transport.cancel(0);
+      if (reset) this.transport.ticks = 0;
+    }
+    this.synths.forEach((synth) => synth.releaseAll?.());
+    this.guideSynth?.releaseAll?.();
+    this.review = null;
+  }
+
+  async resynchroniseReview(currentSeconds, take = this.review?.take, layers = this.review?.layers) {
+    if (!take) return;
+    await this.startReview({ currentSeconds, take, layers });
+  }
+
+  synchroniseReviewClock(currentSeconds) {
+    if (!this.review) return false;
+    const now = performance.now();
+    if (now - this.lastReviewDriftCheckAt < REVIEW_CONFIG.driftCheckIntervalMs) return false;
+    this.lastReviewDriftCheckAt = now;
+    const driftSeconds = reviewDriftSeconds(this.currentQuarter, currentSeconds, this.review.take.bpm);
+    if (driftSeconds <= REVIEW_CONFIG.maximumDriftSeconds) return false;
+    void this.resynchroniseReview(currentSeconds);
+    return true;
   }
 
   performCountIn(bars, timeSignature) {
@@ -476,9 +568,16 @@ export class AudioEngine {
     if (now - this.lastPitchSampleAt >= AUDIO_CONFIG.sampleIntervalMs) {
       this.analyser.getFloatTimeDomainData(this.inputFrame);
       const rms = calculateRms(this.inputFrame);
+      const capturedAt = performance.now();
       const gateOpen = this.noiseGate.accepts(rms);
+      const establishedVoice = this.pitchTracker.hasEstablishedVoice(capturedAt);
+      const continuationGateOpen = !gateOpen
+        && establishedVoice
+        && rms >= this.noiseGateSettings.closeThreshold * PITCH_TRACKER_CONFIG.continuationRmsScale;
       const sampleRate = (this.tone.getContext().rawContext || this.tone.getContext()).sampleRate;
-      const [frequency, clarity] = gateOpen ? this.pitchDetector.findPitch(this.inputFrame, sampleRate) : [null, 0];
+      const [frequency, clarity] = gateOpen || continuationGateOpen
+        ? this.pitchDetector.findPitch(this.inputFrame, sampleRate)
+        : [null, 0];
       const previousMidi = this.pitchTracker.acceptedHistory.at(-1)?.midi;
       const rawMidi = frequency > 0 ? frequencyToMidi(frequency) : null;
       const ambiguous = rawMidi !== null && previousMidi !== undefined && Math.abs(rawMidi - previousMidi) * 100 > 700;
@@ -489,10 +588,14 @@ export class AudioEngine {
         clarity,
         rms,
         gateOpen,
+        continuationGateOpen,
         noiseGate: this.noiseGateSettings.openThreshold,
         minimumClarity: this.noiseGateSettings.minimumClarity || AUDIO_CONFIG.minimumClarity,
+        continuationMinimumClarity: this.pitchTracker.continuationMinimumClarity(
+          this.noiseGateSettings.minimumClarity || AUDIO_CONFIG.minimumClarity,
+        ),
         corroboratingFrequency: corroborating.frequency,
-        capturedAt: performance.now(),
+        capturedAt,
         scoreQuarter,
         scoreSeconds: this.currentSeconds,
         targetMidi: this.targetMidiAtQuarter(scoreQuarter),

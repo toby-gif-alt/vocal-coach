@@ -1,4 +1,4 @@
-import { AUDIO_CONFIG, PITCH_TRACKER_CONFIG, frequencyToMidi, midiToFrequency } from "./config.js?v=14";
+import { AUDIO_CONFIG, PITCH_TRACKER_CONFIG, frequencyToMidi, midiToFrequency } from "./config.js?v=16";
 
 function median(values) {
   if (!values.length) return null;
@@ -89,6 +89,24 @@ export class StablePitchTracker {
     this.filterHistory = [];
     this.pendingJump = null;
     this.lastAcceptedAt = null;
+    this.lastAcquisitionAt = null;
+  }
+
+  hasEstablishedVoice(capturedAt) {
+    const now = Number(capturedAt) || 0;
+    const recent = this.acceptedHistory.filter((sample) => (
+      now - sample.capturedAt <= this.config.continuationWindowMs
+    ));
+    return recent.length >= this.config.continuationReliableFrames
+      && this.lastAcquisitionAt !== null
+      && now - this.lastAcquisitionAt <= this.config.continuationWindowMs;
+  }
+
+  continuationMinimumClarity(acquisitionMinimum = this.config.minimumClarity) {
+    return Math.max(
+      this.config.continuationClarityFloor,
+      acquisitionMinimum - this.config.continuationClarityReduction,
+    );
   }
 
   unreliable(frame, reason, rawFrequency = null, rawMidi = null) {
@@ -120,24 +138,44 @@ export class StablePitchTracker {
     const rawMidi = rawFrequency > 0 ? frequencyToMidi(rawFrequency) : null;
     const targetMidi = Number.isFinite(frame.targetMidi) ? frame.targetMidi : null;
 
-    if (!frame.gateOpen) return this.unreliable(frame, "below noise gate", rawFrequency || null, rawMidi);
+    const capturedAt = Number(frame.capturedAt) || 0;
+    const establishedVoice = this.hasEstablishedVoice(capturedAt);
+    const continuationGateOpen = Boolean(frame.continuationGateOpen) && establishedVoice;
+    if (!frame.gateOpen && !continuationGateOpen) {
+      return this.unreliable(frame, "below noise gate", rawFrequency || null, rawMidi);
+    }
     if (!Number.isFinite(rawFrequency) || rawFrequency < AUDIO_CONFIG.minimumFrequency || rawFrequency > AUDIO_CONFIG.maximumFrequency) {
       return this.unreliable(frame, "frequency out of range", rawFrequency || null, rawMidi);
     }
     const minimumClarity = Number.isFinite(frame.minimumClarity)
       ? frame.minimumClarity
       : this.config.minimumClarity;
-    if (!Number.isFinite(frame.clarity) || frame.clarity < minimumClarity) {
+    const continuationClarity = Number.isFinite(frame.continuationMinimumClarity)
+      ? frame.continuationMinimumClarity
+      : this.continuationMinimumClarity(minimumClarity);
+    const acquisitionAccepted = Boolean(frame.gateOpen) && frame.clarity >= minimumClarity;
+    const continuationClarityAccepted = establishedVoice && frame.clarity >= continuationClarity;
+    if (!Number.isFinite(frame.clarity) || (!acquisitionAccepted && !continuationClarityAccepted)) {
       return this.unreliable(frame, "low clarity", rawFrequency, rawMidi);
     }
 
     this.rawHistory.push({ frequency: rawFrequency, midi: rawMidi, capturedAt: frame.capturedAt });
     if (this.rawHistory.length > this.config.historySize) this.rawHistory.shift();
 
-    const capturedAt = Number(frame.capturedAt) || 0;
     const stale = this.lastAcceptedAt !== null && capturedAt - this.lastAcceptedAt > this.config.reacquireAfterMs;
     const recentAccepted = this.acceptedHistory.slice(-this.config.medianWindow).map((sample) => sample.midi);
     const referenceMidi = stale ? null : median(recentAccepted);
+    const continuationAccepted = !acquisitionAccepted && continuationClarityAccepted;
+    if (continuationAccepted && referenceMidi !== null) {
+      const relatedDistance = Math.min(
+        centsBetween(rawMidi, referenceMidi),
+        centsBetween(rawMidi - 12, referenceMidi),
+        centsBetween(rawMidi + 12, referenceMidi),
+      );
+      if (relatedDistance > this.config.continuationMaximumCents) {
+        return this.unreliable(frame, "isolated pitch jump", rawFrequency, rawMidi);
+      }
+    }
     let candidateMidi = rawMidi;
     let octaveCorrection = 0;
 
@@ -205,17 +243,66 @@ export class StablePitchTracker {
     const accepted = {
       ...frame,
       status: "accepted",
-      reason: octaveCorrection ? "octave ambiguity resolved by continuity" : "stable pitch",
+      reason: octaveCorrection
+        ? "octave ambiguity resolved by continuity"
+        : continuationAccepted ? "continued established voice" : "stable pitch",
       rawFrequency,
       rawMidi,
       filteredFrequency,
       filteredMidi,
       centsError: targetMidi === null ? null : (filteredMidi - targetMidi) * 100,
       octaveCorrection,
+      acceptanceMode: continuationAccepted ? "continuation" : "acquisition",
     };
     this.acceptedHistory.push({ midi: filteredMidi, frequency: filteredFrequency, capturedAt, targetMidi });
     if (this.acceptedHistory.length > this.config.historySize) this.acceptedHistory.shift();
     this.lastAcceptedAt = capturedAt;
+    if (!continuationAccepted) this.lastAcquisitionAt = capturedAt;
     return accepted;
+  }
+}
+
+export function pitchDiagnosticCategory(sample) {
+  if (sample?.octaveCorrection) return "octaveAmbiguity";
+  if (sample?.status === "accepted") return "accepted";
+  if (sample?.reason === "below noise gate") return "belowGate";
+  if (sample?.reason === "low clarity") return "lowClarity";
+  if (sample?.reason === "isolated pitch jump") return "isolatedJump";
+  if (sample?.reason === "frequency out of range") return "outOfRange";
+  if (String(sample?.reason || "").includes("octave")) return "octaveAmbiguity";
+  return "lowClarity";
+}
+
+export class PitchDiagnosticSummary {
+  constructor() { this.reset(); }
+
+  reset() {
+    this.counts = {
+      belowGate: 0,
+      lowClarity: 0,
+      isolatedJump: 0,
+      octaveAmbiguity: 0,
+      outOfRange: 0,
+      accepted: 0,
+    };
+    this.total = 0;
+    this.usable = 0;
+  }
+
+  add(sample) {
+    const category = pitchDiagnosticCategory(sample);
+    this.counts[category] += 1;
+    this.total += 1;
+    if (sample?.status === "accepted") this.usable += 1;
+    return category;
+  }
+
+  snapshot() {
+    return {
+      ...this.counts,
+      total: this.total,
+      usable: this.usable,
+      usablePercent: this.total ? this.usable / this.total * 100 : 0,
+    };
   }
 }

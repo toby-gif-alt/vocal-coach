@@ -35,6 +35,14 @@ export const PITCH_TRACKER_CONFIG = Object.freeze({
   jumpConfirmationFrames: 2,
   octavePersistenceFrames: 7,
   reacquireAfterMs: 460,
+  // Acquisition remains strict. These settings are only used after several
+  // recent reliable frames prove that a singer is already vocalising.
+  continuationReliableFrames: 3,
+  continuationWindowMs: 360,
+  continuationRmsScale: 0.84,
+  continuationClarityReduction: 0.1,
+  continuationClarityFloor: 0.56,
+  continuationMaximumCents: 260,
 });
 
 export const LIVE_TUNING_CONFIG = Object.freeze({
@@ -42,6 +50,18 @@ export const LIVE_TUNING_CONFIG = Object.freeze({
   // only, preventing the tuner from snapping to centre between reliable frames.
   dropoutGraceMs: 170,
   displayRangeCents: 50,
+});
+
+export const OCTAVE_SELECTION_CONFIG = Object.freeze({
+  shifts: Object.freeze([-12, 0, 12]),
+  stableDurationMs: 550,
+  maximumFrameGapMs: 150,
+  candidateToleranceCents: 75,
+});
+
+export const REVIEW_CONFIG = Object.freeze({
+  driftCheckIntervalMs: 240,
+  maximumDriftSeconds: 0.075,
 });
 
 export const PLAYBACK_CONFIG = Object.freeze({

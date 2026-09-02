@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { midiToFrequency } from "../src/config.js";
-import { detectAutocorrelationPitch, StablePitchTracker } from "../src/pitch-tracker.js";
+import { detectAutocorrelationPitch, PitchDiagnosticSummary, StablePitchTracker } from "../src/pitch-tracker.js";
 import { countInPattern } from "../src/timing.js";
 
 function syntheticTone(frequency, { sampleRate = 48000, size = 4096, harmonics = true } = {}) {
@@ -128,6 +128,96 @@ test("a calibrated clarity threshold preserves a quiet stable voice through a br
   assert.equal(missing.status, "unreliable");
   assert.equal(recovered.status, "accepted");
   assert.ok(Math.abs(recovered.filteredMidi - first.filteredMidi) < 0.1);
+});
+
+test("an established voice can continue near the close gate with modestly lower clarity", () => {
+  const tracker = new StablePitchTracker({ minimumClarity: 0.78 });
+  for (let index = 0; index < 3; index += 1) {
+    tracker.process(reliableFrame(220, { capturedAt: index * 46 }));
+  }
+  const continued = tracker.process(reliableFrame(220.5, {
+    capturedAt: 138,
+    rms: 0.006,
+    gateOpen: false,
+    continuationGateOpen: true,
+    clarity: 0.7,
+  }));
+  assert.equal(continued.status, "accepted");
+  assert.equal(continued.acceptanceMode, "continuation");
+  assert.equal(continued.reason, "continued established voice");
+});
+
+test("weak unrelated sound cannot continue an established voice", () => {
+  const tracker = new StablePitchTracker({ minimumClarity: 0.78 });
+  for (let index = 0; index < 3; index += 1) {
+    tracker.process(reliableFrame(220, { capturedAt: index * 46 }));
+  }
+  const noise = tracker.process(reliableFrame(300, {
+    capturedAt: 138,
+    gateOpen: false,
+    continuationGateOpen: true,
+    clarity: 0.7,
+  }));
+  assert.equal(noise.status, "unreliable");
+  assert.equal(noise.reason, "isolated pitch jump");
+});
+
+test("continuation expires and cannot acquire arbitrary quiet room pitch", () => {
+  const tracker = new StablePitchTracker({ minimumClarity: 0.78 });
+  for (let index = 0; index < 3; index += 1) {
+    tracker.process(reliableFrame(220, { capturedAt: index * 46 }));
+  }
+  const stale = tracker.process(reliableFrame(220, {
+    capturedAt: 600,
+    gateOpen: false,
+    continuationGateOpen: true,
+    clarity: 0.72,
+  }));
+  assert.equal(stale.status, "unreliable");
+  assert.equal(stale.reason, "below noise gate");
+});
+
+test("soft continuation cannot perpetuate itself without a fresh strict frame", () => {
+  const tracker = new StablePitchTracker({ minimumClarity: 0.78, continuationWindowMs: 360 });
+  for (let index = 0; index < 3; index += 1) {
+    tracker.process(reliableFrame(220, { capturedAt: index * 46 }));
+  }
+  for (const capturedAt of [138, 230, 320]) {
+    const continued = tracker.process(reliableFrame(220, {
+      capturedAt,
+      gateOpen: false,
+      continuationGateOpen: true,
+      clarity: 0.7,
+    }));
+    assert.equal(continued.status, "accepted");
+  }
+  const expired = tracker.process(reliableFrame(220, {
+    capturedAt: 470,
+    gateOpen: false,
+    continuationGateOpen: true,
+    clarity: 0.7,
+  }));
+  assert.equal(expired.status, "unreliable");
+  assert.equal(expired.reason, "below noise gate");
+});
+
+test("pitch diagnostic summary reports rejection causes and usable percentage", () => {
+  const summary = new PitchDiagnosticSummary();
+  summary.add({ status: "unreliable", reason: "below noise gate" });
+  summary.add({ status: "unreliable", reason: "low clarity" });
+  summary.add({ status: "accepted", reason: "stable pitch" });
+  summary.add({ status: "accepted", reason: "octave ambiguity resolved by continuity", octaveCorrection: -12 });
+  assert.deepEqual(summary.snapshot(), {
+    belowGate: 1,
+    lowClarity: 1,
+    isolatedJump: 0,
+    octaveAmbiguity: 1,
+    outOfRange: 0,
+    accepted: 1,
+    total: 4,
+    usable: 2,
+    usablePercent: 50,
+  });
 });
 
 test("count-in follows simple and compound time signatures", () => {
