@@ -8,13 +8,13 @@ import {
   REVIEW_CONFIG,
   frequencyToMidi,
   midiToFrequency,
-} from "./config.js?v=16";
+} from "./config.js?v=17";
 import { calculateRms, deriveNoiseGate, RmsNoiseGate } from "./noise-gate.js?v=15";
 import { applyMicrophoneSensitivity, deriveMicrophoneCalibration } from "./microphone-calibration.js?v=15";
 import { SessionPerformanceRecorder } from "./performance-recorder.js?v=15";
-import { detectAutocorrelationPitch, StablePitchTracker } from "./pitch-tracker.js?v=16";
+import { detectAutocorrelationPitch, StablePitchTracker } from "./pitch-tracker.js?v=17";
 import { countInPattern, quartersToTransportTicks, transportTicksToQuarters } from "./timing.js?v=15";
-import { reviewDriftSeconds } from "./review-playback.js?v=16";
+import { reviewDriftSeconds, reviewVolumes } from "./review-playback.js?v=17";
 
 export class AudioEngine {
   constructor({ onPitchSample, onRawPitchSample, onPitchDiagnostic, onMicrophoneState, onMicrophoneCalibration, onRecordingState, onCountIn, onPlaybackEnd } = {}) {
@@ -56,6 +56,7 @@ export class AudioEngine {
     this.tempoPercent = 100;
     this.guideVolume = PLAYBACK_CONFIG.defaultGuideVolume;
     this.accompanimentVolume = PLAYBACK_CONFIG.defaultAccompanimentVolume;
+    this.reviewVolumes = reviewVolumes();
     this.review = null;
     this.lastReviewDriftCheckAt = 0;
   }
@@ -125,6 +126,29 @@ export class AudioEngine {
     this.accompanimentVolume = Math.max(0, Math.min(100, Number(value) || 0));
     const decibels = this.volumeToDb(this.accompanimentVolume, PLAYBACK_CONFIG.accompanimentTrimDb);
     this.synths.forEach((synth) => { synth.volume.value = decibels; });
+  }
+
+  setReviewVolume(kind, value) {
+    if (!(kind in this.reviewVolumes)) return;
+    this.reviewVolumes = reviewVolumes({ ...this.reviewVolumes, [kind]: value });
+    if (this.review) {
+      this.review.volumes = { ...this.reviewVolumes };
+      this.applyReviewVolumes();
+    }
+  }
+
+  applyReviewVolumes() {
+    const accompanimentDb = this.volumeToDb(this.reviewVolumes.accompaniment, PLAYBACK_CONFIG.accompanimentTrimDb);
+    const melodyDb = this.volumeToDb(this.reviewVolumes.melody, PLAYBACK_CONFIG.guideTrimDb);
+    this.synths.forEach((synth) => { synth.volume.value = accompanimentDb; });
+    if (this.guideSynth) this.guideSynth.volume.value = melodyDb;
+  }
+
+  restorePerformanceVolumes() {
+    const accompanimentDb = this.volumeToDb(this.accompanimentVolume, PLAYBACK_CONFIG.accompanimentTrimDb);
+    const guideDb = this.volumeToDb(this.guideVolume, PLAYBACK_CONFIG.guideTrimDb);
+    this.synths.forEach((synth) => { synth.volume.value = accompanimentDb; });
+    if (this.guideSynth) this.guideSynth.volume.value = guideDb;
   }
 
   volumeToDb(percent, trimDb) {
@@ -317,17 +341,19 @@ export class AudioEngine {
     };
   }
 
-  async startReview({ currentSeconds = 0, take, layers } = {}) {
+  async startReview({ currentSeconds = 0, take, layers, volumes: volumeLevels = this.reviewVolumes } = {}) {
     if (!this.score || !take) return;
     await this.tone.start();
     this.ensureSynths();
+    this.reviewVolumes = reviewVolumes(volumeLevels);
+    this.applyReviewVolumes();
     const settings = this.reviewSettingsAt(currentSeconds, take, layers);
     this.synths.forEach((synth) => synth.releaseAll?.());
     this.guideSynth?.releaseAll?.();
     this.transport.stop();
     this.transport.bpm.value = settings.bpm;
     this.scheduleScore(settings);
-    this.review = { take, layers: { ...layers } };
+    this.review = { take, layers: { ...layers }, volumes: { ...this.reviewVolumes } };
     this.lastReviewDriftCheckAt = performance.now();
     this.transport.start();
   }
@@ -349,11 +375,17 @@ export class AudioEngine {
     this.synths.forEach((synth) => synth.releaseAll?.());
     this.guideSynth?.releaseAll?.();
     this.review = null;
+    this.restorePerformanceVolumes();
   }
 
-  async resynchroniseReview(currentSeconds, take = this.review?.take, layers = this.review?.layers) {
+  async resynchroniseReview(
+    currentSeconds,
+    take = this.review?.take,
+    layers = this.review?.layers,
+    volumes = this.review?.volumes ?? this.reviewVolumes,
+  ) {
     if (!take) return;
-    await this.startReview({ currentSeconds, take, layers });
+    await this.startReview({ currentSeconds, take, layers, volumes });
   }
 
   synchroniseReviewClock(currentSeconds) {
@@ -578,7 +610,7 @@ export class AudioEngine {
       const [frequency, clarity] = gateOpen || continuationGateOpen
         ? this.pitchDetector.findPitch(this.inputFrame, sampleRate)
         : [null, 0];
-      const previousMidi = this.pitchTracker.acceptedHistory.at(-1)?.midi;
+      const previousMidi = this.pitchTracker.recentHarmonicReference(capturedAt)?.midi;
       const rawMidi = frequency > 0 ? frequencyToMidi(frequency) : null;
       const ambiguous = rawMidi !== null && previousMidi !== undefined && Math.abs(rawMidi - previousMidi) * 100 > 700;
       const corroborating = ambiguous ? detectAutocorrelationPitch(this.inputFrame, sampleRate) : { frequency: null };

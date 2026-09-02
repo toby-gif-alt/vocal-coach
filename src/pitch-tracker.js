@@ -1,4 +1,4 @@
-import { AUDIO_CONFIG, PITCH_TRACKER_CONFIG, frequencyToMidi, midiToFrequency } from "./config.js?v=16";
+import { AUDIO_CONFIG, PITCH_TRACKER_CONFIG, frequencyToMidi, midiToFrequency } from "./config.js?v=17";
 
 function median(values) {
   if (!values.length) return null;
@@ -88,8 +88,17 @@ export class StablePitchTracker {
     this.acceptedHistory = [];
     this.filterHistory = [];
     this.pendingJump = null;
+    this.harmonicReference = null;
     this.lastAcceptedAt = null;
     this.lastAcquisitionAt = null;
+  }
+
+  recentHarmonicReference(capturedAt) {
+    const now = Number(capturedAt) || 0;
+    if (!this.harmonicReference || now - this.harmonicReference.capturedAt > this.config.harmonicMemoryMs) {
+      return null;
+    }
+    return { ...this.harmonicReference };
   }
 
   hasEstablishedVoice(capturedAt) {
@@ -123,14 +132,16 @@ export class StablePitchTracker {
     };
   }
 
-  updatePending(rawMidi) {
+  updatePending(rawMidi, capturedAt) {
+    const now = Number(capturedAt) || 0;
     if (this.pendingJump && centsBetween(this.pendingJump.midi, rawMidi) <= this.config.jumpClusterCents) {
       this.pendingJump.count += 1;
       this.pendingJump.midi = (this.pendingJump.midi * (this.pendingJump.count - 1) + rawMidi) / this.pendingJump.count;
+      this.pendingJump.lastAt = now;
     } else {
-      this.pendingJump = { midi: rawMidi, count: 1 };
+      this.pendingJump = { midi: rawMidi, count: 1, startedAt: now, lastAt: now };
     }
-    return this.pendingJump.count;
+    return this.pendingJump;
   }
 
   process(frame) {
@@ -165,6 +176,11 @@ export class StablePitchTracker {
     const stale = this.lastAcceptedAt !== null && capturedAt - this.lastAcceptedAt > this.config.reacquireAfterMs;
     const recentAccepted = this.acceptedHistory.slice(-this.config.medianWindow).map((sample) => sample.midi);
     const referenceMidi = stale ? null : median(recentAccepted);
+    // This reference is deliberately independent from the short continuity
+    // timeout. It is used only when raw pitch is about one octave away, never
+    // to pull ordinary wrong notes toward the score or a previous pitch.
+    const harmonicReference = this.recentHarmonicReference(capturedAt);
+    const octaveReferenceMidi = harmonicReference?.midi ?? referenceMidi;
     const continuationAccepted = !acquisitionAccepted && continuationClarityAccepted;
     if (continuationAccepted && referenceMidi !== null) {
       const relatedDistance = Math.min(
@@ -178,48 +194,59 @@ export class StablePitchTracker {
     }
     let candidateMidi = rawMidi;
     let octaveCorrection = 0;
+    let octaveCorrectionCorroborated = false;
 
-    if (referenceMidi !== null) {
-      const rawDistance = centsBetween(rawMidi, referenceMidi);
+    if (octaveReferenceMidi !== null) {
+      const rawDistance = centsBetween(rawMidi, octaveReferenceMidi);
       const octaveCandidates = [-12, 12]
-        .map((shift) => ({ shift, midi: rawMidi + shift, distance: centsBetween(rawMidi + shift, referenceMidi) }))
+        .map((shift) => ({ shift, midi: rawMidi + shift, distance: centsBetween(rawMidi + shift, octaveReferenceMidi) }))
         .sort((a, b) => a.distance - b.distance);
       const octaveCandidate = octaveCandidates[0];
       const octaveAmbiguity = rawDistance >= 900 && octaveCandidate.distance <= this.config.octaveMatchCents;
 
       if (octaveAmbiguity) {
-        const pendingCount = this.updatePending(rawMidi);
+        const pending = this.updatePending(rawMidi, capturedAt);
         const corroboratingMidi = Number.isFinite(frame.corroboratingFrequency)
           ? frequencyToMidi(frame.corroboratingFrequency)
           : null;
         const corroboratesRaw = corroboratingMidi !== null
-          && centsBetween(corroboratingMidi, rawMidi) + 160 < centsBetween(corroboratingMidi, octaveCandidate.midi);
+          && centsBetween(corroboratingMidi, rawMidi) + this.config.detectorEvidenceAdvantageCents < centsBetween(corroboratingMidi, octaveCandidate.midi);
         const corroboratesCorrection = corroboratingMidi !== null
-          && centsBetween(corroboratingMidi, octaveCandidate.midi) + 160 < centsBetween(corroboratingMidi, rawMidi);
+          && centsBetween(corroboratingMidi, octaveCandidate.midi) + this.config.detectorEvidenceAdvantageCents < centsBetween(corroboratingMidi, rawMidi);
         const targetSupportsRaw = targetMidi !== null
-          && centsBetween(targetMidi, rawMidi) + 500 < centsBetween(targetMidi, octaveCandidate.midi);
-        const previousTargetMidi = this.acceptedHistory.at(-1)?.targetMidi;
+          && centsBetween(targetMidi, rawMidi) <= this.config.octaveMatchCents
+          && centsBetween(targetMidi, rawMidi) + this.config.targetEvidenceAdvantageCents < centsBetween(targetMidi, octaveCandidate.midi);
+        const previousTargetMidi = this.acceptedHistory.at(-1)?.targetMidi ?? harmonicReference?.targetMidi;
         const scoreTargetChanged = targetMidi !== null
           && Number.isFinite(previousTargetMidi)
           && centsBetween(targetMidi, previousTargetMidi) >= 500;
-        const persistentWrongPitch = pendingCount >= this.config.octavePersistenceFrames;
+        const strongPersistentEvidence = pending.count >= this.config.octaveStrongEvidenceFrames && corroboratesRaw;
+        const persistentWrongPitch = pending.count >= this.config.octavePersistenceFrames
+          && pending.lastAt - pending.startedAt >= this.config.octavePersistenceMs;
 
-        if (corroboratesRaw || (targetSupportsRaw && (scoreTargetChanged || pendingCount >= this.config.jumpConfirmationFrames)) || (!corroboratesCorrection && persistentWrongPitch)) {
+        if ((targetSupportsRaw && scoreTargetChanged)
+          || (targetSupportsRaw && pending.count >= this.config.octaveStrongEvidenceFrames)
+          || strongPersistentEvidence
+          || (!corroboratesCorrection && persistentWrongPitch)) {
           candidateMidi = rawMidi;
           octaveCorrection = 0;
+          this.filterHistory = [];
+          this.pendingJump = null;
         } else {
           candidateMidi = octaveCandidate.midi;
           octaveCorrection = octaveCandidate.shift;
+          octaveCorrectionCorroborated = corroboratesCorrection;
+          if (corroboratesCorrection) this.pendingJump = null;
         }
-      } else if (rawDistance > this.config.maximumContinuityCents) {
+      } else if (referenceMidi !== null && rawDistance >= this.config.maximumContinuityCents) {
         const targetSupportsTransition = targetMidi !== null
-          && centsBetween(targetMidi, rawMidi) <= 180
+          && centsBetween(targetMidi, rawMidi) <= this.config.targetTransitionToleranceCents
           && centsBetween(targetMidi, referenceMidi) >= 500;
         if (targetSupportsTransition) {
           this.pendingJump = null;
         } else {
-          const pendingCount = this.updatePending(rawMidi);
-          if (pendingCount < this.config.jumpConfirmationFrames) {
+          const pending = this.updatePending(rawMidi, capturedAt);
+          if (pending.count < this.config.jumpConfirmationFrames) {
             return this.unreliable(frame, "isolated pitch jump", rawFrequency, rawMidi);
           }
         }
@@ -256,6 +283,12 @@ export class StablePitchTracker {
     };
     this.acceptedHistory.push({ midi: filteredMidi, frequency: filteredFrequency, capturedAt, targetMidi });
     if (this.acceptedHistory.length > this.config.historySize) this.acceptedHistory.shift();
+    // A raw harmonic alone cannot refresh its own memory indefinitely, but an
+    // independent autocorrelation reading at the corrected fundamental can.
+    // Score-led and persistently confirmed real octave changes still unlock.
+    if (!octaveCorrection || octaveCorrectionCorroborated) {
+      this.harmonicReference = { midi: filteredMidi, capturedAt, targetMidi };
+    }
     this.lastAcceptedAt = capturedAt;
     if (!continuationAccepted) this.lastAcquisitionAt = capturedAt;
     return accepted;

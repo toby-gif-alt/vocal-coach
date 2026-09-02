@@ -1,4 +1,4 @@
-import { AudioEngine } from "./src/audio-engine.js?v=16";
+import { AudioEngine } from "./src/audio-engine.js?v=17";
 import { analysePerformance, performanceSummary } from "./src/analysis.js?v=14";
 import { buildCoachingFeedback } from "./src/coaching.js?v=14";
 import {
@@ -15,18 +15,18 @@ import {
   frequencyToMidi,
   midiToName,
   PITCH_THRESHOLDS,
-} from "./src/config.js?v=16";
+} from "./src/config.js?v=17";
 import {
   assessmentSampleEligible,
   LiveTuningFeedback,
   tuningTargetAtQuarter,
   visualMidiForSample,
-} from "./src/live-tuning.js?v=15";
+} from "./src/live-tuning.js?v=17";
 import { normaliseSavedMicrophoneCalibration } from "./src/microphone-calibration.js?v=14";
 import { measureAtQuarter, noteAtQuarter, readScoreFile, readScoreUrl, suggestVocalPart } from "./src/musicxml.js?v=14";
 import { AutomaticOctaveSelector, suggestOctaveFromComfortablePitch } from "./src/octave-selection.js?v=16";
-import { detectAutocorrelationPitch, PitchDiagnosticSummary, StablePitchTracker } from "./src/pitch-tracker.js?v=16";
-import { createTakeMetadata, reviewLayers, reviewQuarterAtSeconds } from "./src/review-playback.js?v=16";
+import { detectAutocorrelationPitch, PitchDiagnosticSummary, StablePitchTracker } from "./src/pitch-tracker.js?v=17";
+import { createTakeMetadata, reviewLayers, reviewQuarterAtSeconds, reviewVolumes } from "./src/review-playback.js?v=17";
 import {
   appendScoreTraceSample,
   buildScoreGeometry,
@@ -58,7 +58,7 @@ const els = {
   viewButtons: [...document.querySelectorAll("[data-view]")], scoreHeading: $("#scoreHeading"), measureNumber: $("#measureNumber"), sideMeasure: $("#sideMeasure"), scoreContainer: $("#scoreContainer"),
   resultsPanel: $("#resultsPanel"), resultsBody: $("#resultsBody"), resultsSummary: $("#resultsSummary"),
   coachLevel: $("#coachLevel"), coachIntro: $("#coachIntro"), coachObservations: $("#coachObservations"),
-  performancePlayback: $("#performancePlayback"), performanceAudio: $("#performanceAudio"), performanceRestart: $("#performanceRestart"), performancePlay: $("#performancePlay"), performancePause: $("#performancePause"), performanceSeek: $("#performanceSeek"), performanceCurrentTime: $("#performanceCurrentTime"), performanceDuration: $("#performanceDuration"), performanceVolume: $("#performanceVolume"), reviewLayerInputs: [...document.querySelectorAll("[data-review-layer]")],
+  performancePlayback: $("#performancePlayback"), performanceAudio: $("#performanceAudio"), performanceRestart: $("#performanceRestart"), performancePlay: $("#performancePlay"), performancePause: $("#performancePause"), performanceSeek: $("#performanceSeek"), performanceCurrentTime: $("#performanceCurrentTime"), performanceDuration: $("#performanceDuration"), reviewLayerInputs: [...document.querySelectorAll("[data-review-layer]")], reviewVolumeInputs: [...document.querySelectorAll("[data-review-volume]")], reviewVolumeOutputs: [...document.querySelectorAll("[data-review-volume-output]")],
   expectedLabel: $("#expectedLabel"), expectedNote: $("#expectedNote"), expectedPosition: $("#expectedPosition"), detectedNote: $("#detectedNote"), detectedFrequency: $("#detectedFrequency"), tuningMeter: $("#tuningMeter"), tuningPhase: $("#tuningPhase"), gaugeNeedle: $("#gaugeNeedle"), centsOutput: $("#centsOutput"),
   statusCard: $("#statusCard"), statusTitle: $("#statusTitle"), statusCopy: $("#statusCopy"), sampleCount: $("#sampleCount"), finishButton: $("#finishButton"),
   pitchDiagnostics: $("#pitchDiagnostics"), diagRawHz: $("#diagRawHz"), diagRawMidi: $("#diagRawMidi"), diagFilteredHz: $("#diagFilteredHz"), diagFilteredMidi: $("#diagFilteredMidi"), diagClarity: $("#diagClarity"), diagRms: $("#diagRms"), diagTarget: $("#diagTarget"), diagCents: $("#diagCents"), diagState: $("#diagState"), diagUsableFrames: $("#diagUsableFrames"), diagBelowGate: $("#diagBelowGate"), diagLowClarity: $("#diagLowClarity"), diagIsolatedJump: $("#diagIsolatedJump"), diagOctaveAmbiguity: $("#diagOctaveAmbiguity"), diagOutOfRange: $("#diagOutOfRange"), diagAccepted: $("#diagAccepted"), pitchSelfTest: $("#pitchSelfTest"), pitchSelfTestResult: $("#pitchSelfTestResult"),
@@ -88,6 +88,7 @@ const state = {
   microphoneCalibration: loadMicrophoneCalibration(),
   countInBars: DEFAULT_COUNT_IN_BARS,
   octaveShift: DEFAULT_OCTAVE_SHIFT,
+  sessionOctaveShift: null,
   automaticOctave: true,
   octaveSelector: new AutomaticOctaveSelector(),
   currentSessionComfortableFrequency: null,
@@ -100,6 +101,7 @@ const state = {
   recording: null,
   activeTake: null,
   reviewLayers: reviewLayers(),
+  reviewVolumes: reviewVolumes(),
   reviewSyncFrame: null,
   reviewPlaying: false,
   reviewActivationToken: 0,
@@ -470,7 +472,7 @@ function setCountInBars(value) {
 }
 
 function setOctaveShift(value, { manual = false, confirmed = false } = {}) {
-  if (audio.isPlaying || audio.isPaused || audio.isCountingIn) return;
+  if (state.sessionOctaveShift !== null || audio.isPlaying || audio.isPaused || audio.isCountingIn) return;
   const nextShift = [-12, 0, 12].includes(Number(value)) ? Number(value) : 0;
   if (manual) setAutomaticOctave(false, { preserveShift: true });
   const changed = nextShift !== state.octaveShift;
@@ -501,6 +503,20 @@ function setOctaveShift(value, { manual = false, confirmed = false } = {}) {
   }
   updateOctaveHint(noteAtQuarter(selectedPart()?.vocalTimeline || [], audio.currentQuarter) || selectedPart()?.vocalTimeline[0]);
   updatePosition(audio.currentQuarter);
+}
+
+function effectiveOctaveShift() {
+  return state.sessionOctaveShift ?? state.octaveShift;
+}
+
+function lockSessionOctave() {
+  if (state.sessionOctaveShift === null) state.sessionOctaveShift = state.octaveShift;
+  return state.sessionOctaveShift;
+}
+
+function unlockSessionOctave() {
+  state.sessionOctaveShift = null;
+  if (state.automaticOctave) state.octaveSelector.reset();
 }
 
 function setAutomaticOctave(enabled, { preserveShift = false } = {}) {
@@ -536,8 +552,8 @@ function applyComfortableOctaveSuggestion() {
 }
 
 function maybeConfirmAutomaticOctave(sample, targetInfo, phase) {
-  if (!state.automaticOctave || phase !== "preparation" || targetInfo?.kind !== "starting") return;
-  const sungMidi = Number.isFinite(sample.rawMidi) ? sample.rawMidi : visualMidiForSample(sample);
+  if (state.sessionOctaveShift !== null || !state.automaticOctave || phase !== "preparation" || targetInfo?.kind !== "starting") return;
+  const sungMidi = visualMidiForSample(sample);
   const confirmation = state.octaveSelector.observe({
     sungMidi,
     writtenMidi: targetInfo.note?.midi,
@@ -553,7 +569,7 @@ async function hearStartingNote() {
   if (!starting) return;
   els.hearStartingNote.disabled = true;
   try {
-    await audio.previewPitch(starting.midi + state.octaveShift);
+    await audio.previewPitch(starting.midi + effectiveOctaveShift());
   } catch (error) {
     console.error(error);
     toast("The starting note could not play.");
@@ -587,20 +603,21 @@ function tuningTarget(quarter = audio.currentQuarter, phase = tuningPhase()) {
 
 function targetMidiAtQuarter(quarter) {
   const target = tuningTarget(quarter).note;
-  return target ? target.midi + state.octaveShift : null;
+  return target ? target.midi + effectiveOctaveShift() : null;
 }
 
 function soundingTargetName(note) {
-  return note ? midiToName(note.midi + state.octaveShift) : "Rest";
+  return note ? midiToName(note.midi + effectiveOctaveShift()) : "Rest";
 }
 
 function updateOctaveHint(note) {
+  const octaveShift = effectiveOctaveShift();
   const direction = state.automaticOctave
     ? "Automatic octave"
-    : state.octaveShift < 0 ? "Sing octave lower" : state.octaveShift > 0 ? "Sing octave higher" : "Sing written pitch";
+    : octaveShift < 0 ? "Sing octave lower" : octaveShift > 0 ? "Sing octave higher" : "Sing written pitch";
   els.octaveHint.textContent = note ? `${direction} — sounding target ${soundingTargetName(note)}` : `${direction} — sounding target rests`;
   els.startingNoteName.textContent = selectedPart()?.vocalTimeline?.[0]
-    ? midiToName(selectedPart().vocalTimeline[0].midi + state.octaveShift)
+    ? midiToName(selectedPart().vocalTimeline[0].midi + octaveShift)
     : "—";
 }
 
@@ -629,7 +646,7 @@ function setTuningMeterInactive(message = "Listening…") {
 function renderLiveTuning(sample, targetInfo) {
   const midi = visualMidiForSample(sample);
   if (!Number.isFinite(midi) || !targetInfo?.note) return;
-  const targetMidi = targetInfo.note.midi + state.octaveShift;
+  const targetMidi = targetInfo.note.midi + effectiveOctaveShift();
   const cents = (midi - targetMidi) * 100;
   const feedback = state.liveTuningFeedback.accept({ midi, cents }, sample.capturedAt);
   const displayCents = Math.max(-LIVE_TUNING_CONFIG.displayRangeCents, Math.min(LIVE_TUNING_CONFIG.displayRangeCents, cents));
@@ -739,6 +756,8 @@ async function play() {
   if (!state.score || state.rendering || state.microphonePreparing) return;
   stopPerformanceReview({ resetCursorPosition: false });
   const mode = MODE_CONFIG[state.mode];
+  const freshStart = !audio.isPaused && audio.currentQuarter < 0.01;
+  const takeOctaveShift = freshStart ? lockSessionOctave() : effectiveOctaveShift();
   const freshAssessment = mode.microphone && !audio.isPaused && audio.currentQuarter < 0.01;
   if (freshAssessment) {
     state.samples = [];
@@ -748,7 +767,7 @@ async function play() {
     state.activeTake = createTakeMetadata({
       tempoPercent: audio.tempoPercent,
       bpm: audio.bpm,
-      octaveShift: state.octaveShift,
+      octaveShift: takeOctaveShift,
       enabledPartIds: [...state.enabledParts],
       guideEnabled: mode.guide,
       durationSeconds: audio.durationSeconds,
@@ -767,13 +786,14 @@ async function play() {
       guideEnabled: mode.guide,
       enabledPartIds: [...state.enabledParts],
       assessmentMode: mode.microphone,
-      vocalOctaveSemitones: state.octaveShift,
+      vocalOctaveSemitones: takeOctaveShift,
       countInBars: state.countInBars,
       targetMidiAtQuarter: targetMidiAtQuarter,
     });
     setPlaybackState("playing");
     startSync();
   } catch (error) {
+    if (!audio.isPlaying && !audio.isPaused) unlockSessionOctave();
     if (error?.name === "AbortError") {
       setPlaybackState("stopped");
       return;
@@ -803,6 +823,7 @@ async function stop({ keepSamples = true, completeAssessment = true } = {}) {
     return;
   }
   audio.stop({ reset: true, microphone: !MODE_CONFIG[state.mode].microphone });
+  unlockSessionOctave();
   cancelAnimationFrame(state.syncFrame);
   setPlaybackState("stopped");
   resetCursor();
@@ -819,6 +840,7 @@ async function stop({ keepSamples = true, completeAssessment = true } = {}) {
 async function restartTransport() {
   if (audio.hasActivePerformanceRecording) await audio.finishPerformanceRecording();
   audio.stop({ reset: true, microphone: !MODE_CONFIG[state.mode].microphone });
+  unlockSessionOctave();
   audio.discardPerformanceRecording();
   cancelAnimationFrame(state.syncFrame);
   state.samples = [];
@@ -913,8 +935,9 @@ function updatePosition(quarter) {
   if (expected) {
     els.expectedLabel.textContent = targetInfo.kind === "starting" ? "Starting note" : targetInfo.kind === "next" ? "Next note" : "Expected note";
     els.expectedNote.textContent = soundingTargetName(expected);
-    const octave = state.octaveShift < 0 ? "Octave lower" : state.octaveShift > 0 ? "Octave higher" : "";
-    const written = state.octaveShift ? `written ${expected.displayPitch}` : "";
+    const octaveShift = effectiveOctaveShift();
+    const octave = octaveShift < 0 ? "Octave lower" : octaveShift > 0 ? "Octave higher" : "";
+    const written = octaveShift ? `written ${expected.displayPitch}` : "";
     els.expectedPosition.textContent = [octave, written, `Measure ${expected.measureNumber} · beat ${formatBeat(expected.beatPosition)}`].filter(Boolean).join(" · ");
   } else {
     els.expectedLabel.textContent = "Next note";
@@ -986,7 +1009,7 @@ function handlePitchSample(sample) {
   state.acceptedSamples.push({ ...sample });
   const target = currentTargetInfo.note;
   const midi = Number.isFinite(sample.filteredMidi) ? sample.filteredMidi : frequencyToMidi(sample.frequency);
-  const targetMidi = target.midi + state.octaveShift;
+  const targetMidi = target.midi + effectiveOctaveShift();
   const cents = (midi - targetMidi) * 100;
   const enriched = { ...sample, midi, cents, targetId: target.id, targetMidi, measureNumber: target.measureNumber };
   const previousSample = state.samples.at(-1);
@@ -1105,9 +1128,11 @@ async function finishAssessment() {
   if (state.finishingAssessment) return;
   state.finishingAssessment = true;
   const hadSamples = state.samples.length > 0;
+  const takeOctaveShift = state.activeTake?.octaveShift ?? effectiveOctaveShift();
   try {
     const recording = await audio.finishPerformanceRecording();
     audio.stop({ reset: true, microphone: !MODE_CONFIG[state.mode].microphone });
+    unlockSessionOctave();
     cancelAnimationFrame(state.syncFrame);
     setPlaybackState("stopped");
     resetCursor();
@@ -1128,8 +1153,8 @@ async function finishAssessment() {
     }
     const soundingTimeline = selectedPart().vocalTimeline.map((note) => ({
       ...note,
-      midi: note.midi + state.octaveShift,
-      displayPitch: midiToName(note.midi + state.octaveShift),
+      midi: note.midi + takeOctaveShift,
+      displayPitch: midiToName(note.midi + takeOctaveShift),
     }));
     const results = analysePerformance(soundingTimeline, state.samples, audio.bpm);
     renderResults(results);
@@ -1159,6 +1184,15 @@ function clearPerformancePlayback() {
   els.reviewLayerInputs.forEach((input) => {
     input.checked = state.reviewLayers[input.dataset.reviewLayer];
   });
+  state.reviewVolumes = reviewVolumes();
+  els.reviewVolumeInputs.forEach((input) => {
+    input.value = String(state.reviewVolumes[input.dataset.reviewVolume]);
+  });
+  renderReviewVolumes();
+  els.performanceAudio.volume = state.reviewVolumes.voice / 100;
+  for (const kind of ["accompaniment", "melody"]) {
+    audio.setReviewVolume(kind, state.reviewVolumes[kind]);
+  }
 }
 
 function attachPerformanceRecording(recording) {
@@ -1168,7 +1202,7 @@ function attachPerformanceRecording(recording) {
   });
   state.recording = { ...recording, take };
   els.performanceAudio.src = recording.url;
-  els.performanceAudio.volume = Number(els.performanceVolume.value) / 100;
+  els.performanceAudio.volume = state.reviewVolumes.voice / 100;
   els.performanceAudio.muted = false;
   els.performancePlayback.hidden = false;
   const duration = Number(recording.durationSeconds) || 0;
@@ -1184,17 +1218,43 @@ function currentReviewLayers() {
   return state.reviewLayers;
 }
 
+function currentReviewVolumes() {
+  state.reviewVolumes = reviewVolumes(Object.fromEntries(
+    els.reviewVolumeInputs.map((input) => [input.dataset.reviewVolume, input.value]),
+  ));
+  return state.reviewVolumes;
+}
+
+function renderReviewVolumes() {
+  els.reviewVolumeOutputs.forEach((output) => {
+    output.textContent = `${state.reviewVolumes[output.dataset.reviewVolumeOutput]}%`;
+  });
+}
+
+function updateReviewVolume(kind, value) {
+  state.reviewVolumes = reviewVolumes({ ...state.reviewVolumes, [kind]: value });
+  renderReviewVolumes();
+  if (kind === "voice") {
+    els.performanceAudio.volume = state.reviewVolumes.voice / 100;
+  } else {
+    audio.setReviewVolume(kind, state.reviewVolumes[kind]);
+  }
+}
+
 async function startPerformanceReview() {
   if (!state.recording || els.performanceAudio.paused) return;
   const token = ++state.reviewActivationToken;
   state.reviewPlaying = true;
   const layers = currentReviewLayers();
+  const volumes = currentReviewVolumes();
   els.performanceAudio.muted = !layers.voice;
+  els.performanceAudio.volume = volumes.voice / 100;
   audio.pausePitchSampling();
   await audio.startReview({
     currentSeconds: els.performanceAudio.currentTime,
     take: state.recording.take,
     layers,
+    volumes,
   });
   if (token !== state.reviewActivationToken || els.performanceAudio.paused) {
     audio.stopReview();
@@ -1259,7 +1319,7 @@ function seekPerformanceReview() {
   const quarter = reviewQuarterAtSeconds(seconds, state.recording.take.bpm);
   updateReviewScorePosition(quarter);
   if (state.reviewPlaying) {
-    void audio.resynchroniseReview(seconds, state.recording.take, currentReviewLayers());
+    void audio.resynchroniseReview(seconds, state.recording.take, currentReviewLayers(), currentReviewVolumes());
   }
   updatePerformancePosition();
 }
@@ -1271,7 +1331,7 @@ function restartPerformanceReview() {
   updateReviewScorePosition(0);
   updatePerformancePosition();
   if (wasPlaying) {
-    void audio.resynchroniseReview(0, state.recording.take, currentReviewLayers());
+    void audio.resynchroniseReview(0, state.recording.take, currentReviewLayers(), currentReviewVolumes());
   } else {
     els.performanceAudio.play().catch(() => toast("The captured audio could not play."));
   }
@@ -1281,7 +1341,7 @@ function updateReviewLayers() {
   const layers = currentReviewLayers();
   els.performanceAudio.muted = !layers.voice;
   if (state.reviewPlaying && state.recording) {
-    void audio.resynchroniseReview(els.performanceAudio.currentTime, state.recording.take, layers);
+    void audio.resynchroniseReview(els.performanceAudio.currentTime, state.recording.take, layers, currentReviewVolumes());
   }
 }
 
@@ -1387,6 +1447,7 @@ function resetControls() {
   state.rawSamples = [];
   state.acceptedSamples = [];
   state.activeTake = null;
+  state.sessionOctaveShift = null;
   resetPitchDiagnostics();
   state.mode = "practice";
   state.microphoneActivationToken += 1;
@@ -1430,6 +1491,7 @@ function resetToUpload() {
   state.score = null; state.selectedPartId = null; state.samples = []; state.rawSamples = []; state.acceptedSamples = []; state.osmd = null; state.cursor = null; state.cursorTimeline = []; state.cursorIndex = 0; state.scoreGeometry = new Map();
   state.currentSessionComfortableFrequency = null;
   state.activeTake = null;
+  state.sessionOctaveShift = null;
   resetPitchDiagnostics();
   document.body.classList.remove("microphone-mode");
   els.scoreContainer.innerHTML = "";
@@ -1515,7 +1577,9 @@ function wireEvents() {
   els.performancePause.addEventListener("click", () => els.performanceAudio.pause());
   els.performanceRestart.addEventListener("click", restartPerformanceReview);
   els.performanceSeek.addEventListener("input", seekPerformanceReview);
-  els.performanceVolume.addEventListener("input", () => { els.performanceAudio.volume = Number(els.performanceVolume.value) / 100; });
+  els.reviewVolumeInputs.forEach((input) => input.addEventListener("input", () => {
+    updateReviewVolume(input.dataset.reviewVolume, input.value);
+  }));
   els.reviewLayerInputs.forEach((input) => input.addEventListener("change", updateReviewLayers));
   els.performanceAudio.addEventListener("timeupdate", updatePerformancePosition);
   els.performanceAudio.addEventListener("durationchange", updatePerformancePosition);

@@ -64,6 +64,116 @@ test("continuity resolves alternating doubled-frequency detector errors", () => 
   assert.ok(Math.abs(detectorCents(doubled.filteredFrequency, 220)) < 2);
 });
 
+test("one-frame upper harmonic never creates a visible accepted-pitch spike", () => {
+  const tracker = new StablePitchTracker();
+  for (let frame = 0; frame < 4; frame += 1) {
+    tracker.process(reliableFrame(midiToFrequency(55), { capturedAt: frame * 46, targetMidi: 55 }));
+  }
+  const harmonic = tracker.process(reliableFrame(midiToFrequency(67), {
+    capturedAt: 184,
+    targetMidi: 55,
+    corroboratingFrequency: midiToFrequency(55),
+  }));
+  const recovered = tracker.process(reliableFrame(midiToFrequency(55), { capturedAt: 230, targetMidi: 55 }));
+  assert.equal(harmonic.status, "accepted");
+  assert.equal(harmonic.octaveCorrection, -12);
+  assert.ok(Math.abs(harmonic.filteredMidi - 55) < 0.05);
+  assert.ok(Math.abs(recovered.filteredMidi - 55) < 0.05);
+});
+
+test("harmonic memory survives a 500 ms dropout after ordinary continuity expires", () => {
+  const tracker = new StablePitchTracker();
+  for (let frame = 0; frame < 4; frame += 1) {
+    tracker.process(reliableFrame(midiToFrequency(55), { capturedAt: frame * 46, targetMidi: 55 }));
+  }
+  const afterDropout = tracker.process(reliableFrame(midiToFrequency(67), {
+    capturedAt: 638,
+    targetMidi: 55,
+    corroboratingFrequency: midiToFrequency(55),
+  }));
+  assert.equal(afterDropout.status, "accepted");
+  assert.equal(afterDropout.octaveCorrection, -12);
+  assert.ok(Math.abs(afterDropout.filteredMidi - 55) < 0.05);
+  assert.equal(tracker.recentHarmonicReference(638).capturedAt, 638, "corroborated fundamental evidence should refresh harmonic memory");
+});
+
+test("a notated G3 to G4 octave change is accepted immediately", () => {
+  const tracker = new StablePitchTracker();
+  for (let frame = 0; frame < 3; frame += 1) {
+    tracker.process(reliableFrame(midiToFrequency(55), { capturedAt: frame * 46, targetMidi: 55 }));
+  }
+  const changed = tracker.process(reliableFrame(midiToFrequency(67), { capturedAt: 138, targetMidi: 67 }));
+  assert.equal(changed.status, "accepted");
+  assert.equal(changed.octaveCorrection, 0);
+  assert.ok(Math.abs(changed.filteredMidi - 67) < 0.05);
+});
+
+test("a legitimate C4 to G4 score-led interval remains immediate", () => {
+  const tracker = new StablePitchTracker();
+  tracker.process(reliableFrame(midiToFrequency(60), { capturedAt: 0, targetMidi: 60 }));
+  tracker.process(reliableFrame(midiToFrequency(60), { capturedAt: 46, targetMidi: 60 }));
+  const changed = tracker.process(reliableFrame(midiToFrequency(67), { capturedAt: 92, targetMidi: 67 }));
+  assert.equal(changed.status, "accepted");
+  assert.ok(Math.abs(changed.filteredMidi - 67) < 0.05);
+});
+
+test("a dominant second harmonic stays on the corroborated fundamental", () => {
+  const tracker = new StablePitchTracker();
+  for (let frame = 0; frame < 4; frame += 1) {
+    tracker.process(reliableFrame(midiToFrequency(55), { capturedAt: frame * 46, targetMidi: 55 }));
+  }
+  const harmonicFrames = Array.from({ length: 36 }, (_, index) => tracker.process(reliableFrame(midiToFrequency(67), {
+    capturedAt: 184 + index * 46,
+    targetMidi: 55,
+    corroboratingFrequency: midiToFrequency(55),
+  })));
+  assert.ok(harmonicFrames.every((sample) => sample.status === "accepted" && sample.octaveCorrection === -12));
+  assert.ok(harmonicFrames.every((sample) => Math.abs(sample.filteredMidi - 55) < 0.05));
+});
+
+test("an unnotated genuine octave needs three corroborated frames before unlocking", () => {
+  const tracker = new StablePitchTracker();
+  for (let frame = 0; frame < 4; frame += 1) {
+    tracker.process(reliableFrame(midiToFrequency(55), { capturedAt: frame * 46, targetMidi: 55 }));
+  }
+  const octaveFrames = [184, 230, 276].map((capturedAt) => tracker.process(reliableFrame(midiToFrequency(67), {
+    capturedAt,
+    targetMidi: 55,
+    corroboratingFrequency: midiToFrequency(67),
+  })));
+  assert.ok(octaveFrames.slice(0, 2).every((sample) => sample.octaveCorrection === -12 && Math.abs(sample.filteredMidi - 55) < 0.05));
+  assert.equal(octaveFrames[2].octaveCorrection, 0);
+  assert.ok(Math.abs(octaveFrames[2].filteredMidi - 67) < 0.05);
+});
+
+test("an uncorroborated but persistent octave is accepted after about 250 ms", () => {
+  const tracker = new StablePitchTracker();
+  for (let frame = 0; frame < 4; frame += 1) {
+    tracker.process(reliableFrame(midiToFrequency(55), { capturedAt: frame * 46, targetMidi: 55 }));
+  }
+  const octaveFrames = Array.from({ length: 7 }, (_, index) => tracker.process(reliableFrame(midiToFrequency(67), {
+    capturedAt: 184 + index * 46,
+    targetMidi: 55,
+  })));
+  assert.ok(octaveFrames.slice(0, 6).every((sample) => sample.octaveCorrection === -12));
+  assert.equal(octaveFrames[6].octaveCorrection, 0);
+  assert.ok(Math.abs(octaveFrames[6].filteredMidi - 67) < 0.05);
+});
+
+test("brief lower-octave ambiguity is corrected symmetrically", () => {
+  const tracker = new StablePitchTracker();
+  for (let frame = 0; frame < 4; frame += 1) {
+    tracker.process(reliableFrame(midiToFrequency(67), { capturedAt: frame * 46, targetMidi: 67 }));
+  }
+  const lower = tracker.process(reliableFrame(midiToFrequency(55), {
+    capturedAt: 184,
+    targetMidi: 67,
+    corroboratingFrequency: midiToFrequency(67),
+  }));
+  assert.equal(lower.octaveCorrection, 12);
+  assert.ok(Math.abs(lower.filteredMidi - 67) < 0.05);
+});
+
 test("the expected note never snaps a genuinely wrong first pitch into tune", () => {
   const tracker = new StablePitchTracker();
   const wrong = tracker.process(reliableFrame(440, { targetMidi: 57 }));

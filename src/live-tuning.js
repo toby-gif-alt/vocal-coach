@@ -1,4 +1,4 @@
-import { LIVE_TUNING_CONFIG } from "./config.js?v=15";
+import { LIVE_TUNING_CONFIG } from "./config.js?v=17";
 
 export function tuningTargetAtQuarter(timeline, quarter, phase = "preparation") {
   const safeTimeline = Array.isArray(timeline) ? timeline : [];
@@ -23,8 +23,6 @@ export function assessmentSampleEligible({ phase, targetKind }) {
 
 export function visualMidiForSample(sample) {
   if (!sample) return null;
-  if (sample.octaveCorrection && Number.isFinite(sample.filteredMidi)) return sample.filteredMidi;
-  if (Number.isFinite(sample.rawMidi)) return sample.rawMidi;
   return Number.isFinite(sample.filteredMidi) ? sample.filteredMidi : null;
 }
 

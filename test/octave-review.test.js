@@ -7,7 +7,7 @@ import {
   closestOctaveCandidate,
   suggestOctaveFromComfortablePitch,
 } from "../src/octave-selection.js";
-import { createTakeMetadata, reviewDriftSeconds, reviewLayers, reviewQuarterAtSeconds } from "../src/review-playback.js";
+import { createTakeMetadata, reviewDriftSeconds, reviewLayers, reviewQuarterAtSeconds, reviewVolumes } from "../src/review-playback.js";
 
 test("live octave selection confirms a stable matching pitch class", () => {
   const selector = new AutomaticOctaveSelector({ stableDurationMs: 500 });
@@ -70,5 +70,14 @@ test("review layer defaults and independent combinations are preserved", () => {
     voice: false,
     accompaniment: true,
     melody: true,
+  });
+});
+
+test("review volumes have independent balanced defaults and clamp safely", () => {
+  assert.deepEqual(reviewVolumes(), { voice: 100, accompaniment: 68, melody: 60 });
+  assert.deepEqual(reviewVolumes({ voice: 42, accompaniment: 35, melody: 110 }), {
+    voice: 42,
+    accompaniment: 35,
+    melody: 100,
   });
 });

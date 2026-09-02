@@ -50,10 +50,11 @@ test("the visual tuner holds a real sample briefly, then listens without inventi
   });
 });
 
-test("reliable visual samples react directly to a deliberate pitch slide", () => {
+test("reliable visual samples use the same accepted fundamental as assessment", () => {
   const feedback = new LiveTuningFeedback();
   const path = [-35, -20, -8, 0, 10];
   assert.deepEqual(path.map((cents, index) => feedback.accept({ cents }, index * 46).value.cents), path);
-  assert.equal(visualMidiForSample({ rawMidi: 63.6, filteredMidi: 63.8, octaveCorrection: 0 }), 63.6);
+  assert.equal(visualMidiForSample({ rawMidi: 63.6, filteredMidi: 63.8, octaveCorrection: 0 }), 63.8);
   assert.equal(visualMidiForSample({ rawMidi: 76, filteredMidi: 64, octaveCorrection: -12 }), 64);
+  assert.equal(visualMidiForSample({ rawMidi: 63.6, filteredMidi: null, octaveCorrection: 0 }), null);
 });

@@ -1,3 +1,10 @@
+import { REVIEW_CONFIG } from "./config.js?v=17";
+
+function clampVolume(value, fallback) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? Math.max(0, Math.min(100, numeric)) : fallback;
+}
+
 export function reviewQuarterAtSeconds(seconds, bpm) {
   const safeSeconds = Math.max(0, Number(seconds) || 0);
   return Number(bpm) > 0 ? safeSeconds * Number(bpm) / 60 : 0;
@@ -33,5 +40,13 @@ export function reviewLayers(value = {}) {
     voice: value.voice !== false,
     accompaniment: value.accompaniment !== false,
     melody: value.melody === true,
+  };
+}
+
+export function reviewVolumes(value = {}) {
+  return {
+    voice: clampVolume(value.voice, REVIEW_CONFIG.defaultVoiceVolume),
+    accompaniment: clampVolume(value.accompaniment, REVIEW_CONFIG.defaultAccompanimentVolume),
+    melody: clampVolume(value.melody, REVIEW_CONFIG.defaultMelodyVolume),
   };
 }

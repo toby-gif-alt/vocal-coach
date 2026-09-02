@@ -33,7 +33,16 @@ export const PITCH_TRACKER_CONFIG = Object.freeze({
   octaveMatchCents: 110,
   jumpClusterCents: 90,
   jumpConfirmationFrames: 2,
-  octavePersistenceFrames: 7,
+  // Ordinary reacquisition may forget continuity quickly, but octave
+  // disambiguation keeps its own last reliable fundamental through a short
+  // dropout. This prevents a returning second harmonic becoming a trace spike.
+  harmonicMemoryMs: 1400,
+  octavePersistenceFrames: 6,
+  octavePersistenceMs: 240,
+  octaveStrongEvidenceFrames: 3,
+  detectorEvidenceAdvantageCents: 160,
+  targetEvidenceAdvantageCents: 500,
+  targetTransitionToleranceCents: 180,
   reacquireAfterMs: 460,
   // Acquisition remains strict. These settings are only used after several
   // recent reliable frames prove that a singer is already vocalising.
@@ -62,6 +71,9 @@ export const OCTAVE_SELECTION_CONFIG = Object.freeze({
 export const REVIEW_CONFIG = Object.freeze({
   driftCheckIntervalMs: 240,
   maximumDriftSeconds: 0.075,
+  defaultVoiceVolume: 100,
+  defaultAccompanimentVolume: 68,
+  defaultMelodyVolume: 60,
 });
 
 export const PLAYBACK_CONFIG = Object.freeze({

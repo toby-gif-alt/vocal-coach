@@ -15,11 +15,11 @@
     <meta name="twitter:image" content="https://toby-gif-alt.github.io/vocal-coach/og.png" />
     <title>Vocal Coach — Practise from the score</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%2317382f'/%3E%3Cpath d='M14 34c7 0 7-15 14-15s7 27 14 27 7-16 8-16' fill='none' stroke='%23d7ff72' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="./styles.css?v=15" />
+    <link rel="stylesheet" href="./styles.css?v=16" />
     <script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@2.1.2/build/opensheetmusicdisplay.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/tone@15.1.22/build/Tone.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" defer></script>
-    <script type="module" src="./app.js?v=17"></script>
+    <script type="module" src="./app.js?v=18"></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to the app</a>
@@ -194,7 +194,11 @@
                   <button id="performancePause" type="button" disabled>⏸ <span>Pause</span></button>
                 </div>
                 <label class="performance-seek" for="performanceSeek"><time id="performanceCurrentTime">00:00</time><input id="performanceSeek" type="range" min="0" max="0" value="0" step="0.01" aria-label="Seek through captured performance" /><time id="performanceDuration">00:00</time></label>
-                <label class="performance-volume" for="performanceVolume"><span>Volume</span><input id="performanceVolume" type="range" min="0" max="100" value="90" step="5" /></label>
+                <div class="performance-mixer" aria-label="Review volume controls">
+                  <label for="performanceVolume"><strong>My voice</strong><span><i aria-hidden="true">🔊</i><input id="performanceVolume" data-review-volume="voice" type="range" min="0" max="100" value="100" step="1" aria-label="My voice review volume" /><output data-review-volume-output="voice" for="performanceVolume">100%</output></span></label>
+                  <label for="reviewAccompanimentVolume"><strong>Accompaniment</strong><span><i aria-hidden="true">🔊</i><input id="reviewAccompanimentVolume" data-review-volume="accompaniment" type="range" min="0" max="100" value="68" step="1" aria-label="Accompaniment review volume" /><output data-review-volume-output="accompaniment" for="reviewAccompanimentVolume">68%</output></span></label>
+                  <label for="reviewMelodyVolume"><strong>Melody guide</strong><span><i aria-hidden="true">🔊</i><input id="reviewMelodyVolume" data-review-volume="melody" type="range" min="0" max="100" value="60" step="1" aria-label="Melody guide review volume" /><output data-review-volume-output="melody" for="reviewMelodyVolume">60%</output></span></label>
+                </div>
                 <p>The recording stays in this tab and is never uploaded.</p>
               </section>
               <div class="coach-observations" id="coachObservations"></div>
@@ -221,7 +225,7 @@
               <p id="diagState">No reliable pitch</p>
               <section class="diagnostic-breakdown" aria-label="Current take rejection breakdown">
                 <strong>Usable vocal frames: <span id="diagUsableFrames">0%</span></strong>
-                <dl><div><dt>Below gate</dt><dd id="diagBelowGate">0</dd></div><div><dt>Low clarity</dt><dd id="diagLowClarity">0</dd></div><div><dt>Isolated jump</dt><dd id="diagIsolatedJump">0</dd></div><div><dt>Octave ambiguity</dt><dd id="diagOctaveAmbiguity">0</dd></div><div><dt>Out of range</dt><dd id="diagOutOfRange">0</dd></div><div><dt>Accepted</dt><dd id="diagAccepted">0</dd></div></dl>
+                <dl><div><dt>Below gate</dt><dd id="diagBelowGate">0</dd></div><div><dt>Low clarity</dt><dd id="diagLowClarity">0</dd></div><div><dt>Isolated jump</dt><dd id="diagIsolatedJump">0</dd></div><div><dt>Harmonic/octave corrections</dt><dd id="diagOctaveAmbiguity">0</dd></div><div><dt>Out of range</dt><dd id="diagOutOfRange">0</dd></div><div><dt>Accepted</dt><dd id="diagAccepted">0</dd></div></dl>
               </section>
               <button type="button" id="pitchSelfTest">Run isolated-tone self-test</button>
               <output id="pitchSelfTestResult">Not run</output>
