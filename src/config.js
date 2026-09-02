@@ -37,6 +37,13 @@ export const PITCH_TRACKER_CONFIG = Object.freeze({
   reacquireAfterMs: 460,
 });
 
+export const LIVE_TUNING_CONFIG = Object.freeze({
+  // Rejected frames never become assessment data. This short hold is visual
+  // only, preventing the tuner from snapping to centre between reliable frames.
+  dropoutGraceMs: 170,
+  displayRangeCents: 50,
+});
+
 export const PLAYBACK_CONFIG = Object.freeze({
   defaultGuideVolume: 92,
   defaultAccompanimentVolume: 72,

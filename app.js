@@ -1,4 +1,4 @@
-import { AudioEngine } from "./src/audio-engine.js?v=14";
+import { AudioEngine } from "./src/audio-engine.js?v=15";
 import { analysePerformance, performanceSummary } from "./src/analysis.js?v=14";
 import { buildCoachingFeedback } from "./src/coaching.js?v=14";
 import {
@@ -7,6 +7,7 @@ import {
   DEFAULT_COUNT_IN_BARS,
   DEFAULT_MICROPHONE_SENSITIVITY,
   DEFAULT_OCTAVE_SHIFT,
+  LIVE_TUNING_CONFIG,
   MICROPHONE_CALIBRATION,
   PLAYBACK_CONFIG,
   SESSION_MODES,
@@ -14,7 +15,13 @@ import {
   frequencyToMidi,
   midiToName,
   PITCH_THRESHOLDS,
-} from "./src/config.js?v=14";
+} from "./src/config.js?v=15";
+import {
+  assessmentSampleEligible,
+  LiveTuningFeedback,
+  tuningTargetAtQuarter,
+  visualMidiForSample,
+} from "./src/live-tuning.js?v=15";
 import { normaliseSavedMicrophoneCalibration } from "./src/microphone-calibration.js?v=14";
 import { measureAtQuarter, noteAtQuarter, readScoreFile, readScoreUrl, suggestVocalPart } from "./src/musicxml.js?v=14";
 import { detectAutocorrelationPitch, StablePitchTracker } from "./src/pitch-tracker.js?v=14";
@@ -50,7 +57,7 @@ const els = {
   resultsPanel: $("#resultsPanel"), resultsBody: $("#resultsBody"), resultsSummary: $("#resultsSummary"),
   coachLevel: $("#coachLevel"), coachIntro: $("#coachIntro"), coachObservations: $("#coachObservations"),
   performancePlayback: $("#performancePlayback"), performanceAudio: $("#performanceAudio"), performanceRestart: $("#performanceRestart"), performancePlay: $("#performancePlay"), performancePause: $("#performancePause"), performanceSeek: $("#performanceSeek"), performanceCurrentTime: $("#performanceCurrentTime"), performanceDuration: $("#performanceDuration"), performanceVolume: $("#performanceVolume"),
-  expectedNote: $("#expectedNote"), expectedPosition: $("#expectedPosition"), detectedNote: $("#detectedNote"), detectedFrequency: $("#detectedFrequency"), gaugeNeedle: $("#gaugeNeedle"), centsOutput: $("#centsOutput"),
+  expectedLabel: $("#expectedLabel"), expectedNote: $("#expectedNote"), expectedPosition: $("#expectedPosition"), detectedNote: $("#detectedNote"), detectedFrequency: $("#detectedFrequency"), tuningMeter: $("#tuningMeter"), tuningPhase: $("#tuningPhase"), gaugeNeedle: $("#gaugeNeedle"), centsOutput: $("#centsOutput"),
   statusCard: $("#statusCard"), statusTitle: $("#statusTitle"), statusCopy: $("#statusCopy"), sampleCount: $("#sampleCount"), finishButton: $("#finishButton"),
   pitchDiagnostics: $("#pitchDiagnostics"), diagRawHz: $("#diagRawHz"), diagRawMidi: $("#diagRawMidi"), diagFilteredHz: $("#diagFilteredHz"), diagFilteredMidi: $("#diagFilteredMidi"), diagClarity: $("#diagClarity"), diagRms: $("#diagRms"), diagTarget: $("#diagTarget"), diagCents: $("#diagCents"), diagState: $("#diagState"), pitchSelfTest: $("#pitchSelfTest"), pitchSelfTestResult: $("#pitchSelfTestResult"),
   helpButton: $("#helpButton"), helpDialog: $("#helpDialog"), toast: $("#toast"),
@@ -87,6 +94,9 @@ const state = {
   finishingAssessment: false,
   recording: null,
   recordingAvailable: true,
+  liveTuningFeedback: new LiveTuningFeedback(),
+  microphoneActivationToken: 0,
+  microphonePreparing: false,
 };
 
 const audio = new AudioEngine({
@@ -419,7 +429,10 @@ async function recheckMicrophone() {
   setTransportBusy(true);
   els.recheckMicrophoneButton.disabled = true;
   try {
-    const calibration = await audio.recheckMicrophone();
+    const calibration = await audio.recheckMicrophone({
+      keepActive: MODE_CONFIG[state.mode].microphone,
+      targetMidiAtQuarter,
+    });
     if (calibration?.signalGood) toast("Microphone ready — signal good.");
     else toast("Move a little closer to your microphone and try again.");
   } catch (error) {
@@ -446,6 +459,7 @@ function setCountInBars(value) {
 function setOctaveShift(value) {
   if (audio.isPlaying || audio.isPaused || audio.isCountingIn) return;
   const nextShift = [-12, 0, 12].includes(Number(value)) ? Number(value) : 0;
+  const changed = nextShift !== state.octaveShift;
   if (nextShift !== state.octaveShift && state.samples.length) {
     state.samples = [];
     state.rawSamples = [];
@@ -453,12 +467,10 @@ function setOctaveShift(value) {
     els.sampleCount.textContent = "0";
     els.resultsPanel.hidden = true;
     els.finishButton.disabled = true;
-    els.detectedNote.textContent = "—";
-    els.detectedFrequency.textContent = "Waiting for your voice";
-    els.centsOutput.textContent = "—";
     renderScoreTrace(els.scoreContainer, state.scoreGeometry, []);
   }
   state.octaveShift = nextShift;
+  if (changed) setTuningMeterInactive("Listening…");
   els.octaveButtons.forEach((button) => {
     const active = Number(button.dataset.octave) === state.octaveShift;
     button.classList.toggle("active", active);
@@ -482,8 +494,18 @@ function updateVolume(kind, value) {
   }
 }
 
+function tuningPhase() {
+  if (audio.isCountingIn) return "count-in";
+  if (audio.isPlaying) return "performance";
+  return "preparation";
+}
+
+function tuningTarget(quarter = audio.currentQuarter, phase = tuningPhase()) {
+  return tuningTargetAtQuarter(selectedPart()?.vocalTimeline || [], quarter, phase);
+}
+
 function targetMidiAtQuarter(quarter) {
-  const target = noteAtQuarter(selectedPart()?.vocalTimeline || [], quarter);
+  const target = tuningTarget(quarter).note;
   return target ? target.midi + state.octaveShift : null;
 }
 
@@ -496,8 +518,97 @@ function updateOctaveHint(note) {
   els.octaveHint.textContent = note ? `${direction} — sounding target ${soundingTargetName(note)}` : `${direction} — sounding target rests`;
 }
 
+function phaseLabel(phase = tuningPhase()) {
+  if (phase === "count-in") return "Count-in tuning · not assessed";
+  if (phase === "performance") return "Performance assessment";
+  return MODE_CONFIG[state.mode].microphone ? "Pre-performance tuning · not assessed" : "Practice mode";
+}
+
+function setTuningMeterInactive(message = "Listening…") {
+  state.liveTuningFeedback.reset();
+  els.tuningMeter.classList.add("is-listening");
+  els.tuningMeter.classList.toggle("is-inactive", !MODE_CONFIG[state.mode].microphone);
+  els.tuningMeter.style.setProperty("--tuner-position", "50%");
+  els.tuningMeter.style.setProperty("--tuner-colour", "#82928c");
+  els.tuningMeter.removeAttribute("aria-valuenow");
+  els.tuningMeter.setAttribute("aria-label", `Live tuning: ${message}`);
+  els.detectedNote.textContent = "—";
+  els.detectedFrequency.textContent = MODE_CONFIG[state.mode].microphone ? message : "Choose a microphone mode to listen";
+  els.centsOutput.textContent = message;
+  els.centsOutput.style.color = "";
+  els.tuningPhase.textContent = phaseLabel();
+}
+
+function renderLiveTuning(sample, targetInfo) {
+  const midi = visualMidiForSample(sample);
+  if (!Number.isFinite(midi) || !targetInfo?.note) return;
+  const targetMidi = targetInfo.note.midi + state.octaveShift;
+  const cents = (midi - targetMidi) * 100;
+  const feedback = state.liveTuningFeedback.accept({ midi, cents }, sample.capturedAt);
+  const displayCents = Math.max(-LIVE_TUNING_CONFIG.displayRangeCents, Math.min(LIVE_TUNING_CONFIG.displayRangeCents, cents));
+  const position = 50 - displayCents / (LIVE_TUNING_CONFIG.displayRangeCents * 2) * 100;
+  const colour = colourForCents(cents);
+  els.tuningMeter.classList.remove("is-listening", "is-inactive");
+  els.tuningMeter.style.setProperty("--tuner-position", `${position}%`);
+  els.tuningMeter.style.setProperty("--tuner-colour", colour);
+  els.tuningMeter.setAttribute("aria-valuenow", String(Math.round(displayCents)));
+  els.tuningMeter.setAttribute("aria-label", `Live tuning: ${Math.round(cents)} cents ${cents > 0 ? "sharp" : cents < 0 ? "flat" : "centred"}`);
+  els.detectedNote.textContent = midiToName(feedback.value.midi);
+  els.detectedFrequency.textContent = `${sample.frequency.toFixed(1)} Hz · ${(sample.clarity * 100).toFixed(0)}% clarity`;
+  els.centsOutput.textContent = Math.abs(cents) < 1 ? "Centred" : `${Math.abs(cents).toFixed(0)}c ${cents > 0 ? "sharp" : "flat"}`;
+  els.centsOutput.style.color = colour;
+  els.tuningPhase.textContent = phaseLabel();
+  return { midi, cents };
+}
+
+function renderTuningDropout(sample) {
+  const feedback = state.liveTuningFeedback.reject(sample.capturedAt);
+  if (feedback.status === "active") return;
+  els.tuningMeter.classList.add("is-listening");
+  els.tuningMeter.removeAttribute("aria-valuenow");
+  els.tuningMeter.setAttribute("aria-label", "Live tuning: listening");
+  els.detectedFrequency.textContent = "Listening…";
+  els.centsOutput.textContent = "Listening…";
+  els.centsOutput.style.color = "";
+}
+
+async function activateMicrophonePreparation(token) {
+  state.microphonePreparing = true;
+  els.playButton.disabled = true;
+  els.dockPlayPauseButton.disabled = true;
+  els.recheckMicrophoneButton.disabled = true;
+  try {
+    await audio.startMicrophoneMonitoring(targetMidiAtQuarter);
+    if (token !== state.microphoneActivationToken || !MODE_CONFIG[state.mode].microphone) return;
+    updatePosition(audio.currentQuarter);
+    setStatus("idle", "Find your starting note", "The live tuner is active. These preparation samples are not assessed.");
+  } catch (error) {
+    if (token !== state.microphoneActivationToken) return;
+    if (error?.name === "AbortError" && MODE_CONFIG[state.mode].microphone) {
+      queueMicrotask(() => {
+        if (token === state.microphoneActivationToken) void activateMicrophonePreparation(token);
+      });
+      return;
+    }
+    console.error(error);
+    if (error?.name === "MicrophoneCheckError") toast("Move a little closer to your microphone and try again.");
+    else if (error?.name === "NotAllowedError") toast("Microphone permission was blocked. Allow access or switch to Practice mode.");
+    else toast(error.message || "The microphone could not start.");
+    setStatus("off", "Microphone unavailable", "Allow microphone access or switch to Practice mode.");
+  } finally {
+    if (token === state.microphoneActivationToken) {
+      state.microphonePreparing = false;
+      els.playButton.disabled = false;
+      els.dockPlayPauseButton.disabled = false;
+      els.recheckMicrophoneButton.disabled = false;
+    }
+  }
+}
+
 function setMode(mode) {
   if (!MODE_CONFIG[mode] || audio.isPlaying || audio.isPaused || audio.isCountingIn) return;
+  state.microphoneActivationToken += 1;
+  const activationToken = state.microphoneActivationToken;
   state.mode = mode;
   els.modeButtons.forEach((button) => {
     const active = button.dataset.mode === mode;
@@ -506,22 +617,33 @@ function setMode(mode) {
   });
   const config = MODE_CONFIG[mode];
   els.headphoneNote.hidden = !config.microphone;
+  document.body.classList.toggle("microphone-mode", config.microphone);
   els.transportState.textContent = `${config.label} ready`;
+  els.dockTransportState.textContent = els.transportState.textContent;
+  updatePosition(audio.currentQuarter);
   if (config.microphone) {
+    setTuningMeterInactive("Listening…");
     setStatus(
       "idle",
-      state.microphoneCalibration ? "Microphone ready" : "Microphone Check first",
+      state.microphoneCalibration ? "Starting live tuner…" : "Microphone Check first",
       state.microphoneCalibration
-        ? `Press play to begin ${config.label.toLowerCase()}.`
+        ? "Your saved calibration will be used for pre-performance tuning."
         : "Your first microphone session starts with a short room-and-voice check.",
     );
+    void activateMicrophonePreparation(activationToken);
   } else {
+    state.microphonePreparing = false;
+    audio.stopMicrophone();
+    setTuningMeterInactive("Practice mode");
+    els.playButton.disabled = false;
+    els.dockPlayPauseButton.disabled = false;
+    els.recheckMicrophoneButton.disabled = false;
     setStatus("idle", "Ready when you are", "Practice plays the vocal guide and accompaniment without scoring.");
   }
 }
 
 async function play() {
-  if (!state.score || state.rendering) return;
+  if (!state.score || state.rendering || state.microphonePreparing) return;
   const mode = MODE_CONFIG[state.mode];
   const freshAssessment = mode.microphone && !audio.isPaused && audio.currentQuarter < 0.01;
   if (freshAssessment) {
@@ -576,11 +698,12 @@ async function stop({ keepSamples = true, completeAssessment = true } = {}) {
     await finishAssessment();
     return;
   }
-  audio.stop({ reset: true, microphone: true });
+  audio.stop({ reset: true, microphone: !MODE_CONFIG[state.mode].microphone });
   cancelAnimationFrame(state.syncFrame);
   setPlaybackState("stopped");
   resetCursor();
   updatePosition(0);
+  if (MODE_CONFIG[state.mode].microphone) setStatus("idle", "Find your starting note", "The live tuner is active. Preparation samples are not assessed.");
   if (!keepSamples) {
     state.samples = [];
     els.sampleCount.textContent = "0";
@@ -591,7 +714,7 @@ async function stop({ keepSamples = true, completeAssessment = true } = {}) {
 
 async function restartTransport() {
   if (audio.hasActivePerformanceRecording) await audio.finishPerformanceRecording();
-  audio.stop({ reset: true, microphone: true });
+  audio.stop({ reset: true, microphone: !MODE_CONFIG[state.mode].microphone });
   audio.discardPerformanceRecording();
   cancelAnimationFrame(state.syncFrame);
   state.samples = [];
@@ -604,7 +727,7 @@ async function restartTransport() {
   setPlaybackState("stopped");
   resetCursor();
   updatePosition(0);
-  setStatus("idle", "Back at the beginning", "Press play when you are ready for a new take.");
+  setStatus("idle", "Back at the beginning", MODE_CONFIG[state.mode].microphone ? "Find the starting note, then press Play for a new take." : "Press play when you are ready for a new take.");
 }
 
 function setTransportBusy(busy) {
@@ -677,18 +800,24 @@ function updatePosition(quarter) {
   els.measureNumber.textContent = String(measure);
   els.sideMeasure.textContent = String(measure);
   els.dockMeasure.textContent = String(measure);
-  const expected = noteAtQuarter(part.vocalTimeline, quarter);
+  const writtenCurrent = noteAtQuarter(part.vocalTimeline, quarter);
+  const targetInfo = tuningTarget(quarter);
+  const expected = targetInfo.note;
   if (expected) {
+    els.expectedLabel.textContent = targetInfo.kind === "starting" ? "Starting note" : targetInfo.kind === "next" ? "Next note" : "Expected note";
     els.expectedNote.textContent = soundingTargetName(expected);
-    const written = state.octaveShift ? ` · written ${expected.displayPitch}` : "";
-    els.expectedPosition.textContent = `Measure ${expected.measureNumber} · beat ${formatBeat(expected.beatPosition)}${written}`;
+    const octave = state.octaveShift < 0 ? "Octave lower" : state.octaveShift > 0 ? "Octave higher" : "";
+    const written = state.octaveShift ? `written ${expected.displayPitch}` : "";
+    els.expectedPosition.textContent = [octave, written, `Measure ${expected.measureNumber} · beat ${formatBeat(expected.beatPosition)}`].filter(Boolean).join(" · ");
   } else {
+    els.expectedLabel.textContent = "Next note";
     els.expectedNote.textContent = "Rest";
-    els.expectedPosition.textContent = `Measure ${measure}`;
+    els.expectedPosition.textContent = `No later vocal entrance · measure ${measure}`;
   }
+  els.tuningPhase.textContent = phaseLabel();
   updateOctaveHint(expected);
   syncCursor(quarter);
-  followScoreAtQuarter(quarter, expected);
+  followScoreAtQuarter(quarter, writtenCurrent);
   logTimingDebug(quarter);
 }
 
@@ -723,13 +852,28 @@ function toggleScoreFollow() {
 }
 
 function handlePitchSample(sample) {
-  if (!MODE_CONFIG[state.mode].microphone || !audio.isPlaying) return;
-  state.acceptedSamples.push({ ...sample });
-  const target = noteAtQuarter(selectedPart().vocalTimeline, sample.scoreQuarter);
-  if (!target) {
-    setStatus("idle", "Rest", "Breathe and prepare for the next entrance.");
+  if (!MODE_CONFIG[state.mode].microphone || !audio.hasMicrophoneStream) return;
+  const phase = tuningPhase();
+  const targetInfo = tuningTarget(sample.scoreQuarter, phase);
+  const live = renderLiveTuning(sample, targetInfo);
+  if (!targetInfo.note || !live) return;
+
+  const liveError = Math.abs(live.cents);
+  const targetLabel = targetInfo.kind === "next" ? "Next note" : targetInfo.kind === "starting" ? "Starting note" : "Current note";
+  if (targetInfo.kind !== "current") {
+    if (liveError <= PITCH_THRESHOLDS.green) {
+      setStatus("good", `✓ ${targetLabel} centred`, `${soundingTargetName(targetInfo.note)} is ready. This tuning check is not assessed.`);
+    } else if (liveError <= PITCH_THRESHOLDS.yellow) {
+      setStatus("warn", `${targetLabel} nearly centred`, live.cents > 0 ? "Ease the pitch down a touch." : "Lift the pitch gently from the breath.");
+    } else {
+      setStatus("off", `${targetLabel} ${live.cents > 0 ? "sharp" : "flat"}`, `Adjust toward ${soundingTargetName(targetInfo.note)}. This tuning check is not assessed.`);
+    }
     return;
   }
+
+  if (!assessmentSampleEligible({ phase, targetKind: targetInfo.kind })) return;
+  state.acceptedSamples.push({ ...sample });
+  const target = targetInfo.note;
   const midi = Number.isFinite(sample.filteredMidi) ? sample.filteredMidi : frequencyToMidi(sample.frequency);
   const targetMidi = target.midi + state.octaveShift;
   const cents = (midi - targetMidi) * 100;
@@ -738,20 +882,17 @@ function handlePitchSample(sample) {
   state.samples.push(enriched);
   appendScoreTraceSample(els.scoreContainer, state.scoreGeometry, enriched, previousSample);
   els.sampleCount.textContent = state.samples.length.toLocaleString();
-  els.detectedNote.textContent = midiToName(midi);
-  els.detectedFrequency.textContent = `${sample.frequency.toFixed(1)} Hz · ${(sample.clarity * 100).toFixed(0)}% clarity`;
-  els.centsOutput.textContent = Math.abs(cents) < 1 ? "Centred" : `${Math.abs(cents).toFixed(0)} cents ${cents > 0 ? "sharp" : "flat"}`;
-  els.centsOutput.style.color = colourForCents(cents);
-  els.gaugeNeedle.style.left = `${Math.max(0, Math.min(100, 50 + cents))}%`;
-  const error = Math.abs(cents);
+  const error = liveError;
   if (error <= PITCH_THRESHOLDS.green) setStatus("good", "In the centre", "Keep the airflow and shape just like this.");
-  else if (error <= PITCH_THRESHOLDS.yellow) setStatus("warn", "Nearly there", cents > 0 ? "Ease the pitch down a touch." : "Lift the pitch gently from the breath.");
-  else setStatus("off", cents > 0 ? "Running sharp" : "Running flat", "Keep listening — the trace preserves how this note settles.");
+  else if (error <= PITCH_THRESHOLDS.yellow) setStatus("warn", "Nearly there", live.cents > 0 ? "Ease the pitch down a touch." : "Lift the pitch gently from the breath.");
+  else setStatus("off", live.cents > 0 ? "Running sharp" : "Running flat", "Keep listening — the trace preserves how this note settles.");
   els.finishButton.disabled = false;
 }
 
 function handleRawPitchSample(sample) {
-  if (!MODE_CONFIG[state.mode].microphone || !audio.isPlaying) return;
+  const phase = tuningPhase();
+  const targetKind = tuningTarget(sample.scoreQuarter, phase).kind;
+  if (!MODE_CONFIG[state.mode].microphone || !assessmentSampleEligible({ phase, targetKind })) return;
   state.rawSamples.push({ ...sample });
 }
 
@@ -768,12 +909,8 @@ function handlePitchDiagnostic(sample) {
   els.diagState.textContent = sample.status === "accepted"
     ? `${sample.reason}${sample.octaveCorrection ? ` (${sample.octaveCorrection > 0 ? "+" : ""}${sample.octaveCorrection} semitones)` : ""}`
     : `No reliable pitch — ${sample.reason}`;
-  if (sample.status !== "accepted" && MODE_CONFIG[state.mode].microphone && audio.isPlaying) {
-    els.detectedNote.textContent = "—";
-    els.detectedFrequency.textContent = `No reliable pitch · ${sample.reason}`;
-    els.centsOutput.textContent = "—";
-    els.centsOutput.style.color = "";
-    els.gaugeNeedle.style.left = "50%";
+  if (sample.status !== "accepted" && MODE_CONFIG[state.mode].microphone && audio.hasMicrophoneStream) {
+    renderTuningDropout(sample);
   }
 }
 
@@ -784,6 +921,7 @@ function handleCountIn(event) {
     els.dockTransportState.textContent = "Count-in";
     els.countInBar.textContent = event.bars > 1 ? "Count-in · bar 1" : "Count-in";
     els.countInBeats.innerHTML = Array.from({ length: event.pulsesPerBar }, (_, index) => `<span>${index + 1}</span>`).join("");
+    updatePosition(audio.currentQuarter);
     setTransportBusy(true);
     return;
   }
@@ -810,12 +948,13 @@ function handleMicrophoneState(status, details = {}) {
     setStatus("good", "Microphone ready", "Signal: Good. Your calibration is saved on this device.");
   }
   if (status === "needs-adjustment") {
+    setTuningMeterInactive("Microphone check needed");
     els.microphoneCheckStatus.textContent = "Try again";
     els.microphoneCheckCopy.textContent = "Move a little closer to your microphone, then run the check again.";
     setStatus("off", "Move a little closer to your microphone and try again", "Use Recheck microphone when you are in position.");
   }
   if (status === "active") {
-    setStatus("idle", "Microphone active", "Your calibrated settings are active. Audio stays on this device.");
+    setStatus("idle", "Microphone active", "Find the starting note before Play. Preparation is not assessed.");
   }
 }
 
@@ -835,7 +974,7 @@ async function finishAssessment() {
   const hadSamples = state.samples.length > 0;
   try {
     const recording = await audio.finishPerformanceRecording();
-    audio.stop({ reset: true, microphone: true });
+    audio.stop({ reset: true, microphone: !MODE_CONFIG[state.mode].microphone });
     cancelAnimationFrame(state.syncFrame);
     setPlaybackState("stopped");
     resetCursor();
@@ -989,18 +1128,18 @@ function resetControls() {
   els.currentTime.textContent = "00:00";
   els.dockCurrentTime.textContent = "00:00";
   els.progressFill.style.width = "0%";
+  els.expectedLabel.textContent = "Expected note";
   els.expectedNote.textContent = "—";
-  els.expectedPosition.textContent = "Press play to begin";
-  els.detectedNote.textContent = "—";
-  els.detectedFrequency.textContent = "Waiting for your voice";
-  els.centsOutput.textContent = "—";
-  els.centsOutput.style.color = "";
-  els.gaugeNeedle.style.left = "50%";
+  els.expectedPosition.textContent = "Choose a microphone mode to tune before Play";
   els.sampleCount.textContent = "0";
   els.resultsPanel.hidden = true;
   state.rawSamples = [];
   state.acceptedSamples = [];
   state.mode = "practice";
+  state.microphoneActivationToken += 1;
+  state.microphonePreparing = false;
+  document.body.classList.remove("microphone-mode");
+  setTuningMeterInactive("Practice mode");
   els.modeButtons.forEach((button) => { const active = button.dataset.mode === "practice"; button.classList.toggle("active", active); button.setAttribute("aria-checked", String(active)); });
   els.headphoneNote.hidden = true;
   els.guideVolume.value = String(state.guideVolume);
@@ -1028,10 +1167,13 @@ function resetControls() {
 }
 
 function resetToUpload() {
+  state.microphoneActivationToken += 1;
+  state.microphonePreparing = false;
   audio.destroy();
   cancelAnimationFrame(state.syncFrame);
   clearTimeout(state.overlayResizeTimer);
   state.score = null; state.selectedPartId = null; state.samples = []; state.rawSamples = []; state.acceptedSamples = []; state.osmd = null; state.cursor = null; state.cursorTimeline = []; state.cursorIndex = 0; state.scoreGeometry = new Map();
+  document.body.classList.remove("microphone-mode");
   els.scoreContainer.innerHTML = "";
   clearPerformancePlayback();
   els.scoreInput.value = "";

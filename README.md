@@ -12,8 +12,9 @@ No account, backend, upload service, or build step is required. Scores, calibrat
 4. Choose **Practice** (guide + accompaniment, no scoring), **Assisted Assessment** (guide + accompaniment + scoring), or **Assessment** (accompaniment + scoring).
 5. Choose an Off/1-bar/2-bar musical count-in and, when needed, sing an octave below or above the untouched printed notation.
 6. Before the first microphone session, complete a saved room-and-comfortable-voice **Microphone Check**; Low/Normal/High remain available only as advanced overrides.
-7. Balance separate Vocal Guide and Accompaniment volume controls, then use the persistent transport dock while the stabilised colour-coded pitch trace follows the written staff.
-8. Use the ten adaptive **Your Vocal Coach** observations as the main review, hear the locally captured voice-only take, and open **Detailed analysis** when needed.
+7. In a microphone mode, use the large vertical tuner to find the first note before Play and keep tuning through the count-in; during later rests it prepares the next entrance without adding those samples to assessment results.
+8. Balance separate Vocal Guide and Accompaniment volume controls, then use the persistent transport dock while the stabilised colour-coded pitch trace follows the written staff.
+9. Use the ten adaptive **Your Vocal Coach** observations as the main review, hear the locally captured voice-only take, and open **Detailed analysis** when needed.
 
 A small two-part MusicXML score is included so the complete flow can be tried immediately.
 
@@ -28,13 +29,14 @@ The app deliberately keeps musical concerns separate:
 - `src/microphone-calibration.js` combines ambient and comfortable sung-voice distributions into a saved gate, clarity threshold, and tracker reacquisition setting without exposing technical values in the student interface.
 - `src/performance-recorder.js` wraps MediaRecorder for session-only voice capture, pause/resume accounting, local object-URL playback, and future storage separation.
 - `src/pitch-tracker.js` keeps raw detector history, corroborates octave ambiguities, rejects isolated jumps, applies a short robust median, and returns either a stabilised fundamental or an explicit no-reliable-pitch state.
+- `src/live-tuning.js` selects the starting/current/next target, keeps pre-performance and rest samples out of assessment, and provides a 170 ms visual-only dropout hold before the meter dims to **Listening…**.
 - `src/analysis.js` groups usable samples by target note and derives onset, settling, sustained centre, green-zone percentage, stability, voiced coverage, fragmentation, and directional drift measurements. It also produces a five-dimension performance level used only to tune coaching.
 - `src/coaching.js` ranks performance-specific strengths and next priorities, balances them for the singer's current level, and produces approximately ten observations tied to actual notes and measures.
 - `src/score-overlay.js` maps parsed target-note timestamps to OSMD graphical staff entries and systems, then draws accepted samples as a live SVG trace over the written notes. It may bridge only a very short pitch-compatible visual dropout; the underlying raw frame remains missing.
 - `src/config.js` contains pitch thresholds and audio-analysis settings so today’s placeholder tolerances can be replaced without changing the assessment code.
 - `app.js` coordinates the views, OpenSheetMusicDisplay renderer/cursor, controls, pitch monitor, score overlay, coaching cards, and detailed results.
 
-Raw and accepted timestamped pitch samples are kept separately in memory. The tracker uses the target only as supporting evidence in an octave ambiguity and never snaps a performance to the expected note. This preserves genuine wrong notes, scoops, slides, and small movements for future analysis.
+Raw and accepted timestamped pitch samples are kept separately in memory. Preparation, count-in, and during-rest tuning can drive the live meter but are never added to results or the score trace. The tracker uses the target only as supporting evidence in an octave ambiguity and never snaps a performance to the expected note. This preserves genuine wrong notes, scoops, slides, and small movements for future analysis.
 
 ## Libraries
 
@@ -61,7 +63,7 @@ An internet connection is currently required to load the four pinned browser lib
 
 ## Checks
 
-The dependency-free Node test suite covers generated harmonic A3/C4/A4/C5 tones, quiet/normal/loud microphone profiles, calibration rejection, reacquisition and melodic/octave transitions, bounded score-trace bridging, MediaRecorder pause accounting, count-in meters, extended note analysis, three coaching profiles, Tone/OSMD time conversion, pickup and multi-staff MusicXML timing, RMS gating, empty-sample handling, and GitHub Pages asset paths. Run the full syntax and regression check with Node 20 or newer:
+The dependency-free Node test suite covers generated harmonic A3/C4/A4/C5 tones, quiet/normal/loud microphone profiles, calibration rejection, first/next tuning targets, preparation/count-in/rest sample isolation, visual dropout holding, deliberate pitch slides, reacquisition and melodic/octave transitions, bounded score-trace bridging, MediaRecorder pause accounting, count-in meters, extended note analysis, three coaching profiles, Tone/OSMD time conversion, pickup and multi-staff MusicXML timing, RMS gating, empty-sample handling, and GitHub Pages asset paths. Run the full syntax and regression check with Node 20 or newer:
 
 ```sh
 npm run check
@@ -89,6 +91,7 @@ All app and sample-score paths are relative, so the site works at a project URL 
 - Headphones are strongly recommended in both assessment modes and especially when the vocal guide is active. Browser echo cancellation helps reduce speaker recapture, but headphones are the reliable way to prevent the guide from influencing microphone scoring.
 - The first assessment on a browser runs about one second of room listening followed by a 2–3 second comfortable sung “Ah”. A successful calibration is saved locally and can be replaced with **Recheck microphone**. Low/Normal/High are advanced overrides.
 - Assisted Assessment and Assessment record the microphone with MediaRecorder where supported, beginning at score time zero after the count-in. The current prototype replays the captured voice only; synchronized voice-plus-accompaniment replay is deliberately deferred until it can be made robust.
+- Selecting Assisted Assessment or Assessment starts live tuning immediately after microphone access is ready. The same stream stays alive through preparation, count-in, rests, and performance, then closes when Practice or another score is selected or the page closes.
 - Pitch analysis uses a 4096-sample window. Individual detector frames are not scored directly: RMS, clarity, continuity, harmonic/octave evidence, jump confirmation, and a three-frame median must produce a reliable pitch first.
 - Partwise MusicXML is supported. Timewise MusicXML is rejected with an explanation.
 - The parser supports common divisions, time signatures, rests, chords, backups/forwards, chromatic transposition, multiple voices/staves, and ties. Complex repeats, jumps, tuplets, changing tempo maps, ornaments, and every notation-software extension are not yet interpreted for playback.

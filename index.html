@@ -15,11 +15,11 @@
     <meta name="twitter:image" content="https://toby-gif-alt.github.io/vocal-coach/og.png" />
     <title>Vocal Coach — Practise from the score</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%2317382f'/%3E%3Cpath d='M14 34c7 0 7-15 14-15s7 27 14 27 7-16 8-16' fill='none' stroke='%23d7ff72' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="./styles.css?v=13" />
+    <link rel="stylesheet" href="./styles.css?v=14" />
     <script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@2.1.2/build/opensheetmusicdisplay.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/tone@15.1.22/build/Tone.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" defer></script>
-    <script type="module" src="./app.js?v=15"></script>
+    <script type="module" src="./app.js?v=16"></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to the app</a>
@@ -145,7 +145,31 @@
             <section class="score-panel panel" aria-labelledby="scoreHeading">
               <div class="score-panel-head"><div><p class="kicker">Following</p><h2 id="scoreHeading">Selected vocal line</h2></div><div class="score-head-meta"><span class="measure-pill">Measure <strong id="measureNumber">1</strong></span><div class="tolerance-legend" aria-label="Pitch trace colours"><span><i class="green"></i>±15¢</span><span><i class="yellow"></i>±30¢</span><span><i class="orange"></i>±45¢</span><span><i class="red"></i>45¢+</span></div></div></div>
               <div class="score-banner"><span></span><strong id="scoreBannerPart">Voice</strong> is the target · your accepted pitch draws directly across its notes</div>
-              <div id="scoreContainer" class="score-container" aria-label="Rendered sheet music"></div>
+              <div class="score-stage">
+                <div id="scoreContainer" class="score-container" aria-label="Rendered sheet music"></div>
+                <aside class="tuning-meter is-listening" id="tuningMeter" role="meter" aria-label="Live tuning: listening" aria-valuemin="-50" aria-valuemax="50">
+                  <div class="tuning-readout">
+                    <small id="tuningPhase">Practice mode</small>
+                    <span>You’re singing</span>
+                    <strong id="detectedNote">—</strong>
+                    <output id="centsOutput">Listening…</output>
+                  </div>
+                  <span class="tuning-direction sharp">Sharp</span>
+                  <div class="tuning-scale" aria-hidden="true">
+                    <i class="tuning-centre-zone"></i>
+                    <span style="--tuner-mark: 0%">+50c</span>
+                    <span style="--tuner-mark: 20%">+30c</span>
+                    <span style="--tuner-mark: 35%">+15c</span>
+                    <span class="centre-mark" style="--tuner-mark: 50%">0 / centre</span>
+                    <span style="--tuner-mark: 65%">−15c</span>
+                    <span style="--tuner-mark: 80%">−30c</span>
+                    <span style="--tuner-mark: 100%">−50c</span>
+                    <b class="tuning-indicator" id="gaugeNeedle"><i></i></b>
+                  </div>
+                  <span class="tuning-direction flat">Flat</span>
+                  <small class="tuning-frequency" id="detectedFrequency">Waiting for your voice</small>
+                </aside>
+              </div>
             </section>
             <section class="results-panel panel" id="resultsPanel" hidden aria-labelledby="resultsHeading">
               <div class="results-head"><div><p class="kicker">Personalised assessment</p><h2 id="resultsHeading">Your Vocal Coach</h2></div><strong class="coach-level" id="coachLevel">Developing</strong></div>
@@ -172,8 +196,7 @@
 
           <aside class="monitor-panel panel" aria-labelledby="monitorHeading">
             <div class="panel-heading"><span>02</span><div><p class="kicker">Live feedback</p><h2 id="monitorHeading">Pitch monitor</h2></div></div>
-            <div class="expected-card"><span>Expected note</span><strong id="expectedNote">—</strong><small id="expectedPosition">Press play to begin</small></div>
-            <div class="detected-card"><span>You’re singing</span><strong id="detectedNote">—</strong><small id="detectedFrequency">Waiting for your voice</small><div class="cent-gauge" aria-hidden="true"><span>-50</span><i><b id="gaugeNeedle"></b></i><span>+50</span></div><output id="centsOutput">—</output></div>
+            <div class="expected-card"><span id="expectedLabel">Expected note</span><strong id="expectedNote">—</strong><small id="expectedPosition">Choose a microphone mode to tune before Play</small></div>
             <div class="status-card" id="statusCard" data-status="idle"><span class="status-icon">•</span><p><strong id="statusTitle">Ready when you are</strong><small id="statusCopy">Choose a mode, then press play.</small></p></div>
             <div class="session-data"><div><span>Usable samples</span><strong id="sampleCount">0</strong></div><div><span>Current measure</span><strong id="sideMeasure">1</strong></div></div>
             <details class="diagnostics" id="pitchDiagnostics" hidden>
