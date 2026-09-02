@@ -1,4 +1,4 @@
-import { colourForCents, frequencyToMidi, SCORE_TRACE_CONFIG } from "./config.js?v=2";
+import { colourForCents, frequencyToMidi, SCORE_TRACE_CONFIG } from "./config.js?v=14";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const EPSILON = 0.015;
@@ -221,13 +221,22 @@ export function traceSegments(samples, geometry) {
   for (let index = 1; index < ordered.length; index += 1) {
     const previous = ordered[index - 1];
     const current = ordered[index];
-    if (previous.targetId !== current.targetId || current.scoreSeconds - previous.scoreSeconds > SCORE_TRACE_CONFIG.maximumConnectedGapSeconds) continue;
+    if (!shouldBridgeTraceSamples(previous, current)) continue;
     const from = pointForSample(geometry.get(previous.targetId), previous);
     const to = pointForSample(geometry.get(current.targetId), current);
     if (!from || !to || from.pageIndex !== to.pageIndex || from.system !== to.system) continue;
     segments.push({ from, to, colour: colourForCents((previous.cents + current.cents) / 2) });
   }
   return segments;
+}
+
+export function shouldBridgeTraceSamples(previous, current) {
+  if (!previous || !current || previous.targetId !== current.targetId) return false;
+  const gap = current.scoreSeconds - previous.scoreSeconds;
+  if (!Number.isFinite(gap) || gap < 0 || gap > SCORE_TRACE_CONFIG.maximumConnectedGapSeconds) return false;
+  return Number.isFinite(previous.cents)
+    && Number.isFinite(current.cents)
+    && Math.abs(current.cents - previous.cents) <= SCORE_TRACE_CONFIG.maximumBridgeCents;
 }
 
 function svgElement(name, attributes = {}) {
@@ -308,7 +317,7 @@ export function appendScoreTraceSample(scoreContainer, geometry, sample, previou
   const point = pointForSample(geometry.get(sample.targetId), sample);
   if (!point) return;
   appendSampleMark(pages[point.pageIndex], point);
-  if (!previousSample || previousSample.targetId !== sample.targetId || sample.scoreSeconds - previousSample.scoreSeconds > SCORE_TRACE_CONFIG.maximumConnectedGapSeconds) return;
+  if (!shouldBridgeTraceSamples(previousSample, sample)) return;
   const from = pointForSample(geometry.get(previousSample.targetId), previousSample);
   if (!from || from.pageIndex !== point.pageIndex || from.system !== point.system) return;
   appendSegment(pages[point.pageIndex], { from, to: point, colour: colourForCents((previousSample.cents + sample.cents) / 2) });

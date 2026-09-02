@@ -15,11 +15,11 @@
     <meta name="twitter:image" content="https://toby-gif-alt.github.io/vocal-coach/og.png" />
     <title>Vocal Coach — Practise from the score</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%2317382f'/%3E%3Cpath d='M14 34c7 0 7-15 14-15s7 27 14 27 7-16 8-16' fill='none' stroke='%23d7ff72' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./styles.css?v=13" />
     <script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@2.1.2/build/opensheetmusicdisplay.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/tone@15.1.22/build/Tone.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" defer></script>
-    <script type="module" src="./app.js?v=9"></script>
+    <script type="module" src="./app.js?v=15"></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to the app</a>
@@ -116,15 +116,20 @@
               </div>
               <p id="octaveHint">Sing written pitch — sounding target appears here during playback.</p>
             </div>
-            <div class="sensitivity-block">
-              <div class="setting-label"><span>Microphone sensitivity</span><output id="sensitivityOutput">Normal</output></div>
-              <div class="sensitivity-switch" role="radiogroup" aria-label="Microphone sensitivity">
-                <button type="button" data-sensitivity="low" role="radio" aria-checked="false"><strong>Low</strong><small>Busy rooms</small></button>
-                <button type="button" class="active" data-sensitivity="normal" role="radio" aria-checked="true"><strong>Normal</strong><small>Most spaces</small></button>
+            <div class="microphone-check-setting">
+              <div class="setting-label"><span>Microphone Check</span><output id="microphoneCheckStatus">Not checked</output></div>
+              <p id="microphoneCheckCopy">A quick room-and-voice check runs before your first assessment on this device.</p>
+              <button class="recheck-button" id="recheckMicrophoneButton" type="button">Recheck microphone</button>
+            </div>
+            <details class="sensitivity-block">
+              <summary><span>Advanced microphone sensitivity</span><output id="sensitivityOutput">Normal</output></summary>
+              <div class="sensitivity-switch" role="radiogroup" aria-label="Advanced microphone sensitivity">
+                <button type="button" data-sensitivity="low" role="radio" aria-checked="false"><strong>Low</strong><small>Stronger signal</small></button>
+                <button type="button" class="active" data-sensitivity="normal" role="radio" aria-checked="true"><strong>Normal</strong><small>Calibrated</small></button>
                 <button type="button" data-sensitivity="high" role="radio" aria-checked="false"><strong>High</strong><small>Quiet singing</small></button>
               </div>
-              <p>Low blocks more room noise. High keeps softer singing available.</p>
-            </div>
+              <p>Use only when the automatic check needs a manual adjustment.</p>
+            </details>
             <div class="accompaniment-block"><div class="setting-label"><span>Accompaniment</span><button id="toggleAllParts" type="button">Mute all</button></div><div class="accompaniment-list" id="accompanimentList"></div></div>
             <label class="tempo-field" for="tempoSlider"><span><strong>Tempo</strong><output id="tempoOutput">100%</output></span><input id="tempoSlider" type="range" min="50" max="150" value="100" step="5" /><span class="range-labels"><small>Slower</small><small id="bpmLabel">120 BPM</small><small>Faster</small></span></label>
             <div class="headphone-note" id="headphoneNote" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14v-2a8 8 0 0 1 16 0v2M4 14h4v6H5a1 1 0 0 1-1-1v-5Zm16 0h-4v6h3a1 1 0 0 0 1-1v-5Z" /></svg><p><strong>Use headphones for reliable scoring</strong><span>They stop the vocal guide and accompaniment from being mistaken for your voice.</span></p></div>
@@ -145,6 +150,18 @@
             <section class="results-panel panel" id="resultsPanel" hidden aria-labelledby="resultsHeading">
               <div class="results-head"><div><p class="kicker">Personalised assessment</p><h2 id="resultsHeading">Your Vocal Coach</h2></div><strong class="coach-level" id="coachLevel">Developing</strong></div>
               <p class="coach-intro" id="coachIntro">Your most useful strengths and next priorities will appear here.</p>
+              <section class="performance-playback" id="performancePlayback" hidden aria-labelledby="performancePlaybackHeading">
+                <div class="performance-playback-head"><div><p class="kicker">Captured locally</p><h3 id="performancePlaybackHeading">Hear my performance</h3></div><span>Voice only</span></div>
+                <audio id="performanceAudio" preload="metadata"></audio>
+                <div class="performance-buttons">
+                  <button id="performanceRestart" type="button">⏮ <span>Restart</span></button>
+                  <button id="performancePlay" type="button">▶ <span>Play</span></button>
+                  <button id="performancePause" type="button" disabled>⏸ <span>Pause</span></button>
+                </div>
+                <label class="performance-seek" for="performanceSeek"><time id="performanceCurrentTime">00:00</time><input id="performanceSeek" type="range" min="0" max="0" value="0" step="0.01" aria-label="Seek through captured performance" /><time id="performanceDuration">00:00</time></label>
+                <label class="performance-volume" for="performanceVolume"><span>Volume</span><input id="performanceVolume" type="range" min="0" max="100" value="90" step="5" /></label>
+                <p>The recording stays in this tab and is never uploaded.</p>
+              </section>
               <div class="coach-observations" id="coachObservations"></div>
               <details class="detailed-analysis">
                 <summary><span>Detailed analysis</span><small id="resultsSummary">Results preserve the shape of each note instead of reducing it to pass or fail.</small></summary>
@@ -159,7 +176,7 @@
             <div class="detected-card"><span>You’re singing</span><strong id="detectedNote">—</strong><small id="detectedFrequency">Waiting for your voice</small><div class="cent-gauge" aria-hidden="true"><span>-50</span><i><b id="gaugeNeedle"></b></i><span>+50</span></div><output id="centsOutput">—</output></div>
             <div class="status-card" id="statusCard" data-status="idle"><span class="status-icon">•</span><p><strong id="statusTitle">Ready when you are</strong><small id="statusCopy">Choose a mode, then press play.</small></p></div>
             <div class="session-data"><div><span>Usable samples</span><strong id="sampleCount">0</strong></div><div><span>Current measure</span><strong id="sideMeasure">1</strong></div></div>
-            <details class="diagnostics" id="pitchDiagnostics">
+            <details class="diagnostics" id="pitchDiagnostics" hidden>
               <summary>Pitch-detector diagnostics</summary>
               <dl>
                 <div><dt>Raw Hz</dt><dd id="diagRawHz">—</dd></div><div><dt>Raw MIDI</dt><dd id="diagRawMidi">—</dd></div>
@@ -172,9 +189,18 @@
               <output id="pitchSelfTestResult">Not run</output>
             </details>
             <button class="finish-button" id="finishButton" type="button" disabled>Finish &amp; review</button>
-            <p class="privacy-copy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V7a5 5 0 0 1 10 0v3M5 10h14v10H5z" /></svg>Microphone samples stay in browser memory and are cleared when you load a new score.</p>
+            <p class="privacy-copy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V7a5 5 0 0 1 10 0v3M5 10h14v10H5z" /></svg>Pitch data and session recordings stay on this device. Nothing is uploaded.</p>
           </aside>
         </section>
+        <nav class="transport-dock" id="transportDock" aria-label="Persistent playback controls">
+          <div class="dock-controls">
+            <button id="dockRestartButton" type="button" aria-label="Restart from the beginning">⏮ <span>Restart</span></button>
+            <button class="dock-play" id="dockPlayPauseButton" type="button" aria-label="Play">▶ <span>Play</span></button>
+            <button id="dockStopButton" type="button" aria-label="Stop" disabled>■ <span>Stop</span></button>
+          </div>
+          <div class="dock-position"><strong id="dockTransportState">Ready</strong><span><time id="dockCurrentTime">00:00</time><small>/</small><time id="dockTotalTime">00:00</time></span><small>Measure <b id="dockMeasure">1</b></small></div>
+          <button class="follow-score-button active" id="followScoreButton" type="button" aria-pressed="true"><span aria-hidden="true">↧</span> Follow score</button>
+        </nav>
       </section>
     </main>
 

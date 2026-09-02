@@ -112,8 +112,9 @@ test("ambient calibration resists a brief transient and applies safe floors", ()
   const high = deriveNoiseGate(ambient, "high");
   assert.ok(low.openThreshold > normal.openThreshold);
   assert.ok(normal.openThreshold > high.openThreshold);
-  assert.ok(high.openThreshold >= 0.006);
-  assert.equal(AUDIO_CONFIG.calibrationDurationMs, 1000);
+  assert.ok(high.openThreshold >= AUDIO_CONFIG.absoluteRmsFloor);
+  assert.equal(AUDIO_CONFIG.ambientCalibrationDurationMs, 1000);
+  assert.ok(AUDIO_CONFIG.sungCalibrationDurationMs >= 2000 && AUDIO_CONFIG.sungCalibrationDurationMs <= 3000);
 });
 
 test("noise gate hysteresis avoids rapid switching around the open threshold", () => {

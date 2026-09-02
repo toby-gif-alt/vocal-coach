@@ -3,20 +3,25 @@ import {
   AUDIO_CONFIG,
   DEFAULT_MICROPHONE_SENSITIVITY,
   MICROPHONE_SENSITIVITY,
+  PITCH_TRACKER_CONFIG,
   PLAYBACK_CONFIG,
   frequencyToMidi,
   midiToFrequency,
-} from "./config.js";
-import { calculateRms, deriveNoiseGate, estimateAmbientRms, RmsNoiseGate } from "./noise-gate.js";
-import { detectAutocorrelationPitch, StablePitchTracker } from "./pitch-tracker.js";
-import { countInPattern, quartersToTransportTicks, transportTicksToQuarters } from "./timing.js";
+} from "./config.js?v=14";
+import { calculateRms, deriveNoiseGate, RmsNoiseGate } from "./noise-gate.js?v=14";
+import { applyMicrophoneSensitivity, deriveMicrophoneCalibration } from "./microphone-calibration.js?v=14";
+import { SessionPerformanceRecorder } from "./performance-recorder.js?v=14";
+import { detectAutocorrelationPitch, StablePitchTracker } from "./pitch-tracker.js?v=14";
+import { countInPattern, quartersToTransportTicks, transportTicksToQuarters } from "./timing.js?v=14";
 
 export class AudioEngine {
-  constructor({ onPitchSample, onRawPitchSample, onPitchDiagnostic, onMicrophoneState, onCountIn, onPlaybackEnd } = {}) {
+  constructor({ onPitchSample, onRawPitchSample, onPitchDiagnostic, onMicrophoneState, onMicrophoneCalibration, onRecordingState, onCountIn, onPlaybackEnd } = {}) {
     this.onPitchSample = onPitchSample || (() => {});
     this.onRawPitchSample = onRawPitchSample || (() => {});
     this.onPitchDiagnostic = onPitchDiagnostic || (() => {});
     this.onMicrophoneState = onMicrophoneState || (() => {});
+    this.onMicrophoneCalibration = onMicrophoneCalibration || (() => {});
+    this.onRecordingState = onRecordingState || (() => {});
     this.onCountIn = onCountIn || (() => {});
     this.onPlaybackEnd = onPlaybackEnd || (() => {});
     this.score = null;
@@ -37,8 +42,10 @@ export class AudioEngine {
     this.clickSynth = null;
     this.lastPitchSampleAt = 0;
     this.microphoneSensitivity = DEFAULT_MICROPHONE_SENSITIVITY;
+    this.baseMicrophoneCalibration = null;
     this.noiseGateSettings = deriveNoiseGate(0, this.microphoneSensitivity);
     this.noiseGate = new RmsNoiseGate(this.noiseGateSettings);
+    this.performanceRecorder = new SessionPerformanceRecorder();
     this.isPlaying = false;
     this.isPaused = false;
     this.isCountingIn = false;
@@ -78,8 +85,29 @@ export class AudioEngine {
   setMicrophoneSensitivity(level) {
     if (!MICROPHONE_SENSITIVITY[level]) return;
     this.microphoneSensitivity = level;
-    this.noiseGateSettings = deriveNoiseGate(this.noiseGateSettings.ambientRms, level);
+    this.noiseGateSettings = this.baseMicrophoneCalibration
+      ? applyMicrophoneSensitivity(this.baseMicrophoneCalibration, level)
+      : deriveNoiseGate(this.noiseGateSettings.ambientRms, level);
     this.noiseGate.configure(this.noiseGateSettings);
+    const trackerConfig = {
+      minimumClarity: this.noiseGateSettings.minimumClarity || AUDIO_CONFIG.minimumClarity,
+    };
+    if (Number.isFinite(this.noiseGateSettings.reacquireAfterMs)) {
+      trackerConfig.reacquireAfterMs = this.noiseGateSettings.reacquireAfterMs;
+    }
+    this.pitchTracker.configure(trackerConfig);
+  }
+
+  setMicrophoneCalibration(calibration) {
+    this.baseMicrophoneCalibration = calibration || null;
+    if (this.baseMicrophoneCalibration) this.setMicrophoneSensitivity(this.microphoneSensitivity);
+  }
+
+  clearMicrophoneCalibration() {
+    this.baseMicrophoneCalibration = null;
+    this.noiseGateSettings = deriveNoiseGate(0, this.microphoneSensitivity);
+    this.noiseGate.configure(this.noiseGateSettings);
+    this.pitchTracker.configure({ minimumClarity: AUDIO_CONFIG.minimumClarity, reacquireAfterMs: PITCH_TRACKER_CONFIG.reacquireAfterMs });
   }
 
   setGuideVolume(value) {
@@ -111,6 +139,14 @@ export class AudioEngine {
     return (this.score?.durationQuarters || 0) * 60 / this.bpm;
   }
 
+  get hasActivePerformanceRecording() {
+    return Boolean(this.performanceRecorder.recorder && this.performanceRecorder.recorder.state !== "inactive");
+  }
+
+  get performanceRecordingSupported() {
+    return this.performanceRecorder.supported;
+  }
+
   async play({
     vocalPartId,
     guideEnabled,
@@ -137,6 +173,13 @@ export class AudioEngine {
     }
     this.scheduleScore({ vocalPartId, guideEnabled, enabledPartIds, vocalOctaveSemitones });
     this.transport.bpm.value = this.bpm;
+    if (assessmentMode) {
+      if (resuming) this.performanceRecorder.resume();
+      else {
+        const recording = this.performanceRecorder.start(this.stream);
+        this.onRecordingState(recording ? "recording" : "unsupported");
+      }
+    }
     this.transport.start();
     this.isPlaying = true;
     this.isPaused = false;
@@ -149,6 +192,8 @@ export class AudioEngine {
     this.isPlaying = false;
     this.isPaused = true;
     this.pausePitchSampling();
+    this.performanceRecorder.pause();
+    this.onRecordingState("paused");
   }
 
   stop({ reset = true, microphone = true } = {}) {
@@ -160,7 +205,16 @@ export class AudioEngine {
     }
     this.isPlaying = false;
     this.isPaused = false;
+    if (this.performanceRecorder.recorder) void this.performanceRecorder.stop();
     if (microphone) this.stopMicrophone();
+  }
+
+  finishPerformanceRecording() {
+    return this.performanceRecorder.stop();
+  }
+
+  discardPerformanceRecording() {
+    this.performanceRecorder.disposeRecording();
   }
 
   ensureSynths() {
@@ -259,67 +313,87 @@ export class AudioEngine {
   }
 
   async startMicrophone() {
+    if (this.stream) {
+      this.onMicrophoneState("active", this.noiseGateSettings);
+      return;
+    }
+    try {
+      await this.ensureMicrophoneStream();
+      if (!this.baseMicrophoneCalibration) {
+        const calibration = await this.runMicrophoneCheck();
+        if (!calibration) {
+          const error = new Error("Microphone check was cancelled.");
+          error.name = "AbortError";
+          throw error;
+        }
+        if (!calibration?.signalGood) {
+          const error = new Error("Move a little closer to your microphone and try again.");
+          error.name = "MicrophoneCheckError";
+          throw error;
+        }
+      }
+      this.onMicrophoneState("active", this.noiseGateSettings);
+    } catch (error) {
+      const checkFailed = error.name === "MicrophoneCheckError";
+      if (error.name !== "AbortError" && !checkFailed) this.onMicrophoneState("error", error);
+      this.stopMicrophone({ notify: false });
+      if (checkFailed) this.onMicrophoneState("needs-adjustment");
+      throw error;
+    }
+  }
+
+  async ensureMicrophoneStream() {
     if (this.stream) return;
     if (!navigator.mediaDevices?.getUserMedia) {
       throw new Error("Microphone assessment needs a modern browser and an HTTPS connection.");
     }
     this.onMicrophoneState("requesting");
-    try {
-      this.stream = await navigator.mediaDevices.getUserMedia({
-        // Browser echo cancellation is the first line of defence against the
-        // guide/accompaniment being re-captured through speakers. Pitch-shaping
-        // effects stay disabled so the monophonic tracker still receives an
-        // otherwise unprocessed local signal. Headphones remain recommended.
-        audio: { echoCancellation: true, noiseSuppression: false, autoGainControl: false, channelCount: 1 },
-      });
-      const context = this.tone.getContext().rawContext || this.tone.getContext();
-      this.analyser = context.createAnalyser();
-      this.analyser.fftSize = AUDIO_CONFIG.analyserSize;
-      this.analyser.smoothingTimeConstant = 0;
-      this.mediaSource = context.createMediaStreamSource(this.stream);
-      this.mediaSource.connect(this.analyser);
-      this.pitchDetector = PitchDetector.forFloat32Array(this.analyser.fftSize);
-      this.inputFrame = new Float32Array(this.analyser.fftSize);
-      this.lastPitchSampleAt = 0;
-      this.onMicrophoneState("calibrating", { durationMs: AUDIO_CONFIG.calibrationDurationMs });
-      const calibrated = await this.calibrateMicrophone();
-      if (!calibrated || !this.stream) {
-        const error = new Error("Microphone calibration was cancelled.");
-        error.name = "AbortError";
-        throw error;
-      }
-      this.onMicrophoneState("active", this.noiseGateSettings);
-    } catch (error) {
-      if (error.name !== "AbortError") this.onMicrophoneState("error", error);
-      this.stopMicrophone();
-      throw error;
-    }
+    this.stream = await navigator.mediaDevices.getUserMedia({
+      // Echo cancellation helps keep accompaniment out of a monophonic voice
+      // detector. Pitch shaping and automatic gain stay disabled so the check
+      // can measure this device's real room-to-voice relationship.
+      audio: { echoCancellation: true, noiseSuppression: false, autoGainControl: false, channelCount: 1 },
+    });
+    const context = this.tone.getContext().rawContext || this.tone.getContext();
+    this.analyser = context.createAnalyser();
+    this.analyser.fftSize = AUDIO_CONFIG.analyserSize;
+    this.analyser.smoothingTimeConstant = 0;
+    this.mediaSource = context.createMediaStreamSource(this.stream);
+    this.mediaSource.connect(this.analyser);
+    this.pitchDetector = PitchDetector.forFloat32Array(this.analyser.fftSize);
+    this.inputFrame = new Float32Array(this.analyser.fftSize);
+    this.lastPitchSampleAt = 0;
   }
 
-  calibrateMicrophone() {
-    const frameRmsValues = [];
+  collectMicrophoneCheckFrames(durationMs, includePitch) {
+    const frames = [];
     const startedAt = performance.now();
     return new Promise((resolve) => {
-      this.calibrationResolve = resolve;
+      let active = true;
       const finish = (completed) => {
+        if (!active) return;
+        active = false;
         cancelAnimationFrame(this.calibrationFrame);
         this.calibrationFrame = null;
         this.calibrationResolve = null;
-        if (completed) {
-          const ambientRms = estimateAmbientRms(frameRmsValues);
-          this.noiseGateSettings = deriveNoiseGate(ambientRms, this.microphoneSensitivity);
-          this.noiseGate.configure(this.noiseGateSettings);
-        }
-        resolve(completed);
+        resolve(completed ? frames : null);
       };
+      this.calibrationResolve = finish;
       const collect = (now) => {
         if (!this.analyser || !this.inputFrame) {
           finish(false);
           return;
         }
         this.analyser.getFloatTimeDomainData(this.inputFrame);
-        frameRmsValues.push(calculateRms(this.inputFrame));
-        if (now - startedAt >= AUDIO_CONFIG.calibrationDurationMs) {
+        const rms = calculateRms(this.inputFrame);
+        if (includePitch) {
+          const sampleRate = (this.tone.getContext().rawContext || this.tone.getContext()).sampleRate;
+          const [frequency, clarity] = this.pitchDetector.findPitch(this.inputFrame, sampleRate);
+          frames.push({ rms, frequency, clarity });
+        } else {
+          frames.push(rms);
+        }
+        if (now - startedAt >= durationMs) {
           finish(true);
           return;
         }
@@ -327,6 +401,34 @@ export class AudioEngine {
       };
       this.calibrationFrame = requestAnimationFrame(collect);
     });
+  }
+
+  async runMicrophoneCheck() {
+    this.onMicrophoneState("checking-room", { durationMs: AUDIO_CONFIG.ambientCalibrationDurationMs });
+    const ambientRmsValues = await this.collectMicrophoneCheckFrames(AUDIO_CONFIG.ambientCalibrationDurationMs, false);
+    if (!ambientRmsValues) return null;
+    this.onMicrophoneState("checking-voice", { durationMs: AUDIO_CONFIG.sungCalibrationDurationMs });
+    const sungFrames = await this.collectMicrophoneCheckFrames(AUDIO_CONFIG.sungCalibrationDurationMs, true);
+    if (!sungFrames) return null;
+    const calibration = deriveMicrophoneCalibration({ ambientRmsValues, sungFrames });
+    if (!calibration.signalGood) {
+      this.onMicrophoneState("needs-adjustment", calibration);
+      return calibration;
+    }
+    this.setMicrophoneCalibration(calibration);
+    this.onMicrophoneCalibration(calibration);
+    this.onMicrophoneState("ready", calibration);
+    return calibration;
+  }
+
+  async recheckMicrophone() {
+    await this.tone.start();
+    this.clearMicrophoneCalibration();
+    await this.ensureMicrophoneStream();
+    const calibration = await this.runMicrophoneCheck();
+    this.stopMicrophone({ notify: false });
+    this.onMicrophoneState(calibration?.signalGood ? "ready" : "needs-adjustment", calibration || {});
+    return calibration;
   }
 
   samplePitch(now) {
@@ -348,6 +450,7 @@ export class AudioEngine {
         rms,
         gateOpen,
         noiseGate: this.noiseGateSettings.openThreshold,
+        minimumClarity: this.noiseGateSettings.minimumClarity || AUDIO_CONFIG.minimumClarity,
         corroboratingFrequency: corroborating.frequency,
         capturedAt: performance.now(),
         scoreQuarter,
@@ -379,7 +482,7 @@ export class AudioEngine {
     this.pitchFrame = null;
   }
 
-  stopMicrophone() {
+  stopMicrophone({ notify = true } = {}) {
     cancelAnimationFrame(this.pitchFrame);
     this.pitchFrame = null;
     cancelAnimationFrame(this.calibrationFrame);
@@ -394,7 +497,7 @@ export class AudioEngine {
     this.pitchDetector = null;
     this.inputFrame = null;
     this.noiseGate.configure(this.noiseGateSettings);
-    this.onMicrophoneState("idle");
+    if (notify) this.onMicrophoneState("idle");
   }
 
   disposeSynths() {
@@ -408,6 +511,7 @@ export class AudioEngine {
 
   destroy() {
     this.stop({ reset: true, microphone: true });
+    this.performanceRecorder.destroy();
     this.disposeSynths();
   }
 }

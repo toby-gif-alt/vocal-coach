@@ -1,4 +1,4 @@
-import { AUDIO_CONFIG, PITCH_TRACKER_CONFIG, frequencyToMidi, midiToFrequency } from "./config.js";
+import { AUDIO_CONFIG, PITCH_TRACKER_CONFIG, frequencyToMidi, midiToFrequency } from "./config.js?v=14";
 
 function median(values) {
   if (!values.length) return null;
@@ -75,8 +75,12 @@ export function detectAutocorrelationPitch(
 
 export class StablePitchTracker {
   constructor(config = {}) {
-    this.config = { ...PITCH_TRACKER_CONFIG, ...config };
+    this.config = { ...PITCH_TRACKER_CONFIG, minimumClarity: AUDIO_CONFIG.minimumClarity, ...config };
     this.reset();
+  }
+
+  configure(config = {}) {
+    this.config = { ...this.config, ...config };
   }
 
   reset() {
@@ -120,7 +124,10 @@ export class StablePitchTracker {
     if (!Number.isFinite(rawFrequency) || rawFrequency < AUDIO_CONFIG.minimumFrequency || rawFrequency > AUDIO_CONFIG.maximumFrequency) {
       return this.unreliable(frame, "frequency out of range", rawFrequency || null, rawMidi);
     }
-    if (!Number.isFinite(frame.clarity) || frame.clarity < AUDIO_CONFIG.minimumClarity) {
+    const minimumClarity = Number.isFinite(frame.minimumClarity)
+      ? frame.minimumClarity
+      : this.config.minimumClarity;
+    if (!Number.isFinite(frame.clarity) || frame.clarity < minimumClarity) {
       return this.unreliable(frame, "low clarity", rawFrequency, rawMidi);
     }
 
@@ -153,9 +160,13 @@ export class StablePitchTracker {
           && centsBetween(corroboratingMidi, octaveCandidate.midi) + 160 < centsBetween(corroboratingMidi, rawMidi);
         const targetSupportsRaw = targetMidi !== null
           && centsBetween(targetMidi, rawMidi) + 500 < centsBetween(targetMidi, octaveCandidate.midi);
+        const previousTargetMidi = this.acceptedHistory.at(-1)?.targetMidi;
+        const scoreTargetChanged = targetMidi !== null
+          && Number.isFinite(previousTargetMidi)
+          && centsBetween(targetMidi, previousTargetMidi) >= 500;
         const persistentWrongPitch = pendingCount >= this.config.octavePersistenceFrames;
 
-        if (corroboratesRaw || (targetSupportsRaw && pendingCount >= this.config.jumpConfirmationFrames) || (!corroboratesCorrection && persistentWrongPitch)) {
+        if (corroboratesRaw || (targetSupportsRaw && (scoreTargetChanged || pendingCount >= this.config.jumpConfirmationFrames)) || (!corroboratesCorrection && persistentWrongPitch)) {
           candidateMidi = rawMidi;
           octaveCorrection = 0;
         } else {
@@ -163,9 +174,16 @@ export class StablePitchTracker {
           octaveCorrection = octaveCandidate.shift;
         }
       } else if (rawDistance > this.config.maximumContinuityCents) {
-        const pendingCount = this.updatePending(rawMidi);
-        if (pendingCount < this.config.jumpConfirmationFrames) {
-          return this.unreliable(frame, "isolated pitch jump", rawFrequency, rawMidi);
+        const targetSupportsTransition = targetMidi !== null
+          && centsBetween(targetMidi, rawMidi) <= 180
+          && centsBetween(targetMidi, referenceMidi) >= 500;
+        if (targetSupportsTransition) {
+          this.pendingJump = null;
+        } else {
+          const pendingCount = this.updatePending(rawMidi);
+          if (pendingCount < this.config.jumpConfirmationFrames) {
+            return this.unreliable(frame, "isolated pitch jump", rawFrequency, rawMidi);
+          }
         }
         this.filterHistory = [];
       } else {
@@ -195,7 +213,7 @@ export class StablePitchTracker {
       centsError: targetMidi === null ? null : (filteredMidi - targetMidi) * 100,
       octaveCorrection,
     };
-    this.acceptedHistory.push({ midi: filteredMidi, frequency: filteredFrequency, capturedAt });
+    this.acceptedHistory.push({ midi: filteredMidi, frequency: filteredFrequency, capturedAt, targetMidi });
     if (this.acceptedHistory.length > this.config.historySize) this.acceptedHistory.shift();
     this.lastAcceptedAt = capturedAt;
     return accepted;

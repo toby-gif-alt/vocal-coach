@@ -83,6 +83,25 @@ test("isolated implausible jumps are rejected but confirmed movement is retained
   assert.equal(confirmed.status, "accepted");
 });
 
+test("a clear sung transition near the new score target is accepted without a fabricated gap", () => {
+  const tracker = new StablePitchTracker();
+  tracker.process(reliableFrame(220, { capturedAt: 0, targetMidi: 57 }));
+  tracker.process(reliableFrame(220, { capturedAt: 46, targetMidi: 57 }));
+  const transition = tracker.process(reliableFrame(329.63, { capturedAt: 92, targetMidi: 64 }));
+  assert.equal(transition.status, "accepted");
+  assert.ok(Math.abs(transition.filteredMidi - 64) < 0.05);
+});
+
+test("a notated octave transition is not mistaken for a harmonic detector error", () => {
+  const tracker = new StablePitchTracker();
+  tracker.process(reliableFrame(220, { capturedAt: 0, targetMidi: 57 }));
+  tracker.process(reliableFrame(220, { capturedAt: 46, targetMidi: 57 }));
+  const transition = tracker.process(reliableFrame(440, { capturedAt: 92, targetMidi: 69 }));
+  assert.equal(transition.status, "accepted");
+  assert.equal(transition.octaveCorrection, 0);
+  assert.ok(Math.abs(transition.filteredMidi - 69) < 0.05);
+});
+
 test("short median filtering preserves a gradual five-frame vocal movement", () => {
   const tracker = new StablePitchTracker();
   const centsPath = [-40, -28, -15, -5, 0];
@@ -100,6 +119,17 @@ test("the tracker exposes an explicit no-reliable-pitch state", () => {
   assert.equal(tracker.process(reliableFrame(220, { clarity: 0.5 })).reason, "low clarity");
 });
 
+test("a calibrated clarity threshold preserves a quiet stable voice through a brief dropout", () => {
+  const tracker = new StablePitchTracker({ minimumClarity: 0.69, reacquireAfterMs: 520 });
+  const first = tracker.process(reliableFrame(220, { clarity: 0.72, capturedAt: 0 }));
+  const missing = tracker.process(reliableFrame(220, { clarity: 0.5, capturedAt: 46 }));
+  const recovered = tracker.process(reliableFrame(220.4, { clarity: 0.71, capturedAt: 92 }));
+  assert.equal(first.status, "accepted");
+  assert.equal(missing.status, "unreliable");
+  assert.equal(recovered.status, "accepted");
+  assert.ok(Math.abs(recovered.filteredMidi - first.filteredMidi) < 0.1);
+});
+
 test("count-in follows simple and compound time signatures", () => {
   assert.equal(countInPattern({ beats: 4, beatType: 4 }, 1).pulses.length, 4);
   assert.equal(countInPattern({ beats: 3, beatType: 4 }, 2).pulses.length, 6);
@@ -109,4 +139,3 @@ test("count-in follows simple and compound time signatures", () => {
   assert.equal(sixEight.compound, true);
   assert.equal(countInPattern({ beats: 4, beatType: 4 }, 0).pulses.length, 0);
 });
-

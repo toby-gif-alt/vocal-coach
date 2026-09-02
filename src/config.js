@@ -8,12 +8,22 @@ export const AUDIO_CONFIG = Object.freeze({
   // 4096 samples gives Pitchy enough low-frequency context for A3 and lower
   // while the sampling cadence below keeps interactive latency modest.
   analyserSize: 4096,
-  minimumClarity: 0.82,
+  minimumClarity: 0.78,
   minimumFrequency: 65,
   maximumFrequency: 1400,
   sampleIntervalMs: 46,
-  calibrationDurationMs: 1000,
+  ambientCalibrationDurationMs: 1000,
+  sungCalibrationDurationMs: 2800,
   calibrationPercentile: 0.75,
+  sungRmsPercentile: 0.25,
+  sungClarityPercentile: 0.2,
+  calibrationCandidateClarity: 0.56,
+  minimumCalibrationFrames: 24,
+  minimumReliablePitchRatio: 0.38,
+  minimumSignalToNoiseRatio: 1.65,
+  absoluteRmsFloor: 0.0035,
+  minimumClarityFloor: 0.68,
+  maximumClarityCeiling: 0.88,
 });
 
 export const PITCH_TRACKER_CONFIG = Object.freeze({
@@ -24,7 +34,7 @@ export const PITCH_TRACKER_CONFIG = Object.freeze({
   jumpClusterCents: 90,
   jumpConfirmationFrames: 2,
   octavePersistenceFrames: 7,
-  reacquireAfterMs: 360,
+  reacquireAfterMs: 460,
 });
 
 export const PLAYBACK_CONFIG = Object.freeze({
@@ -47,9 +57,14 @@ export const SESSION_MODES = Object.freeze({
 export const DEFAULT_MICROPHONE_SENSITIVITY = "normal";
 
 export const MICROPHONE_SENSITIVITY = Object.freeze({
-  low: Object.freeze({ minimumRms: 0.024, noiseMultiplier: 3.4, closeRatio: 0.72 }),
-  normal: Object.freeze({ minimumRms: 0.012, noiseMultiplier: 2.7, closeRatio: 0.68 }),
-  high: Object.freeze({ minimumRms: 0.006, noiseMultiplier: 2.1, closeRatio: 0.62 }),
+  low: Object.freeze({ minimumRms: 0.018, noiseMultiplier: 3.2, calibratedFloor: 0.0045, gateScale: 1.3, clarityOffset: 0.03, closeRatio: 0.72, reacquireScale: 0.88 }),
+  normal: Object.freeze({ minimumRms: 0.009, noiseMultiplier: 2.4, calibratedFloor: 0.0035, gateScale: 1, clarityOffset: 0, closeRatio: 0.66, reacquireScale: 1 }),
+  high: Object.freeze({ minimumRms: 0.0045, noiseMultiplier: 1.8, calibratedFloor: 0.0024, gateScale: 0.74, clarityOffset: -0.04, closeRatio: 0.6, reacquireScale: 1.16 }),
+});
+
+export const MICROPHONE_CALIBRATION = Object.freeze({
+  storageKey: "vocal-coach:microphone-calibration",
+  version: 1,
 });
 
 export const DEBUG_CONFIG = Object.freeze({
@@ -60,7 +75,8 @@ export const SCORE_TRACE_CONFIG = Object.freeze({
   // OSMD's graphical boxes use tenths of an SVG pixel.
   osmdPixelsPerUnit: 10,
   centsToPixels: 0.07,
-  maximumConnectedGapSeconds: 0.18,
+  maximumConnectedGapSeconds: 0.16,
+  maximumBridgeCents: 85,
   minimumRegionWidth: 9,
 });
 

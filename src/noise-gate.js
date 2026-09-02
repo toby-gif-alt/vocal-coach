@@ -2,7 +2,7 @@ import {
   AUDIO_CONFIG,
   DEFAULT_MICROPHONE_SENSITIVITY,
   MICROPHONE_SENSITIVITY,
-} from "./config.js";
+} from "./config.js?v=14";
 
 export function calculateRms(frame) {
   if (!frame?.length) return 0;
@@ -39,9 +39,9 @@ export function deriveNoiseGate(ambientRms, level = DEFAULT_MICROPHONE_SENSITIVI
   };
 }
 
-export function isPitchFrameUsable({ gateOpen, clarity, frequency }) {
+export function isPitchFrameUsable({ gateOpen, clarity, frequency, minimumClarity = AUDIO_CONFIG.minimumClarity }) {
   return Boolean(gateOpen)
-    && clarity >= AUDIO_CONFIG.minimumClarity
+    && clarity >= minimumClarity
     && frequency >= AUDIO_CONFIG.minimumFrequency
     && frequency <= AUDIO_CONFIG.maximumFrequency;
 }

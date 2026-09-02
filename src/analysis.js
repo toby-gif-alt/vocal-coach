@@ -1,4 +1,4 @@
-import { PITCH_THRESHOLDS } from "./config.js";
+import { PITCH_THRESHOLDS } from "./config.js?v=14";
 
 function mean(values) {
   const usable = values.filter(Number.isFinite);

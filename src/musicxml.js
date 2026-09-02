@@ -1,4 +1,4 @@
-import { midiToFrequency, midiToName } from "./config.js";
+import { midiToFrequency, midiToName } from "./config.js?v=14";
 import {
   applyMeasureTimingEvent,
   createMeasureCursor,

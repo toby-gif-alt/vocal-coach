@@ -2,7 +2,7 @@
 
 Vocal Coach is a static, browser-based prototype for practising a vocal part directly from a MusicXML score. It separates the selected vocal line from accompaniment data, renders conventional staff notation, synthesizes score playback, follows the score with a cursor, and compares stabilised microphone pitch samples with the expected sounding note.
 
-No account, backend, upload service, or build step is required. Score files and microphone data remain in browser memory.
+No account, backend, upload service, or build step is required. Scores, calibration, pitch data, and captured assessment audio remain on the user's device.
 
 ## Prototype flow
 
@@ -11,8 +11,9 @@ No account, backend, upload service, or build step is required. Score files and 
 3. View the selected part by itself or switch to the full score.
 4. Choose **Practice** (guide + accompaniment, no scoring), **Assisted Assessment** (guide + accompaniment + scoring), or **Assessment** (accompaniment + scoring).
 5. Choose an Off/1-bar/2-bar musical count-in and, when needed, sing an octave below or above the untouched printed notation.
-6. Balance separate Vocal Guide and Accompaniment volume controls, then review the stabilised colour-coded pitch trace directly on the written staff.
-7. Use the ten adaptive **Your Vocal Coach** observations as the main review, with the full note metrics available under **Detailed analysis**.
+6. Before the first microphone session, complete a saved room-and-comfortable-voice **Microphone Check**; Low/Normal/High remain available only as advanced overrides.
+7. Balance separate Vocal Guide and Accompaniment volume controls, then use the persistent transport dock while the stabilised colour-coded pitch trace follows the written staff.
+8. Use the ten adaptive **Your Vocal Coach** observations as the main review, hear the locally captured voice-only take, and open **Detailed analysis** when needed.
 
 A small two-part MusicXML score is included so the complete flow can be tried immediately.
 
@@ -22,12 +23,14 @@ The app deliberately keeps musical concerns separate:
 
 - `src/musicxml.js` reads MusicXML/MXL, detects parts, and builds independent note timelines. Each note includes written pitch, MIDI pitch, frequency, onset, duration, measure, beat, voice/staff, and tie data.
 - `src/timing.js` defines the exact bridge between Tone.Transport quarter notes and OSMD whole-note-fraction timestamps, applies MusicXML backup/forward/chord measure timing, and derives simple or compound-meter count-in pulses.
-- `src/audio-engine.js` owns Tone.js transport scheduling, gain-controlled accompaniment/guide synthesizers, count-in clicks outside score time, microphone calibration, the RMS noise gate, and raw Pitchy samples.
+- `src/audio-engine.js` owns Tone.js transport scheduling, gain-controlled accompaniment/guide synthesizers, count-in clicks outside score time, the two-stage microphone check, the RMS noise gate, raw Pitchy samples, and score-time-aligned recording lifecycle.
 - `src/noise-gate.js` measures RMS amplitude, derives a room-aware threshold for Low/Normal/High sensitivity, and applies gate hysteresis before pitch detection.
+- `src/microphone-calibration.js` combines ambient and comfortable sung-voice distributions into a saved gate, clarity threshold, and tracker reacquisition setting without exposing technical values in the student interface.
+- `src/performance-recorder.js` wraps MediaRecorder for session-only voice capture, pause/resume accounting, local object-URL playback, and future storage separation.
 - `src/pitch-tracker.js` keeps raw detector history, corroborates octave ambiguities, rejects isolated jumps, applies a short robust median, and returns either a stabilised fundamental or an explicit no-reliable-pitch state.
 - `src/analysis.js` groups usable samples by target note and derives onset, settling, sustained centre, green-zone percentage, stability, voiced coverage, fragmentation, and directional drift measurements. It also produces a five-dimension performance level used only to tune coaching.
 - `src/coaching.js` ranks performance-specific strengths and next priorities, balances them for the singer's current level, and produces approximately ten observations tied to actual notes and measures.
-- `src/score-overlay.js` maps parsed target-note timestamps to OSMD graphical staff entries and systems, then draws accepted samples as a live SVG trace over the written notes. Missing reliable pitch remains a visible gap.
+- `src/score-overlay.js` maps parsed target-note timestamps to OSMD graphical staff entries and systems, then draws accepted samples as a live SVG trace over the written notes. It may bridge only a very short pitch-compatible visual dropout; the underlying raw frame remains missing.
 - `src/config.js` contains pitch thresholds and audio-analysis settings so today’s placeholder tolerances can be replaced without changing the assessment code.
 - `app.js` coordinates the views, OpenSheetMusicDisplay renderer/cursor, controls, pitch monitor, score overlay, coaching cards, and detailed results.
 
@@ -58,7 +61,7 @@ An internet connection is currently required to load the four pinned browser lib
 
 ## Checks
 
-The dependency-free Node test suite covers generated harmonic A3/C4/A4/C5 tones, octave-error correction, wrong-note preservation, score-trace gaps and colour boundaries, count-in meters, extended note analysis, three distinct coaching profiles, Tone/OSMD time conversion, pickup and multi-staff MusicXML timing, RMS gating, empty-sample handling, and GitHub Pages asset paths. Run the full syntax and regression check with Node 20 or newer:
+The dependency-free Node test suite covers generated harmonic A3/C4/A4/C5 tones, quiet/normal/loud microphone profiles, calibration rejection, reacquisition and melodic/octave transitions, bounded score-trace bridging, MediaRecorder pause accounting, count-in meters, extended note analysis, three coaching profiles, Tone/OSMD time conversion, pickup and multi-staff MusicXML timing, RMS gating, empty-sample handling, and GitHub Pages asset paths. Run the full syntax and regression check with Node 20 or newer:
 
 ```sh
 npm run check
@@ -72,7 +75,7 @@ transport quarter | OSMD timestamp | measure | expected note
 
 Tone.Transport remains the playback clock. OSMD timestamps are whole-note fractions, so the app converts one transport quarter to `0.25` OSMD time before advancing the notation cursor.
 
-For detector diagnostics, open the collapsed **Pitch-detector diagnostics** panel or add `?debugPitch=1` to open it automatically. It shows raw/filtered Hz and MIDI, clarity, RMS, sounding target, cents error, reliability state, and an isolated-tone browser self-test.
+For developer-only detector diagnostics, add `?debugPitch=1`. It shows raw/filtered Hz and MIDI, clarity, RMS, sounding target, cents error, reliability state, and an isolated-tone browser self-test.
 
 ## Deploy to GitHub Pages
 
@@ -84,7 +87,8 @@ All app and sample-score paths are relative, so the site works at a project URL 
 
 - Current Chrome, Edge, Firefox, and Safari releases with Web Audio and `getUserMedia` are the target. Microphone behaviour varies by device and browser.
 - Headphones are strongly recommended in both assessment modes and especially when the vocal guide is active. Browser echo cancellation helps reduce speaker recapture, but headphones are the reliable way to prevent the guide from influencing microphone scoring.
-- Assessment calibrates ambient noise for about one second before playback. Low sensitivity rejects more room sound, Normal is the default, and High permits quieter singing; both the calibrated RMS gate and Pitchy clarity threshold must pass before a sample is stored.
+- The first assessment on a browser runs about one second of room listening followed by a 2–3 second comfortable sung “Ah”. A successful calibration is saved locally and can be replaced with **Recheck microphone**. Low/Normal/High are advanced overrides.
+- Assisted Assessment and Assessment record the microphone with MediaRecorder where supported, beginning at score time zero after the count-in. The current prototype replays the captured voice only; synchronized voice-plus-accompaniment replay is deliberately deferred until it can be made robust.
 - Pitch analysis uses a 4096-sample window. Individual detector frames are not scored directly: RMS, clarity, continuity, harmonic/octave evidence, jump confirmation, and a three-frame median must produce a reliable pitch first.
 - Partwise MusicXML is supported. Timewise MusicXML is rejected with an explanation.
 - The parser supports common divisions, time signatures, rests, chords, backups/forwards, chromatic transposition, multiple voices/staves, and ties. Complex repeats, jumps, tuplets, changing tempo maps, ornaments, and every notation-software extension are not yet interpreted for playback.
@@ -92,8 +96,8 @@ All app and sample-score paths are relative, so the site works at a project URL 
 - Playback uses simple synthesized tones rather than a sampled piano or phoneme-aware vocal sound.
 - Pitch detection estimates one fundamental frequency. It reports sustained-pitch stability and coverage, but it does not yet interpret vibrato or grade rhythm, consonants, dynamics, breathing technique, scoops, vocal range, tessitura, or voice type.
 - Note-level metrics are useful prototype signals, not clinical or pedagogical verdicts. The colour thresholds are intentionally configurable placeholders.
-- Session data is not persisted after a new score or page reload; profiles and progression are future features.
+- Assessment recordings remain session-only. Saved performances, profiles, progression, repertoire, and voice classification are future features.
 
 ## Privacy
 
-MusicXML is parsed locally. Microphone input is analysed as short time-domain buffers and is not recorded. Only derived pitch samples live temporarily in browser memory, and imported files are never uploaded.
+MusicXML is parsed locally. Microphone input is analysed as short time-domain buffers; assessment audio is also captured locally for the **Hear my performance** control where MediaRecorder is supported. Imported files, pitch data, calibration values, and audio recordings are never uploaded. Calibration alone is saved in local browser storage; the recording is released with the session.

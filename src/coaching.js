@@ -1,5 +1,5 @@
-import { PITCH_THRESHOLDS } from "./config.js";
-import { summarisePerformance } from "./analysis.js?v=2";
+import { PITCH_THRESHOLDS } from "./config.js?v=14";
+import { summarisePerformance } from "./analysis.js?v=14";
 
 const BALANCE = Object.freeze({
   excellent: { positive: 8, refinement: 2 },

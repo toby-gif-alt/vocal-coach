@@ -88,13 +88,18 @@ test("GitHub Pages entry point references only present local assets", async () =
   assert.ok(references.length > 0);
   await Promise.all(references.map((reference) => readFile(new URL(reference, new URL("../index.html", import.meta.url)))));
   assert.match(html, /<script type="module" src="\.\/app\.js(?:\?v=\d+)?"><\/script>/);
-  assert.match(html, /<link rel="stylesheet" href="\.\/styles\.css" \/>/);
+  assert.match(html, /<link rel="stylesheet" href="\.\/styles\.css(?:\?v=\d+)?" \/>/);
   assert.match(html, /id="tempoSlider"[^>]+max="150"/);
   for (const level of ["low", "normal", "high"]) assert.match(html, new RegExp(`data-sensitivity="${level}"`));
   for (const mode of ["practice", "assisted", "assessment"]) assert.match(html, new RegExp(`data-mode="${mode}"`));
   for (const bars of ["0", "1", "2"]) assert.match(html, new RegExp(`data-count-in="${bars}"`));
   for (const shift of ["-12", "0", "12"]) assert.match(html, new RegExp(`data-octave="${shift}"`));
   assert.match(html, /id="coachObservations"/);
+  for (const id of ["recheckMicrophoneButton", "dockRestartButton", "dockPlayPauseButton", "dockStopButton", "followScoreButton", "performancePlayback", "performanceSeek", "performanceVolume"]) {
+    assert.match(html, new RegExp(`id="${id}"`));
+  }
+  assert.match(html, />Hear my performance</);
+  assert.match(html, />Voice only</);
   assert.match(html, />Detailed analysis</);
   assert.doesNotMatch(html, /id="traceCanvas"/);
   for (const diagnostic of ["diagRawHz", "diagRawMidi", "diagFilteredHz", "diagFilteredMidi", "diagClarity", "diagRms", "diagTarget", "diagCents"]) {
