@@ -95,15 +95,34 @@ export function parseMusicXml(xmlText, fallbackName = "Untitled score") {
   }));
 
   let originalTempo = findInitialTempo(root) || 120;
+  const initialTimeSignature = findInitialTimeSignature(root);
   const partElements = directChildren(root, "part");
   const parts = partElements.map((partElement, index) => {
     const id = partElement.getAttribute("id") || `P${index + 1}`;
     const meta = partMeta.get(id) || { id, name: `Part ${index + 1}`, abbreviation: "", order: index };
-    return parsePart(partElement, meta, originalTempo);
+    return parsePart(partElement, meta, originalTempo, initialTimeSignature);
   });
+  shareTimeSignatures(parts, initialTimeSignature);
   const durationQuarters = Math.max(0, ...parts.map((part) => part.durationQuarters));
-  const initialTimeSignature = findInitialTimeSignature(root);
   return { xmlText, documentNode, title, creator, originalTempo, initialTimeSignature, durationQuarters, parts };
+}
+
+function shareTimeSignatures(parts, initialTimeSignature) {
+  const explicitByMeasure = new Map();
+  for (const part of parts) {
+    for (const measure of part.measureStarts) {
+      if (measure.explicitTimeSignature) explicitByMeasure.set(measure.measureNumber, measure.timeSignature);
+    }
+  }
+  for (const part of parts) {
+    let current = { ...initialTimeSignature };
+    for (const measure of part.measureStarts) {
+      current = explicitByMeasure.get(measure.measureNumber)
+        || (measure.explicitTimeSignature ? measure.timeSignature : current);
+      measure.timeSignature = { ...current };
+      delete measure.explicitTimeSignature;
+    }
+  }
 }
 
 function findInitialTempo(root) {
@@ -128,9 +147,10 @@ function findInitialTimeSignature(root) {
   return { beats: 4, beatType: 4 };
 }
 
-function parsePart(partElement, meta, tempo) {
+function parsePart(partElement, meta, tempo, initialTimeSignature = { beats: 4, beatType: 4 }) {
   let divisions = 1;
-  let beatType = 4;
+  let beats = initialTimeSignature.beats || 4;
+  let beatType = initialTimeSignature.beatType || 4;
   let transposition = 0;
   let partQuarter = 0;
   const rawNotes = [];
@@ -139,13 +159,29 @@ function parsePart(partElement, meta, tempo) {
   directChildren(partElement, "measure").forEach((measureElement, measureIndex) => {
     const measureNumberText = measureElement.getAttribute("number") || String(measureIndex + 1);
     const measureNumber = Number.parseInt(measureNumberText, 10) || measureIndex + 1;
-    measureStarts.push({ measureNumber, onsetQuarters: partQuarter });
+    const openingAttributes = directChildren(measureElement, "attributes").find((element) => directChild(element, "time"));
+    const openingTime = directChild(openingAttributes, "time");
+    if (openingTime) {
+      const beatsText = textOf(openingTime, "beats", String(beats));
+      beats = beatsText.split("+").reduce((sum, value) => sum + (Number(value) || 0), 0) || beats;
+      beatType = numberOf(openingTime, "beat-type", beatType) || beatType;
+    }
+    measureStarts.push({
+      measureNumber,
+      onsetQuarters: partQuarter,
+      timeSignature: { beats, beatType },
+      explicitTimeSignature: Boolean(openingTime),
+    });
     const measureTiming = createMeasureCursor();
 
     for (const element of measureElement.children) {
       if (element.localName === "attributes") {
         divisions = numberOf(element, "divisions", divisions) || divisions;
         const time = directChild(element, "time");
+        if (time) {
+          const beatsText = textOf(time, "beats", String(beats));
+          beats = beatsText.split("+").reduce((sum, value) => sum + (Number(value) || 0), 0) || beats;
+        }
         beatType = numberOf(time, "beat-type", beatType) || beatType;
         const transpose = directChild(element, "transpose");
         transposition = numberOf(transpose, "chromatic", transposition);

@@ -5,14 +5,16 @@ function clampVolume(value, fallback) {
   return Number.isFinite(numeric) ? Math.max(0, Math.min(100, numeric)) : fallback;
 }
 
-export function reviewQuarterAtSeconds(seconds, bpm) {
+export function reviewQuarterAtSeconds(seconds, bpm, startQuarter = 0, endQuarter = Infinity) {
   const safeSeconds = Math.max(0, Number(seconds) || 0);
-  return Number(bpm) > 0 ? safeSeconds * Number(bpm) / 60 : 0;
+  const offset = Math.max(0, Number(startQuarter) || 0);
+  const quarter = Number(bpm) > 0 ? offset + safeSeconds * Number(bpm) / 60 : offset;
+  return Number.isFinite(Number(endQuarter)) ? Math.min(quarter, Number(endQuarter)) : quarter;
 }
 
-export function reviewDriftSeconds(transportQuarter, mediaSeconds, bpm) {
+export function reviewDriftSeconds(transportQuarter, mediaSeconds, bpm, startQuarter = 0, endQuarter = Infinity) {
   if (!(Number(bpm) > 0)) return Infinity;
-  return Math.abs((Number(transportQuarter) || 0) - reviewQuarterAtSeconds(mediaSeconds, bpm)) * 60 / Number(bpm);
+  return Math.abs((Number(transportQuarter) || 0) - reviewQuarterAtSeconds(mediaSeconds, bpm, startQuarter, endQuarter)) * 60 / Number(bpm);
 }
 
 export function createTakeMetadata({
@@ -23,6 +25,10 @@ export function createTakeMetadata({
   guideEnabled,
   durationSeconds,
   vocalPartId,
+  startMeasure,
+  endMeasure,
+  startQuarter,
+  endQuarter,
 } = {}) {
   return Object.freeze({
     tempoPercent: Number(tempoPercent) || 100,
@@ -32,6 +38,10 @@ export function createTakeMetadata({
     guideEnabled: Boolean(guideEnabled),
     durationSeconds: Math.max(0, Number(durationSeconds) || 0),
     vocalPartId: vocalPartId == null ? null : String(vocalPartId),
+    startMeasure: Number.isFinite(Number(startMeasure)) ? Number(startMeasure) : null,
+    endMeasure: Number.isFinite(Number(endMeasure)) ? Number(endMeasure) : null,
+    startQuarter: Math.max(0, Number(startQuarter) || 0),
+    endQuarter: Math.max(0, Number(endQuarter) || 0),
   });
 }
 

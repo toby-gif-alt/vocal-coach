@@ -13,8 +13,9 @@ import { calculateRms, deriveNoiseGate, RmsNoiseGate } from "./noise-gate.js?v=1
 import { applyMicrophoneSensitivity, deriveMicrophoneCalibration } from "./microphone-calibration.js?v=15";
 import { SessionPerformanceRecorder } from "./performance-recorder.js?v=15";
 import { detectAutocorrelationPitch, StablePitchTracker } from "./pitch-tracker.js?v=17";
+import { playbackWindow } from "./practice-range.js?v=18";
 import { countInPattern, quartersToTransportTicks, transportTicksToQuarters } from "./timing.js?v=15";
-import { reviewDriftSeconds, reviewVolumes } from "./review-playback.js?v=17";
+import { reviewDriftSeconds, reviewQuarterAtSeconds, reviewVolumes } from "./review-playback.js?v=18";
 
 export class AudioEngine {
   constructor({ onPitchSample, onRawPitchSample, onPitchDiagnostic, onMicrophoneState, onMicrophoneCalibration, onRecordingState, onCountIn, onPlaybackEnd } = {}) {
@@ -189,6 +190,9 @@ export class AudioEngine {
     vocalOctaveSemitones = 0,
     countInBars = 1,
     targetMidiAtQuarter = () => null,
+    startQuarter = 0,
+    endQuarter = this.score?.durationQuarters || 0,
+    startTimeSignature = this.score?.initialTimeSignature,
   }) {
     if (!this.score) throw new Error("Load a score before playing.");
     this.stopReview({ reset: false });
@@ -198,18 +202,26 @@ export class AudioEngine {
     if (assessmentMode) await this.startMicrophone();
     this.ensureSynths();
     if (assessmentMode && !resuming) this.pitchTracker.reset();
+    if (!resuming) this.transport.ticks = quartersToTransportTicks(startQuarter, this.transport.PPQ);
     // Monitoring is already active in preparation mode where possible. Start
     // it here as a fallback so the count-in is always tuned but never scored.
     if (assessmentMode) this.startPitchSampling();
     if (!resuming && countInBars > 0) {
-      const completed = await this.performCountIn(countInBars, this.score.initialTimeSignature);
+      const completed = await this.performCountIn(countInBars, startTimeSignature || this.score.initialTimeSignature);
       if (!completed) {
         const error = new Error("Count-in was cancelled.");
         error.name = "AbortError";
         throw error;
       }
     }
-    this.scheduleScore({ vocalPartId, guideEnabled, enabledPartIds, vocalOctaveSemitones });
+    this.scheduleScore({
+      vocalPartId,
+      guideEnabled,
+      enabledPartIds,
+      vocalOctaveSemitones,
+      resumeQuarter: resuming ? this.currentQuarter : startQuarter,
+      endQuarter,
+    });
     this.transport.bpm.value = this.bpm;
     if (assessmentMode) {
       if (resuming) this.performanceRecorder.resume();
@@ -234,11 +246,11 @@ export class AudioEngine {
     this.onRecordingState("paused");
   }
 
-  stop({ reset = true, microphone = true } = {}) {
+  stop({ reset = true, resetQuarter = 0, microphone = true } = {}) {
     this.cancelCountIn();
     if (window.Tone) {
       this.transport.stop();
-      if (reset) this.transport.ticks = 0;
+      if (reset) this.transport.ticks = quartersToTransportTicks(resetQuarter, this.transport.PPQ);
       this.transport.cancel(0);
     }
     this.isPlaying = false;
@@ -283,6 +295,7 @@ export class AudioEngine {
     enabledPartIds,
     vocalOctaveSemitones = 0,
     resumeQuarter = this.currentQuarter,
+    endQuarter = this.score?.durationQuarters || 0,
     notifyEnd = true,
   }) {
     const transport = this.transport;
@@ -294,16 +307,11 @@ export class AudioEngine {
       if ((!isVocal && !enabled.has(part.id)) || (isVocal && !guideEnabled)) continue;
       const synth = isVocal ? this.guideSynth : this.synths.get(part.id);
       for (const note of part.notes) {
-        const noteEnd = note.onsetQuarters + note.durationQuarters;
-        if (noteEnd <= resumeQuarter) continue;
-        const resumingSustain = note.onsetQuarters < resumeQuarter;
-        const scheduledOnset = resumingSustain ? resumeQuarter + 1 / ticksPerQuarter : note.onsetQuarters;
-        const soundingDuration = resumingSustain
-          ? Math.max(1 / ticksPerQuarter, noteEnd - resumeQuarter)
-          : note.durationQuarters * 0.92;
-        const when = `${quartersToTransportTicks(scheduledOnset, ticksPerQuarter)}i`;
+        const window = playbackWindow(note, resumeQuarter, endQuarter, ticksPerQuarter);
+        if (!window) continue;
+        const when = `${quartersToTransportTicks(window.scheduledOnset, ticksPerQuarter)}i`;
         transport.schedule((time) => {
-          const durationTicks = Math.max(1, quartersToTransportTicks(soundingDuration, ticksPerQuarter));
+          const durationTicks = Math.max(1, quartersToTransportTicks(window.durationQuarters, ticksPerQuarter));
           const duration = `${durationTicks}i`;
           const frequency = isVocal ? midiToFrequency(note.midi + vocalOctaveSemitones) : note.frequency;
           synth.triggerAttackRelease(frequency, duration, time, isVocal ? 0.52 : 0.28);
@@ -311,7 +319,7 @@ export class AudioEngine {
       }
     }
     if (notifyEnd) {
-      const endWhen = `${quartersToTransportTicks(this.score.durationQuarters, ticksPerQuarter)}i`;
+      const endWhen = `${quartersToTransportTicks(endQuarter, ticksPerQuarter)}i`;
       transport.scheduleOnce(() => {
         this.isPlaying = false;
         this.isPaused = false;
@@ -335,7 +343,8 @@ export class AudioEngine {
       guideEnabled: Boolean(layers?.melody),
       enabledPartIds: layers?.accompaniment ? [...(take?.enabledPartIds || [])] : [],
       vocalOctaveSemitones: Number(take?.octaveShift) || 0,
-      resumeQuarter: Math.max(0, Number(seconds) || 0) * bpm / 60,
+      resumeQuarter: reviewQuarterAtSeconds(seconds, bpm, take?.startQuarter, take?.endQuarter),
+      endQuarter: Number(take?.endQuarter) || this.score.durationQuarters,
       notifyEnd: false,
       bpm,
     };
@@ -393,7 +402,13 @@ export class AudioEngine {
     const now = performance.now();
     if (now - this.lastReviewDriftCheckAt < REVIEW_CONFIG.driftCheckIntervalMs) return false;
     this.lastReviewDriftCheckAt = now;
-    const driftSeconds = reviewDriftSeconds(this.currentQuarter, currentSeconds, this.review.take.bpm);
+    const driftSeconds = reviewDriftSeconds(
+      this.currentQuarter,
+      currentSeconds,
+      this.review.take.bpm,
+      this.review.take.startQuarter,
+      this.review.take.endQuarter,
+    );
     if (driftSeconds <= REVIEW_CONFIG.maximumDriftSeconds) return false;
     void this.resynchroniseReview(currentSeconds);
     return true;

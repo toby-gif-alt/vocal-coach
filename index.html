@@ -15,11 +15,11 @@
     <meta name="twitter:image" content="https://toby-gif-alt.github.io/vocal-coach/og.png" />
     <title>Vocal Coach — Practise from the score</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%2317382f'/%3E%3Cpath d='M14 34c7 0 7-15 14-15s7 27 14 27 7-16 8-16' fill='none' stroke='%23d7ff72' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="./styles.css?v=16" />
+    <link rel="stylesheet" href="./styles.css?v=17" />
     <script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@2.1.2/build/opensheetmusicdisplay.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/tone@15.1.22/build/Tone.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" defer></script>
-    <script type="module" src="./app.js?v=18"></script>
+    <script type="module" src="./app.js?v=19"></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to the app</a>
@@ -107,6 +107,23 @@
                 <button type="button" data-count-in="2" role="radio" aria-checked="false">2 bars</button>
               </div>
             </div>
+            <section class="practice-section-setting" aria-labelledby="practiceSectionLabel">
+              <div class="setting-label"><span id="practiceSectionLabel">Practice section</span><output id="practiceRangeStatus">Whole piece</output></div>
+              <div class="practice-range-fields">
+                <label for="sectionFrom">From bar <input id="sectionFrom" type="number" inputmode="numeric" step="1" /></label>
+                <span aria-hidden="true">to</span>
+                <label for="sectionTo">To bar <input id="sectionTo" type="number" inputmode="numeric" step="1" /></label>
+              </div>
+              <div class="practice-range-actions">
+                <button id="selectBarsButton" type="button" aria-pressed="false">Select bars from score</button>
+                <button id="clearSectionButton" type="button">Whole piece / Clear section</button>
+              </div>
+              <p id="sectionValidation" class="setting-message" role="status">Whole piece is selected.</p>
+              <div class="start-from-setting">
+                <label for="startFromBar"><span>Start from</span><span>Bar <input id="startFromBar" type="number" inputmode="numeric" step="1" /></span></label>
+                <button id="chooseStartButton" type="button" aria-pressed="false">Choose start on score</button>
+              </div>
+            </section>
             <div class="starting-note-setting">
               <div><span>Starting note</span><strong id="startingNoteName">—</strong></div>
               <button id="hearStartingNote" type="button">🔊 Hear starting note</button>
@@ -151,6 +168,11 @@
             <section class="score-panel panel" aria-labelledby="scoreHeading">
               <div class="score-panel-head"><div><p class="kicker">Following</p><h2 id="scoreHeading">Selected vocal line</h2></div><div class="score-head-meta"><span class="measure-pill">Measure <strong id="measureNumber">1</strong></span><div class="tolerance-legend" aria-label="Pitch trace colours"><span><i class="green"></i>±15¢</span><span><i class="yellow"></i>±30¢</span><span><i class="orange"></i>±45¢</span><span><i class="red"></i>45¢+</span></div></div></div>
               <div class="score-banner"><span></span><strong id="scoreBannerPart">Voice</strong> is the target · your accepted pitch draws directly across its notes</div>
+              <div class="score-selection-action" id="scoreSelectionAction" hidden role="status">
+                <span id="scoreSelectionCopy">Choose a measure.</span>
+                <button id="startHereButton" type="button" hidden>Start here</button>
+                <button id="cancelScoreSelectionButton" type="button">Cancel</button>
+              </div>
               <div class="score-stage">
                 <div id="scoreContainer" class="score-container" aria-label="Rendered sheet music"></div>
                 <aside class="tuning-meter is-listening" id="tuningMeter" role="meter" aria-label="Live tuning: listening" aria-valuemin="-50" aria-valuemax="50">
@@ -179,6 +201,7 @@
             </section>
             <section class="results-panel panel" id="resultsPanel" hidden aria-labelledby="resultsHeading">
               <div class="results-head"><div><p class="kicker">Personalised assessment</p><h2 id="resultsHeading">Your Vocal Coach</h2></div><strong class="coach-level" id="coachLevel">Developing</strong></div>
+              <p class="assessment-scope" id="assessmentScope">Assessment: whole piece</p>
               <p class="coach-intro" id="coachIntro">Your most useful strengths and next priorities will appear here.</p>
               <section class="performance-playback" id="performancePlayback" hidden aria-labelledby="performancePlaybackHeading">
                 <div class="performance-playback-head"><div><p class="kicker">Captured locally</p><h3 id="performancePlaybackHeading">Hear my performance</h3></div><span>Synced to score</span></div>
@@ -240,7 +263,7 @@
             <button class="dock-play" id="dockPlayPauseButton" type="button" aria-label="Play">▶ <span>Play</span></button>
             <button id="dockStopButton" type="button" aria-label="Stop" disabled>■ <span>Stop</span></button>
           </div>
-          <div class="dock-position"><strong id="dockTransportState">Ready</strong><span><time id="dockCurrentTime">00:00</time><small>/</small><time id="dockTotalTime">00:00</time></span><small>Measure <b id="dockMeasure">1</b></small></div>
+          <div class="dock-position"><strong id="dockTransportState">Ready</strong><span><time id="dockCurrentTime">00:00</time><small>/</small><time id="dockTotalTime">00:00</time></span><small id="dockRange">Bar 1 · whole piece</small><b id="dockMeasure" hidden>1</b></div>
           <button class="follow-score-button active" id="followScoreButton" type="button" aria-pressed="true"><span aria-hidden="true">↧</span> Follow score</button>
         </nav>
       </section>

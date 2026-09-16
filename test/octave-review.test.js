@@ -47,20 +47,29 @@ test("take metadata is immutable and review time maps to the take tempo", () => 
     guideEnabled: false,
     durationSeconds: 12,
     vocalPartId: "P1",
+    startMeasure: 10,
+    endMeasure: 25,
+    startQuarter: 36,
+    endQuarter: 100,
   });
-  assert.equal(reviewQuarterAtSeconds(8, take.bpm), 12);
+  assert.equal(reviewQuarterAtSeconds(8, take.bpm, take.startQuarter), 48);
+  assert.equal(reviewQuarterAtSeconds(90, take.bpm, take.startQuarter, take.endQuarter), 100);
   assert.deepEqual(take.enabledPartIds, ["P2", "P3"]);
   assert.equal(take.octaveShift, -12);
   assert.equal(take.vocalPartId, "P1");
+  assert.deepEqual(
+    { startMeasure: take.startMeasure, endMeasure: take.endMeasure, startQuarter: take.startQuarter, endQuarter: take.endQuarter },
+    { startMeasure: 10, endMeasure: 25, startQuarter: 36, endQuarter: 100 },
+  );
   assert.equal(Object.isFrozen(take), true);
   assert.equal(Object.isFrozen(take.enabledPartIds), true);
 });
 
 test("recorded-audio time remains the review authority at slow, normal, and fast tempos", () => {
   for (const bpm of [60, 120, 180]) {
-    const quarter = reviewQuarterAtSeconds(4.25, bpm);
-    assert.equal(reviewDriftSeconds(quarter, 4.25, bpm), 0);
-    assert.ok(Math.abs(reviewDriftSeconds(quarter + bpm / 600, 4.25, bpm) - 0.1) < 1e-10);
+    const quarter = reviewQuarterAtSeconds(4.25, bpm, 28);
+    assert.equal(reviewDriftSeconds(quarter, 4.25, bpm, 28), 0);
+    assert.ok(Math.abs(reviewDriftSeconds(quarter + bpm / 600, 4.25, bpm, 28) - 0.1) < 1e-10);
   }
 });
 

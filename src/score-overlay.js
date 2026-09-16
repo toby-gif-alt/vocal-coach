@@ -37,6 +37,27 @@ function pageIndexBySystem(graphicSheet) {
   return result;
 }
 
+function verticalBoundsBySystem(osmd) {
+  const graphicSheet = osmd?.GraphicSheet || osmd?.graphicSheet;
+  const measureList = graphicSheet?.measureList || graphicSheet?.MeasureList || [];
+  const bounds = new Map();
+  for (const measureRow of measureList) {
+    for (const measure of measureRow || []) {
+      if (!measure) continue;
+      const system = measure.parentMusicSystem || measure.ParentMusicSystem || measure.parentStaffLine?.parentMusicSystem;
+      const position = absolutePosition(measure);
+      const size = sizeOf(measure);
+      const top = position.y * SCORE_TRACE_CONFIG.osmdPixelsPerUnit - 34;
+      const bottom = (position.y + size.height) * SCORE_TRACE_CONFIG.osmdPixelsPerUnit + 34;
+      const current = bounds.get(system) || { top: Infinity, bottom: -Infinity };
+      current.top = Math.min(current.top, top);
+      current.bottom = Math.max(current.bottom, bottom);
+      bounds.set(system, current);
+    }
+  }
+  return bounds;
+}
+
 function xForQuarter(system, quarter, edge = "start") {
   const exact = system.anchors.filter((anchor) => Math.abs(anchor.quarter - quarter) <= EPSILON);
   if (exact.length) {
@@ -79,6 +100,7 @@ function collectSystems(osmd, timeline, instrumentIndex) {
   const pageLookup = pageIndexBySystem(graphicSheet);
   const staffOffset = selectedStaffOffset(osmd, instrumentIndex);
   const selectedStaffNumbers = [...new Set(timeline.map((note) => Math.max(1, Number.parseInt(note.staff, 10) || 1)))];
+  if (!selectedStaffNumbers.length) selectedStaffNumbers.push(1);
   const staffSystems = new Map();
 
   for (const staffNumber of selectedStaffNumbers) {
@@ -121,6 +143,7 @@ function collectSystems(osmd, timeline, instrumentIndex) {
         xLeft,
         xRight,
         y: measurePosition.y * SCORE_TRACE_CONFIG.osmdPixelsPerUnit,
+        height: measureSize.height * SCORE_TRACE_CONFIG.osmdPixelsPerUnit,
       });
       system.anchors.push({ quarter: qEnd, x: xRight, kind: "measure-end" });
 
@@ -198,6 +221,27 @@ export function buildScoreGeometry(osmd, timeline, instrumentIndex) {
     if (regions.length) geometry.set(note.id, regions);
   }
   return geometry;
+}
+
+export function buildMeasureGeometry(osmd, timeline, instrumentIndex) {
+  const staffSystems = collectSystems(osmd, timeline, instrumentIndex);
+  const systems = staffSystems.values().next().value || [];
+  const verticalBounds = verticalBoundsBySystem(osmd);
+  return systems.flatMap((system) => system.measures.map((measure) => ({
+    measureNumber: Number(measure.number),
+    qStart: measure.qStart,
+    qEnd: measure.qEnd,
+    xStart: measure.xLeft,
+    xEnd: measure.xRight,
+    yStart: verticalBounds.get(system.object)?.top ?? measure.y - 34,
+    height: Math.max(
+      70,
+      (verticalBounds.get(system.object)?.bottom ?? measure.y + (measure.height || 0) + 34)
+        - (verticalBounds.get(system.object)?.top ?? measure.y - 34),
+    ),
+    system: system.object,
+    pageIndex: system.pageIndex,
+  }))).filter((measure) => Number.isFinite(measure.measureNumber));
 }
 
 export function pointForSample(regions, sample) {
@@ -309,6 +353,59 @@ export function renderScoreTrace(scoreContainer, geometry, samples) {
     if (point) appendSampleMark(pages[point.pageIndex], point);
   }
   for (const segment of traceSegments(samples, geometry)) appendSegment(pages[segment.to.pageIndex], segment);
+}
+
+export function renderMeasureSelection(scoreContainer, geometry, {
+  sectionStartMeasure,
+  sectionEndMeasure,
+  startMeasure,
+  interactionMode = null,
+  pendingMeasure = null,
+} = {}) {
+  const pages = [...scoreContainer.querySelectorAll('svg[id^="osmdSvgPage"]')];
+  pages.forEach((page) => page.querySelector(".score-range-layer")?.remove());
+  pages.forEach((page, pageIndex) => {
+    const layer = svgElement("g", {
+      class: `score-range-layer${interactionMode ? " is-interactive" : ""}`,
+      "data-page-index": pageIndex,
+    });
+    const traceLayer = page.querySelector(".score-trace-layer");
+    if (traceLayer) page.insertBefore(layer, traceLayer);
+    else page.append(layer);
+  });
+
+  for (const region of geometry || []) {
+    const layer = pages[region.pageIndex]?.querySelector(".score-range-layer");
+    if (!layer) continue;
+    const selected = region.measureNumber >= Number(sectionStartMeasure)
+      && region.measureNumber <= Number(sectionEndMeasure);
+    const classes = ["score-measure-region"];
+    if (selected) classes.push("selected");
+    if (region.measureNumber === Number(startMeasure)) classes.push("start-measure");
+    if (region.measureNumber === Number(pendingMeasure)) classes.push("pending");
+    const rect = svgElement("rect", {
+      class: classes.join(" "),
+      "data-measure-number": region.measureNumber,
+      x: region.xStart,
+      y: region.yStart,
+      width: Math.max(12, region.xEnd - region.xStart),
+      height: region.height,
+      rx: 4,
+      tabindex: interactionMode ? 0 : -1,
+      role: interactionMode ? "button" : "presentation",
+      "aria-label": interactionMode ? `Bar ${region.measureNumber}` : "",
+    });
+    layer.append(rect);
+    if (region.measureNumber === Number(startMeasure)) {
+      layer.append(svgElement("line", {
+        class: "score-start-marker",
+        x1: region.xStart + 3,
+        y1: region.yStart + 2,
+        x2: region.xStart + 3,
+        y2: region.yStart + region.height - 2,
+      }));
+    }
+  }
 }
 
 export function appendScoreTraceSample(scoreContainer, geometry, sample, previousSample) {
