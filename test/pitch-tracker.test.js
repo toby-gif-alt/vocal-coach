@@ -112,7 +112,8 @@ test("a legitimate C4 to G4 score-led interval remains immediate", () => {
   const tracker = new StablePitchTracker();
   tracker.process(reliableFrame(midiToFrequency(60), { capturedAt: 0, targetMidi: 60 }));
   tracker.process(reliableFrame(midiToFrequency(60), { capturedAt: 46, targetMidi: 60 }));
-  const changed = tracker.process(reliableFrame(midiToFrequency(67), { capturedAt: 92, targetMidi: 67 }));
+  tracker.process(reliableFrame(midiToFrequency(60), { capturedAt: 92, targetMidi: 60 }));
+  const changed = tracker.process(reliableFrame(midiToFrequency(67), { capturedAt: 138, targetMidi: 67 }));
   assert.equal(changed.status, "accepted");
   assert.ok(Math.abs(changed.filteredMidi - 67) < 0.05);
 });
@@ -176,7 +177,10 @@ test("brief lower-octave ambiguity is corrected symmetrically", () => {
 
 test("the expected note never snaps a genuinely wrong first pitch into tune", () => {
   const tracker = new StablePitchTracker();
-  const wrong = tracker.process(reliableFrame(440, { targetMidi: 57 }));
+  let wrong;
+  for (let index = 0; index < 3; index += 1) {
+    wrong = tracker.process(reliableFrame(440, { capturedAt: index * 46, targetMidi: 57 }));
+  }
   assert.equal(wrong.status, "accepted");
   assert.ok(Math.abs(detectorCents(wrong.filteredFrequency, 440)) < 1);
   assert.ok(wrong.centsError > 1190);
@@ -186,8 +190,9 @@ test("isolated implausible jumps are rejected but confirmed movement is retained
   const tracker = new StablePitchTracker();
   tracker.process(reliableFrame(220, { capturedAt: 0 }));
   tracker.process(reliableFrame(220, { capturedAt: 46 }));
-  const isolated = tracker.process(reliableFrame(330, { capturedAt: 92 }));
-  const confirmed = tracker.process(reliableFrame(330, { capturedAt: 138 }));
+  tracker.process(reliableFrame(220, { capturedAt: 92 }));
+  const isolated = tracker.process(reliableFrame(330, { capturedAt: 138 }));
+  const confirmed = tracker.process(reliableFrame(330, { capturedAt: 184 }));
   assert.equal(isolated.status, "unreliable");
   assert.equal(isolated.reason, "isolated pitch jump");
   assert.equal(confirmed.status, "accepted");
@@ -197,7 +202,8 @@ test("a clear sung transition near the new score target is accepted without a fa
   const tracker = new StablePitchTracker();
   tracker.process(reliableFrame(220, { capturedAt: 0, targetMidi: 57 }));
   tracker.process(reliableFrame(220, { capturedAt: 46, targetMidi: 57 }));
-  const transition = tracker.process(reliableFrame(329.63, { capturedAt: 92, targetMidi: 64 }));
+  tracker.process(reliableFrame(220, { capturedAt: 92, targetMidi: 57 }));
+  const transition = tracker.process(reliableFrame(329.63, { capturedAt: 138, targetMidi: 64 }));
   assert.equal(transition.status, "accepted");
   assert.ok(Math.abs(transition.filteredMidi - 64) < 0.05);
 });
@@ -206,7 +212,8 @@ test("a notated octave transition is not mistaken for a harmonic detector error"
   const tracker = new StablePitchTracker();
   tracker.process(reliableFrame(220, { capturedAt: 0, targetMidi: 57 }));
   tracker.process(reliableFrame(220, { capturedAt: 46, targetMidi: 57 }));
-  const transition = tracker.process(reliableFrame(440, { capturedAt: 92, targetMidi: 69 }));
+  tracker.process(reliableFrame(220, { capturedAt: 92, targetMidi: 57 }));
+  const transition = tracker.process(reliableFrame(440, { capturedAt: 138, targetMidi: 69 }));
   assert.equal(transition.status, "accepted");
   assert.equal(transition.octaveCorrection, 0);
   assert.ok(Math.abs(transition.filteredMidi - 69) < 0.05);
@@ -214,11 +221,11 @@ test("a notated octave transition is not mistaken for a harmonic detector error"
 
 test("short median filtering preserves a gradual five-frame vocal movement", () => {
   const tracker = new StablePitchTracker();
-  const centsPath = [-40, -28, -15, -5, 0];
+  const centsPath = [-40, -40, -40, -28, -15, -5, 0];
   const filtered = centsPath.map((cents, index) => tracker.process(reliableFrame(
     440 * 2 ** (cents / 1200),
     { capturedAt: index * 46, targetMidi: 69 },
-  ))).map((sample) => sample.centsError);
+  ))).filter((sample) => sample.status === "accepted").map((sample) => sample.centsError);
   assert.ok(filtered.every((value, index) => index === 0 || value >= filtered[index - 1]));
   assert.ok(filtered.at(-1) > -8 && filtered.at(-1) <= 0.5);
 });
@@ -229,11 +236,26 @@ test("the tracker exposes an explicit no-reliable-pitch state", () => {
   assert.equal(tracker.process(reliableFrame(220, { clarity: 0.5 })).reason, "low clarity");
 });
 
+test("voice acquisition requires three clustered reliable frames and classifies overload/missing pitch", () => {
+  const tracker = new StablePitchTracker();
+  const first = tracker.process(reliableFrame(220, { capturedAt: 0 }));
+  const second = tracker.process(reliableFrame(220.2, { capturedAt: 46 }));
+  const third = tracker.process(reliableFrame(219.9, { capturedAt: 92 }));
+  assert.equal(first.status, "unreliable");
+  assert.equal(second.status, "unreliable");
+  assert.equal(third.status, "accepted");
+  assert.equal(third.acceptanceMode, "acquisition");
+  assert.equal(tracker.process(reliableFrame(null, { capturedAt: 138 })).reason, "no usable detector frequency");
+  assert.equal(tracker.process(reliableFrame(220, { capturedAt: 184, clipped: true })).reason, "clipping / possible overload");
+});
+
 test("a calibrated clarity threshold preserves a quiet stable voice through a brief dropout", () => {
   const tracker = new StablePitchTracker({ minimumClarity: 0.69, reacquireAfterMs: 520 });
-  const first = tracker.process(reliableFrame(220, { clarity: 0.72, capturedAt: 0 }));
-  const missing = tracker.process(reliableFrame(220, { clarity: 0.5, capturedAt: 46 }));
-  const recovered = tracker.process(reliableFrame(220.4, { clarity: 0.71, capturedAt: 92 }));
+  tracker.process(reliableFrame(220, { clarity: 0.72, capturedAt: 0 }));
+  tracker.process(reliableFrame(220, { clarity: 0.72, capturedAt: 46 }));
+  const first = tracker.process(reliableFrame(220, { clarity: 0.72, capturedAt: 92 }));
+  const missing = tracker.process(reliableFrame(220, { clarity: 0.5, capturedAt: 138 }));
+  const recovered = tracker.process(reliableFrame(220.4, { clarity: 0.71, capturedAt: 184 }));
   assert.equal(first.status, "accepted");
   assert.equal(missing.status, "unreliable");
   assert.equal(recovered.status, "accepted");
@@ -284,7 +306,7 @@ test("continuation expires and cannot acquire arbitrary quiet room pitch", () =>
     clarity: 0.72,
   }));
   assert.equal(stale.status, "unreliable");
-  assert.equal(stale.reason, "below noise gate");
+  assert.equal(stale.reason, "below open gate");
 });
 
 test("soft continuation cannot perpetuate itself without a fresh strict frame", () => {
@@ -308,7 +330,7 @@ test("soft continuation cannot perpetuate itself without a fresh strict frame", 
     clarity: 0.7,
   }));
   assert.equal(expired.status, "unreliable");
-  assert.equal(expired.reason, "below noise gate");
+  assert.equal(expired.reason, "below open gate");
 });
 
 test("pitch diagnostic summary reports rejection causes and usable percentage", () => {
@@ -318,12 +340,16 @@ test("pitch diagnostic summary reports rejection causes and usable percentage", 
   summary.add({ status: "accepted", reason: "stable pitch" });
   summary.add({ status: "accepted", reason: "octave ambiguity resolved by continuity", octaveCorrection: -12 });
   assert.deepEqual(summary.snapshot(), {
-    belowGate: 1,
+    acceptedAcquisition: 2,
+    acceptedContinuation: 0,
+    belowOpenGate: 1,
+    belowContinuationGate: 0,
     lowClarity: 1,
     isolatedJump: 0,
-    octaveAmbiguity: 1,
+    octaveHarmonic: 1,
     outOfRange: 0,
-    accepted: 1,
+    clipping: 0,
+    noUsableFrequency: 0,
     total: 4,
     usable: 2,
     usablePercent: 50,

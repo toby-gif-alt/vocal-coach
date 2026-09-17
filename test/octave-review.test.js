@@ -19,6 +19,7 @@ test("live octave selection confirms a stable matching pitch class", () => {
   assert.equal(result.shift, -12);
   assert.equal(result.soundingMidi, 55);
   assert.equal(closestOctaveCandidate(79.1, 67).shift, 12);
+  assert.equal(closestOctaveCandidate(91, 67).shift, 12, "+24 is deliberately not a candidate");
 });
 
 test("octave selection does not confirm inconsistent or wrong pitch-class responses", () => {
@@ -44,6 +45,7 @@ test("take metadata is immutable and review time maps to the take tempo", () => 
     bpm: 90,
     octaveShift: -12,
     enabledPartIds: ["P2", "P3"],
+    partVolumes: { P2: 42, P3: 81 },
     guideEnabled: false,
     durationSeconds: 12,
     vocalPartId: "P1",
@@ -55,6 +57,7 @@ test("take metadata is immutable and review time maps to the take tempo", () => 
   assert.equal(reviewQuarterAtSeconds(8, take.bpm, take.startQuarter), 48);
   assert.equal(reviewQuarterAtSeconds(90, take.bpm, take.startQuarter, take.endQuarter), 100);
   assert.deepEqual(take.enabledPartIds, ["P2", "P3"]);
+  assert.deepEqual(take.partVolumes, { P2: 42, P3: 81 });
   assert.equal(take.octaveShift, -12);
   assert.equal(take.vocalPartId, "P1");
   assert.deepEqual(
@@ -63,6 +66,7 @@ test("take metadata is immutable and review time maps to the take tempo", () => 
   );
   assert.equal(Object.isFrozen(take), true);
   assert.equal(Object.isFrozen(take.enabledPartIds), true);
+  assert.equal(Object.isFrozen(take.partVolumes), true);
 });
 
 test("recorded-audio time remains the review authority at slow, normal, and fast tempos", () => {

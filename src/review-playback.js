@@ -1,4 +1,4 @@
-import { REVIEW_CONFIG } from "./config.js?v=17";
+import { REVIEW_CONFIG } from "./config.js?v=20";
 
 function clampVolume(value, fallback) {
   const numeric = Number(value);
@@ -22,7 +22,9 @@ export function createTakeMetadata({
   bpm,
   octaveShift,
   enabledPartIds,
+  partVolumes,
   guideEnabled,
+  mode,
   durationSeconds,
   vocalPartId,
   startMeasure,
@@ -35,7 +37,9 @@ export function createTakeMetadata({
     bpm: Number(bpm) || 120,
     octaveShift: Number(octaveShift) || 0,
     enabledPartIds: Object.freeze([...(enabledPartIds || [])]),
+    partVolumes: Object.freeze(Object.fromEntries(Object.entries(partVolumes || {}).map(([id, value]) => [id, clampVolume(value, 70)]))),
     guideEnabled: Boolean(guideEnabled),
+    mode: mode === "assisted" ? "assisted" : "assessment",
     durationSeconds: Math.max(0, Number(durationSeconds) || 0),
     vocalPartId: vocalPartId == null ? null : String(vocalPartId),
     startMeasure: Number.isFinite(Number(startMeasure)) ? Number(startMeasure) : null,

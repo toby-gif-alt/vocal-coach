@@ -1,4 +1,4 @@
-import { colourForCents, frequencyToMidi, SCORE_TRACE_CONFIG } from "./config.js?v=14";
+import { colourForCents, frequencyToMidi, SCORE_TRACE_CONFIG } from "./config.js?v=20";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const EPSILON = 0.015;
@@ -269,7 +269,13 @@ export function traceSegments(samples, geometry) {
     const from = pointForSample(geometry.get(previous.targetId), previous);
     const to = pointForSample(geometry.get(current.targetId), current);
     if (!from || !to || from.pageIndex !== to.pageIndex || from.system !== to.system) continue;
-    segments.push({ from, to, colour: colourForCents((previous.cents + current.cents) / 2) });
+    segments.push({
+      from,
+      to,
+      colour: colourForCents((previous.cents + current.cents) / 2),
+      opacity: Math.min(previous.opacity ?? 1, current.opacity ?? 1),
+      visualOnly: Boolean(previous.visualOnly || current.visualOnly),
+    });
   }
   return segments;
 }
@@ -295,8 +301,9 @@ function ensureLayers(scoreContainer, geometry) {
     page.querySelector(".score-trace-layer")?.remove();
     const layer = svgElement("g", { class: "score-trace-layer", "aria-hidden": "true", "data-page-index": pageIndex });
     const focus = svgElement("g", { class: "score-trace-focus-layer" });
-    const trace = svgElement("g", { class: "score-trace-lines" });
-    layer.append(focus, trace);
+    const previous = svgElement("g", { class: "score-trace-previous" });
+    const trace = svgElement("g", { class: "score-trace-lines score-trace-current" });
+    layer.append(focus, previous, trace);
     page.append(layer);
   });
   for (const regions of geometry.values()) {
@@ -318,39 +325,48 @@ function ensureLayers(scoreContainer, geometry) {
   return pages;
 }
 
-function appendSampleMark(page, point) {
-  const layer = page?.querySelector(".score-trace-lines");
+function appendSampleMark(page, point, sample = {}, previousTake = false) {
+  const layer = page?.querySelector(previousTake ? ".score-trace-previous" : ".score-trace-current");
   if (!layer) return;
   layer.append(svgElement("circle", {
-    class: "score-trace-sample",
+    class: `score-trace-sample${sample.visualOnly ? " visual-only" : ""}${previousTake ? " previous-take" : ""}`,
     "data-note-id": point.noteId,
     cx: point.x,
     cy: point.y,
     r: 1.55,
-    fill: colourForCents(point.cents),
+    fill: previousTake ? "#73817c" : colourForCents(point.cents),
+    opacity: previousTake ? 0.24 : sample.opacity ?? 0.84,
   }));
 }
 
-function appendSegment(page, segment) {
-  const layer = page?.querySelector(".score-trace-lines");
+function appendSegment(page, segment, previousTake = false) {
+  const layer = page?.querySelector(previousTake ? ".score-trace-previous" : ".score-trace-current");
   if (!layer) return;
   layer.append(svgElement("line", {
-    class: "score-trace-segment",
+    class: `score-trace-segment${segment.visualOnly ? " visual-only" : ""}${previousTake ? " previous-take" : ""}`,
     "data-note-id": segment.to.noteId,
     x1: segment.from.x,
     y1: segment.from.y,
     x2: segment.to.x,
     y2: segment.to.y,
-    stroke: segment.colour,
+    stroke: previousTake ? "#73817c" : segment.colour,
+    opacity: previousTake ? 0.26 : segment.opacity ?? 0.92,
   }));
 }
 
-export function renderScoreTrace(scoreContainer, geometry, samples) {
+export function renderScoreTrace(scoreContainer, geometry, samples, { previousSamples = [], showPrevious = true } = {}) {
   if (!scoreContainer || !geometry) return;
   const pages = ensureLayers(scoreContainer, geometry);
+  if (showPrevious) {
+    for (const sample of previousSamples) {
+      const point = pointForSample(geometry.get(sample.targetId), sample);
+      if (point) appendSampleMark(pages[point.pageIndex], point, sample, true);
+    }
+    for (const segment of traceSegments(previousSamples, geometry)) appendSegment(pages[segment.to.pageIndex], segment, true);
+  }
   for (const sample of samples) {
     const point = pointForSample(geometry.get(sample.targetId), sample);
-    if (point) appendSampleMark(pages[point.pageIndex], point);
+    if (point) appendSampleMark(pages[point.pageIndex], point, sample);
   }
   for (const segment of traceSegments(samples, geometry)) appendSegment(pages[segment.to.pageIndex], segment);
 }
@@ -413,7 +429,7 @@ export function appendScoreTraceSample(scoreContainer, geometry, sample, previou
   const pages = [...scoreContainer.querySelectorAll('svg[id^="osmdSvgPage"]')];
   const point = pointForSample(geometry.get(sample.targetId), sample);
   if (!point) return;
-  appendSampleMark(pages[point.pageIndex], point);
+  appendSampleMark(pages[point.pageIndex], point, sample);
   if (!shouldBridgeTraceSamples(previousSample, sample)) return;
   const from = pointForSample(geometry.get(previousSample.targetId), previousSample);
   if (!from || from.pageIndex !== point.pageIndex || from.system !== point.system) return;

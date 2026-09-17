@@ -9,13 +9,13 @@ No account, backend, upload service, or build step is required. Scores, calibrat
 1. Upload `.musicxml`, `.xml`, or compressed `.mxl`.
 2. Review every detected score part and select **I am singing this part**.
 3. View the selected part by itself or switch to the full score.
-4. Choose **Practice** (guide + accompaniment, no scoring), **Assisted Assessment** (guide + accompaniment + scoring), or **Assessment** (accompaniment + scoring).
+4. Choose **Assisted** (guide + accompaniment + trace, without coaching judgement) or **Assessment** (accompaniment + trace + detailed coaching).
 5. Practise the whole piece or enter/select a bar range directly on the score. **Start from** can begin later inside that section without assessing the deliberately skipped bars.
-6. Choose an Off/1-bar/2-bar musical count-in. Vocal Coach uses the meter at the selected starting bar, suggests an octave from the current microphone check, then confirms it when the starting pitch is sung back; manual octave controls remain under **Advanced**.
-7. Before the first microphone session, complete a saved room-and-comfortable-voice **Microphone Check**; Low/Normal/High remain available only as advanced overrides.
+6. Choose an Off/1-bar/2-bar musical count-in. Press **Hear starting note**, then sing it back during the explicit response window to confirm one of −24/−12/0/+12 semitones. The octave never changes automatically during count-in or performance, and manual controls remain under **Advanced**.
+7. Before the first microphone session, complete a saved room-and-voice **Microphone Check**: stay quiet for about one second, then sing a comfortable “Ah”, beginning normally and getting a little louder. Low/Normal/High remain available as advanced overrides.
 8. In a microphone mode, use the large vertical tuner to find the first vocal entrance at or after the selected starting bar and keep tuning through the count-in; during later rests it prepares the next entrance without adding those samples to assessment results.
-9. Balance separate Vocal Guide and Accompaniment volume controls, then use the persistent transport dock while the stabilised colour-coded pitch trace follows the written staff.
-10. Use the ten adaptive **Your Vocal Coach** observations as the main review, then replay any combination of **My voice**, **Accompaniment**, and **Melody guide** against the same absolute score interval. Each review layer has its own live volume control, independent of the mix used for the original take.
+9. Enable and balance each non-vocal MusicXML part independently. These controls remain live during the take, and the take stores its individual part mix for synchronized review.
+10. Start another take to retain the immediately previous trace as a thin grey reference. Assisted ends with a trace/listen-back review only; Assessment additionally provides adaptive **Your Vocal Coach** observations and detailed metrics.
 
 A small two-part MusicXML score is included so the complete flow can be tried immediately.
 
@@ -25,22 +25,24 @@ The app deliberately keeps musical concerns separate:
 
 - `src/musicxml.js` reads MusicXML/MXL, detects parts, and builds independent note timelines. Each note includes written pitch, MIDI pitch, frequency, onset, duration, measure, beat, voice/staff, and tie data.
 - `src/timing.js` defines the exact bridge between Tone.Transport quarter notes and OSMD whole-note-fraction timestamps, applies MusicXML backup/forward/chord measure timing, and derives simple or compound-meter count-in pulses.
-- `src/audio-engine.js` owns Tone.js transport scheduling, gain-controlled accompaniment/guide synthesizers, count-in clicks outside score time, the two-stage microphone check, the RMS noise gate, raw Pitchy samples, score-time-aligned recording lifecycle, and independently gain-controlled XML review layers slaved to recorded-audio time.
+- `src/audio-engine.js` owns Tone.js transport scheduling, independently gain-controlled part/guide synthesizers, headphone/speaker capture constraints, count-in clicks outside score time, the two-stage microphone check, raw Pitchy frames, score-time-aligned recording lifecycle, and XML review layers slaved to recorded-audio time.
 - `src/noise-gate.js` measures RMS amplitude, derives a room-aware threshold for Low/Normal/High sensitivity, and applies gate hysteresis before pitch detection.
-- `src/microphone-calibration.js` combines ambient and comfortable sung-voice distributions into a saved gate, clarity threshold, and tracker reacquisition setting without exposing technical values in the student interface.
+- `src/signal-quality.js` measures RMS, absolute peak, and near-full-scale occupancy on every input frame, classifies clipping, and requires a sustained clipped burst before raising an overload warning.
+- `src/microphone-calibration.js` combines ambient, normal voice, and slightly louder voice distributions into saved acquisition/continuation gates, a clarity threshold, and tracker reacquisition setting. Sustained calibration clipping is rejected; there is no upper RMS gate for valid singing.
 - `src/performance-recorder.js` wraps MediaRecorder for session-only voice capture, pause/resume accounting, local object-URL playback, and future storage separation.
-- `src/pitch-tracker.js` keeps raw detector history, acquires new voices with strict thresholds, continues only recent pitch-related voices at moderately softer thresholds, keeps a separate 1.4-second reliable-fundamental memory for octave ambiguity, rejects isolated jumps, and exposes a diagnostic rejection summary.
-- `src/octave-selection.js` compares the sung starting pitch with the written, lower-octave, and higher-octave candidates, while keeping the current voice-check suggestion separate from future singer-profile data.
+- `src/pitch-tracker.js` keeps raw detector history, requires a short cluster of reliable frames to acquire a voice, continues a recently established related pitch at softer thresholds, keeps a separate 1.4-second reliable-fundamental memory for octave ambiguity, rejects isolated jumps, and classifies every frame for developer diagnostics.
+- `src/octave-selection.js` compares only an explicit hear-and-sing-back response with −24/−12/0/+12 candidates. It is not active during count-in, performance, rests, or review.
 - `src/practice-range.js` validates real measure numbers, resolves whole-piece/section/start-from choices to one absolute quarter-note interval, and clips assessment notes and samples at its boundaries.
-- `src/review-playback.js` stores immutable take settings (including measure and quarter boundaries), review-mix defaults, and the offset mapping from recorded-audio seconds back to absolute musical quarter notes for synchronized review.
+- `src/review-playback.js` stores immutable take settings (including mode, measure/quarter boundaries, enabled accompaniment IDs, and per-part volumes), review-mix defaults, and the offset mapping from recorded-audio seconds back to absolute musical quarter notes for synchronized review.
 - `src/live-tuning.js` selects the starting/current/next target, keeps pre-performance and rest samples out of assessment, and provides a 170 ms visual-only dropout hold before the meter dims to **Listening…**.
 - `src/analysis.js` groups usable samples by target note and derives onset, settling, sustained centre, green-zone percentage, stability, voiced coverage, fragmentation, and directional drift measurements. It also produces a five-dimension performance level used only to tune coaching.
 - `src/coaching.js` ranks performance-specific strengths and next priorities, balances them for the singer's current level, and produces approximately ten observations tied to actual notes and measures.
-- `src/score-overlay.js` maps parsed target-note timestamps to OSMD graphical staff entries and systems, then draws accepted samples as a live SVG trace over the written notes. It may bridge only a very short pitch-compatible visual dropout; the underlying raw frame remains missing.
+- `src/visual-trace.js` builds a visual-only 240 ms hold/interpolation layer around compatible reliable neighbours. Those synthetic visual points never enter scoring and never fill a long silence.
+- `src/score-overlay.js` maps parsed target-note timestamps to OSMD graphical staff entries and systems, then draws the visual trace and, optionally, the immediately previous take in thin grey behind it.
 - `src/config.js` contains pitch thresholds and audio-analysis settings so today’s placeholder tolerances can be replaced without changing the assessment code.
 - `app.js` coordinates the views, OpenSheetMusicDisplay renderer/cursor, controls, pitch monitor, score overlay, coaching cards, and detailed results.
 
-Raw and accepted timestamped pitch samples are kept separately in memory. Preparation, count-in, and during-rest tuning can drive the live meter but are never added to results or the score trace. The tracker uses the target only as supporting evidence in an octave ambiguity and never snaps a performance to the expected note. This preserves genuine wrong notes, scoops, slides, and small movements for future analysis.
+`rawSamples`, `acceptedSamples`, and `visualTraceSamples` are deliberately separate. Only accepted samples become assessment data. Preparation, count-in, octave response, and during-rest tuning can drive the live meter but are never added to results. The tracker uses the target only as supporting evidence in an octave ambiguity and never snaps a performance to the expected note. This preserves genuine wrong notes, scoops, slides, and small movements.
 
 ## Libraries
 
@@ -67,7 +69,7 @@ An internet connection is currently required to load the four pinned browser lib
 
 ## Checks
 
-The dependency-free Node test suite covers generated harmonic A3/C4/A4/C5 tones, quiet/normal/loud microphone profiles, calibration rejection, first/next tuning targets, preparation/count-in/rest sample isolation, visual dropout holding, deliberate pitch slides, reacquisition and melodic/octave transitions, bounded score-trace bridging, MediaRecorder pause accounting, count-in meters, whole-piece and 72-bar section boundaries, later starts, clipped sustained notes, review offsets, extended note analysis, three coaching profiles, Tone/OSMD time conversion, pickup and multi-staff MusicXML timing, RMS gating, empty-sample handling, and GitHub Pages asset paths. Run the full syntax and regression check with Node 20 or newer:
+The dependency-free Node test suite covers generated harmonic A3/C4/A4/C5 tones, strict acquisition and forgiving continuation, quiet/normal/loud/clipped calibration profiles, frame amplitude/overload classification, headphone/speaker constraints, visual-only continuity, octave response candidates, immutable per-part take mixes, MediaRecorder pause accounting, section boundaries, review offsets, coaching, Tone/OSMD time conversion, pickup and multi-staff MusicXML timing, and GitHub Pages asset paths. Run the full syntax and regression check with Node 20 or newer:
 
 ```sh
 npm run check
@@ -81,7 +83,11 @@ transport quarter | OSMD timestamp | measure | expected note
 
 Tone.Transport remains the playback clock. OSMD timestamps are whole-note fractions, so the app converts one transport quarter to `0.25` OSMD time before advancing the notation cursor.
 
-For developer-only detector diagnostics, add `?debugPitch=1`. It shows raw/filtered Hz and MIDI, clarity, RMS, sounding target, cents error, reliability state, usable vocal-frame percentage, the current take’s rejection breakdown, and an isolated-tone browser self-test.
+For developer-only detector diagnostics, add `?debugPitch=1`. Every sampled frame shows raw/filtered Hz and MIDI, Pitchy clarity, RMS, absolute peak, near-full-scale percentage, sounding target, cents error, and a classified state. The current take reports usable-frame percentage plus counts and percentages for accepted acquisition/continuation, both gates, clarity, range, jumps, harmonic/octave handling, clipping, and missing detector frequency.
+
+## Manual microphone checks
+
+Before release, try quiet, normal, loud, and deliberately overloaded “Ah” vowels; consonant interruptions; gentle vibrato; a noisy room; headphones; and speakers. Confirm that quiet singing can establish and continue, consonant gaps remain visual-only and shorter than 250 ms, vibrato is not flattened, a single peak does not warn, sustained clipping does warn within roughly 150–300 ms, and tracking reacquires quickly. For both listening setups, confirm the same stream supplies detector and local recording. At 50%, 100%, and 150% tempo, use a separate Voice/Piano score and verify accompaniment, cursor, range boundaries, and review remain aligned.
 
 ## Deploy to GitHub Pages
 
@@ -92,10 +98,10 @@ All app and sample-score paths are relative, so the site works at a project URL 
 ## Browser support and limitations
 
 - Current Chrome, Edge, Firefox, and Safari releases with Web Audio and `getUserMedia` are the target. Microphone behaviour varies by device and browser.
-- Headphones are strongly recommended in both assessment modes and especially when the vocal guide is active. Browser echo cancellation helps reduce speaker recapture, but headphones are the reliable way to prevent the guide from influencing microphone scoring.
-- The first assessment on a browser runs about one second of room listening followed by a 2–3 second comfortable sung “Ah”. A successful calibration is saved locally and can be replaced with **Recheck microphone**. Low/Normal/High are advanced overrides.
-- Assisted Assessment and Assessment record the microphone with MediaRecorder where supported, beginning at the selected absolute score quarter after the count-in. The prepared octave is locked before count-in and stays fixed for that take. Review maps recording time zero back to that stored score quarter and continually checks Tone/XML playback against it while seeking, pausing, or changing review layers; volume-only changes alter gain without touching playback time.
-- Selecting Assisted Assessment or Assessment starts live tuning immediately after microphone access is ready. The same stream stays alive through preparation, count-in, rests, and performance, then closes when Practice or another score is selected or the page closes.
+- Headphones are the default and recommended listening setup: echo cancellation, noise suppression, and automatic gain control are disabled. Speakers enable echo cancellation only; switching setup reacquires the stream before a take and is disabled during a take.
+- The first microphone session on a browser runs about one second of room listening followed by about three seconds of comfortable sung “Ah” from normal to slightly louder. A successful calibration is saved locally and can be replaced with **Recheck microphone**. Low/Normal/High are advanced overrides.
+- Assisted and Assessment record the microphone with MediaRecorder where supported, beginning at the selected absolute score quarter after the count-in. The deliberately confirmed/manual octave is locked before count-in and stays fixed for that take. Review maps recording time zero back to that stored score quarter and continually checks Tone/XML playback against it while seeking, pausing, or changing review layers; volume-only changes alter gain without touching playback time.
+- Both modes start live tuning immediately after microphone access is ready. The same raw local stream stays alive through preparation, count-in, rests, and performance, then closes when another score is selected or the page closes.
 - Pitch analysis uses a 4096-sample window. Individual detector frames are not scored directly: RMS, clarity, short continuity, longer-lived harmonic memory, score target, corroborating autocorrelation, jump persistence, and a three-frame median must produce a reliable pitch first. Softer continuation thresholds cannot acquire a new voice and expire after a short gap.
 - Partwise MusicXML is supported. Timewise MusicXML is rejected with an explanation.
 - The parser supports common divisions, time signatures, rests, chords, backups/forwards, chromatic transposition, multiple voices/staves, and ties. Complex repeats, jumps, tuplets, changing tempo maps, ornaments, and every notation-software extension are not yet interpreted for playback.

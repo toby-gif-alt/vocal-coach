@@ -1,4 +1,4 @@
-import { AUDIO_CONFIG, PITCH_TRACKER_CONFIG, frequencyToMidi, midiToFrequency } from "./config.js?v=17";
+import { AUDIO_CONFIG, PITCH_TRACKER_CONFIG, frequencyToMidi, midiToFrequency } from "./config.js?v=20";
 
 function median(values) {
   if (!values.length) return null;
@@ -91,6 +91,7 @@ export class StablePitchTracker {
     this.harmonicReference = null;
     this.lastAcceptedAt = null;
     this.lastAcquisitionAt = null;
+    this.acquisitionCandidate = null;
   }
 
   recentHarmonicReference(capturedAt) {
@@ -106,7 +107,7 @@ export class StablePitchTracker {
     const recent = this.acceptedHistory.filter((sample) => (
       now - sample.capturedAt <= this.config.continuationWindowMs
     ));
-    return recent.length >= this.config.continuationReliableFrames
+    return recent.length >= 1
       && this.lastAcquisitionAt !== null
       && now - this.lastAcquisitionAt <= this.config.continuationWindowMs;
   }
@@ -151,11 +152,23 @@ export class StablePitchTracker {
 
     const capturedAt = Number(frame.capturedAt) || 0;
     const establishedVoice = this.hasEstablishedVoice(capturedAt);
+    frame.voiceEstablished = establishedVoice;
+    if (frame.clipped) {
+      return this.unreliable(frame, "clipping / possible overload", rawFrequency || null, rawMidi);
+    }
     const continuationGateOpen = Boolean(frame.continuationGateOpen) && establishedVoice;
     if (!frame.gateOpen && !continuationGateOpen) {
-      return this.unreliable(frame, "below noise gate", rawFrequency || null, rawMidi);
+      return this.unreliable(
+        frame,
+        establishedVoice ? "below continuation gate" : "below open gate",
+        rawFrequency || null,
+        rawMidi,
+      );
     }
-    if (!Number.isFinite(rawFrequency) || rawFrequency < AUDIO_CONFIG.minimumFrequency || rawFrequency > AUDIO_CONFIG.maximumFrequency) {
+    if (!Number.isFinite(rawFrequency) || rawFrequency <= 0) {
+      return this.unreliable(frame, "no usable detector frequency", null, null);
+    }
+    if (rawFrequency < AUDIO_CONFIG.minimumFrequency || rawFrequency > AUDIO_CONFIG.maximumFrequency) {
       return this.unreliable(frame, "frequency out of range", rawFrequency || null, rawMidi);
     }
     const minimumClarity = Number.isFinite(frame.minimumClarity)
@@ -168,6 +181,25 @@ export class StablePitchTracker {
     const continuationClarityAccepted = establishedVoice && frame.clarity >= continuationClarity;
     if (!Number.isFinite(frame.clarity) || (!acquisitionAccepted && !continuationClarityAccepted)) {
       return this.unreliable(frame, "low clarity", rawFrequency, rawMidi);
+    }
+
+    const staleAcquisition = this.lastAcceptedAt === null;
+    if (staleAcquisition) {
+      const continuesCandidate = this.acquisitionCandidate
+        && capturedAt - this.acquisitionCandidate.lastAt <= this.config.continuationWindowMs
+        && centsBetween(this.acquisitionCandidate.midi, rawMidi) <= this.config.acquisitionClusterCents;
+      if (continuesCandidate) {
+        this.acquisitionCandidate.count += 1;
+        this.acquisitionCandidate.lastAt = capturedAt;
+        this.acquisitionCandidate.midi = (this.acquisitionCandidate.midi * (this.acquisitionCandidate.count - 1) + rawMidi)
+          / this.acquisitionCandidate.count;
+      } else {
+        this.acquisitionCandidate = { midi: rawMidi, count: 1, lastAt: capturedAt };
+      }
+      if (this.acquisitionCandidate.count < this.config.acquisitionReliableFrames) {
+        return this.unreliable(frame, "isolated pitch jump", rawFrequency, rawMidi);
+      }
+      this.acquisitionCandidate = null;
     }
 
     this.rawHistory.push({ frequency: rawFrequency, midi: rawMidi, capturedAt: frame.capturedAt });
@@ -296,14 +328,19 @@ export class StablePitchTracker {
 }
 
 export function pitchDiagnosticCategory(sample) {
-  if (sample?.octaveCorrection) return "octaveAmbiguity";
-  if (sample?.status === "accepted") return "accepted";
-  if (sample?.reason === "below noise gate") return "belowGate";
+  if (sample?.status === "accepted") {
+    return sample.acceptanceMode === "continuation" ? "acceptedContinuation" : "acceptedAcquisition";
+  }
+  if (sample?.reason === "below open gate") return "belowOpenGate";
+  if (sample?.reason === "below noise gate") return "belowOpenGate";
+  if (sample?.reason === "below continuation gate") return "belowContinuationGate";
   if (sample?.reason === "low clarity") return "lowClarity";
   if (sample?.reason === "isolated pitch jump") return "isolatedJump";
   if (sample?.reason === "frequency out of range") return "outOfRange";
-  if (String(sample?.reason || "").includes("octave")) return "octaveAmbiguity";
-  return "lowClarity";
+  if (sample?.reason === "clipping / possible overload") return "clipping";
+  if (sample?.reason === "no usable detector frequency") return "noUsableFrequency";
+  if (String(sample?.reason || "").includes("octave") || String(sample?.reason || "").includes("harmonic")) return "octaveHarmonic";
+  return "noUsableFrequency";
 }
 
 export class PitchDiagnosticSummary {
@@ -311,12 +348,16 @@ export class PitchDiagnosticSummary {
 
   reset() {
     this.counts = {
-      belowGate: 0,
+      acceptedAcquisition: 0,
+      acceptedContinuation: 0,
+      belowOpenGate: 0,
+      belowContinuationGate: 0,
       lowClarity: 0,
       isolatedJump: 0,
-      octaveAmbiguity: 0,
+      octaveHarmonic: 0,
       outOfRange: 0,
-      accepted: 0,
+      clipping: 0,
+      noUsableFrequency: 0,
     };
     this.total = 0;
     this.usable = 0;
@@ -325,6 +366,7 @@ export class PitchDiagnosticSummary {
   add(sample) {
     const category = pitchDiagnosticCategory(sample);
     this.counts[category] += 1;
+    if (sample?.octaveCorrection) this.counts.octaveHarmonic += 1;
     this.total += 1;
     if (sample?.status === "accepted") this.usable += 1;
     return category;

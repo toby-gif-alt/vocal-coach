@@ -1,4 +1,4 @@
-import { OCTAVE_SELECTION_CONFIG, frequencyToMidi } from "./config.js?v=16";
+import { OCTAVE_SELECTION_CONFIG, frequencyToMidi } from "./config.js?v=20";
 
 function median(values) {
   if (!values.length) return null;

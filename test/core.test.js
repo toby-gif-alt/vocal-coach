@@ -30,7 +30,6 @@ test("playback modes keep guide and microphone behaviour unambiguous", () => {
   assert.deepEqual(
     Object.fromEntries(Object.entries(SESSION_MODES).map(([key, value]) => [key, { guide: value.guide, microphone: value.microphone }])),
     {
-      practice: { guide: true, microphone: false },
       assisted: { guide: true, microphone: true },
       assessment: { guide: false, microphone: true },
     },
@@ -91,9 +90,10 @@ test("GitHub Pages entry point references only present local assets", async () =
   assert.match(html, /<link rel="stylesheet" href="\.\/styles\.css(?:\?v=\d+)?" \/>/);
   assert.match(html, /id="tempoSlider"[^>]+max="150"/);
   for (const level of ["low", "normal", "high"]) assert.match(html, new RegExp(`data-sensitivity="${level}"`));
-  for (const mode of ["practice", "assisted", "assessment"]) assert.match(html, new RegExp(`data-mode="${mode}"`));
+  for (const mode of ["assisted", "assessment"]) assert.match(html, new RegExp(`data-mode="${mode}"`));
+  assert.doesNotMatch(html, /data-mode="practice"/);
   for (const bars of ["0", "1", "2"]) assert.match(html, new RegExp(`data-count-in="${bars}"`));
-  for (const shift of ["-12", "0", "12"]) assert.match(html, new RegExp(`data-octave="${shift}"`));
+  for (const shift of ["-24", "-12", "0", "12"]) assert.match(html, new RegExp(`data-octave="${shift}"`));
   assert.match(html, /id="coachObservations"/);
   for (const id of ["recheckMicrophoneButton", "dockRestartButton", "dockPlayPauseButton", "dockStopButton", "followScoreButton", "performancePlayback", "performanceSeek", "performanceVolume", "reviewAccompanimentVolume", "reviewMelodyVolume", "tuningMeter", "tuningPhase", "expectedLabel", "gaugeNeedle"]) {
     assert.match(html, new RegExp(`id="${id}"`));
@@ -108,12 +108,12 @@ test("GitHub Pages entry point references only present local assets", async () =
   assert.match(html, />Hear my performance</);
   for (const layer of ["voice", "accompaniment", "melody"]) assert.match(html, new RegExp(`data-review-layer="${layer}"`));
   for (const volume of ["voice", "accompaniment", "melody"]) assert.match(html, new RegExp(`data-review-volume="${volume}"`));
-  assert.match(html, /Harmonic\/octave corrections/);
-  assert.match(html, /id="automaticOctave"/);
+  assert.match(html, /Octave\/harmonic rejection/);
+  assert.doesNotMatch(html, /id="automaticOctave"/);
   assert.match(html, /id="hearStartingNote"/);
   assert.match(html, />Detailed analysis</);
   assert.doesNotMatch(html, /id="traceCanvas"/);
-  for (const diagnostic of ["diagRawHz", "diagRawMidi", "diagFilteredHz", "diagFilteredMidi", "diagClarity", "diagRms", "diagTarget", "diagCents"]) {
+  for (const diagnostic of ["diagRawHz", "diagRawMidi", "diagFilteredHz", "diagFilteredMidi", "diagClarity", "diagRms", "diagPeak", "diagNearFullScale", "diagTarget", "diagCents"]) {
     assert.match(html, new RegExp(`id="${diagnostic}"`));
   }
 });

@@ -3,8 +3,8 @@ import {
   DEFAULT_MICROPHONE_SENSITIVITY,
   MICROPHONE_CALIBRATION,
   MICROPHONE_SENSITIVITY,
-} from "./config.js?v=14";
-import { estimateAmbientRms, microphoneSensitivityConfig } from "./noise-gate.js?v=14";
+} from "./config.js?v=20";
+import { estimateAmbientRms, microphoneSensitivityConfig } from "./noise-gate.js?v=20";
 
 function percentile(values, fraction) {
   if (!values.length) return null;
@@ -39,6 +39,9 @@ export function deriveMicrophoneCalibration({ ambientRmsValues = [], sungFrames 
   const clarityValues = candidateFrames.map((frame) => frame.clarity);
   const sungRmsLow = percentile(sungRmsValues, AUDIO_CONFIG.sungRmsPercentile) || 0;
   const sungRmsMedian = median(sungRmsValues) || 0;
+  const midpoint = Math.max(1, Math.floor(candidateFrames.length / 2));
+  const normalRms = median(candidateFrames.slice(0, midpoint).map((frame) => frame.rms)) || sungRmsMedian;
+  const louderRms = percentile(candidateFrames.slice(midpoint).map((frame) => frame.rms), 0.65) || sungRmsMedian;
   const clarityLow = percentile(clarityValues, AUDIO_CONFIG.sungClarityPercentile);
   const clarityMedian = median(clarityValues) || 0;
   const stableFrequency = median(candidateFrames.map((frame) => frame.frequency));
@@ -63,7 +66,11 @@ export function deriveMicrophoneCalibration({ ambientRmsValues = [], sungFrames 
   ));
   const reliablePitchRatio = sungFrames.length ? reliableFrames.length / sungFrames.length : 0;
   const signalToNoiseRatio = sungRmsMedian / Math.max(ambientRms, 0.0005);
-  const signalGood = sungFrames.length >= AUDIO_CONFIG.minimumCalibrationFrames
+  const clippedFrames = sungFrames.filter((frame) => frame.clipped).length;
+  const clippedPercent = sungFrames.length ? clippedFrames / sungFrames.length * 100 : 0;
+  const overloaded = clippedFrames >= 4 && clippedPercent >= 4;
+  const signalGood = !overloaded
+    && sungFrames.length >= AUDIO_CONFIG.minimumCalibrationFrames
     && candidateFrames.length >= Math.ceil(AUDIO_CONFIG.minimumCalibrationFrames * 0.5)
     && reliablePitchRatio >= AUDIO_CONFIG.minimumReliablePitchRatio
     && sungRmsMedian >= AUDIO_CONFIG.absoluteRmsFloor * 1.35
@@ -80,6 +87,8 @@ export function deriveMicrophoneCalibration({ ambientRmsValues = [], sungFrames 
     ambientRms,
     sungRmsLow,
     sungRmsMedian,
+    expectedNormalRms: normalRms,
+    expectedLouderRms: Math.max(normalRms, louderRms),
     clarityLow: clarityLow ?? 0,
     clarityMedian,
     reliablePitchRatio,
@@ -89,6 +98,9 @@ export function deriveMicrophoneCalibration({ ambientRmsValues = [], sungFrames 
     closeThreshold: openThreshold * MICROPHONE_SENSITIVITY.normal.closeRatio,
     minimumClarity,
     reacquireAfterMs,
+    clippedFrames,
+    clippedPercent,
+    overloaded,
   };
 }
 

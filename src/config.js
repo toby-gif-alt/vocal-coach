@@ -13,7 +13,7 @@ export const AUDIO_CONFIG = Object.freeze({
   maximumFrequency: 1400,
   sampleIntervalMs: 46,
   ambientCalibrationDurationMs: 1000,
-  sungCalibrationDurationMs: 2800,
+  sungCalibrationDurationMs: 3000,
   calibrationPercentile: 0.75,
   sungRmsPercentile: 0.25,
   sungClarityPercentile: 0.2,
@@ -24,6 +24,12 @@ export const AUDIO_CONFIG = Object.freeze({
   absoluteRmsFloor: 0.0035,
   minimumClarityFloor: 0.68,
   maximumClarityCeiling: 0.88,
+  clippingPeakThreshold: 0.985,
+  nearFullScaleThreshold: 0.98,
+  clippingNearFullScalePercent: 0.35,
+  overloadMinimumDurationMs: 180,
+  overloadWindowMs: 320,
+  overloadRecoveryMs: 220,
 });
 
 export const PITCH_TRACKER_CONFIG = Object.freeze({
@@ -52,6 +58,8 @@ export const PITCH_TRACKER_CONFIG = Object.freeze({
   continuationClarityReduction: 0.1,
   continuationClarityFloor: 0.56,
   continuationMaximumCents: 260,
+  acquisitionReliableFrames: 3,
+  acquisitionClusterCents: 110,
 });
 
 export const LIVE_TUNING_CONFIG = Object.freeze({
@@ -62,10 +70,12 @@ export const LIVE_TUNING_CONFIG = Object.freeze({
 });
 
 export const OCTAVE_SELECTION_CONFIG = Object.freeze({
-  shifts: Object.freeze([-12, 0, 12]),
+  shifts: Object.freeze([-24, -12, 0, 12]),
   stableDurationMs: 550,
   maximumFrameGapMs: 150,
   candidateToleranceCents: 75,
+  responseDelayMs: 720,
+  responseWindowMs: 1500,
 });
 
 export const REVIEW_CONFIG = Object.freeze({
@@ -78,19 +88,25 @@ export const REVIEW_CONFIG = Object.freeze({
 
 export const PLAYBACK_CONFIG = Object.freeze({
   defaultGuideVolume: 92,
-  defaultAccompanimentVolume: 72,
   guideTrimDb: -3,
   accompanimentTrimDb: -7,
   countInLeadSeconds: 0.06,
+  defaultPartVolume: 70,
 });
 
 export const DEFAULT_COUNT_IN_BARS = 1;
 export const DEFAULT_OCTAVE_SHIFT = 0;
 
 export const SESSION_MODES = Object.freeze({
-  practice: Object.freeze({ guide: true, microphone: false, label: "Practice" }),
-  assisted: Object.freeze({ guide: true, microphone: true, label: "Assisted Assessment" }),
+  assisted: Object.freeze({ guide: true, microphone: true, label: "Assisted" }),
   assessment: Object.freeze({ guide: false, microphone: true, label: "Assessment" }),
+});
+
+export const DEFAULT_LISTENING_SETUP = "headphones";
+
+export const LISTENING_SETUPS = Object.freeze({
+  headphones: Object.freeze({ echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 }),
+  speakers: Object.freeze({ echoCancellation: true, noiseSuppression: false, autoGainControl: false, channelCount: 1 }),
 });
 
 export const DEFAULT_MICROPHONE_SENSITIVITY = "normal";
@@ -103,7 +119,7 @@ export const MICROPHONE_SENSITIVITY = Object.freeze({
 
 export const MICROPHONE_CALIBRATION = Object.freeze({
   storageKey: "vocal-coach:microphone-calibration",
-  version: 1,
+  version: 2,
 });
 
 export const DEBUG_CONFIG = Object.freeze({
@@ -114,9 +130,11 @@ export const SCORE_TRACE_CONFIG = Object.freeze({
   // OSMD's graphical boxes use tenths of an SVG pixel.
   osmdPixelsPerUnit: 10,
   centsToPixels: 0.07,
-  maximumConnectedGapSeconds: 0.16,
+  maximumConnectedGapSeconds: 0.26,
   maximumBridgeCents: 85,
   minimumRegionWidth: 9,
+  visualContinuityMs: 240,
+  visualSampleIntervalMs: 46,
 });
 
 export const NOTE_NAMES = ["C", "C♯", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B"];

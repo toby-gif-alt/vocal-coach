@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { AUDIO_CONFIG } from "../src/config.js";
+import { AUDIO_CONFIG, LISTENING_SETUPS } from "../src/config.js";
 import {
   applyMicrophoneSensitivity,
   deriveMicrophoneCalibration,
@@ -9,6 +9,8 @@ import {
 } from "../src/microphone-calibration.js";
 import { SessionPerformanceRecorder } from "../src/performance-recorder.js";
 import { shouldBridgeTraceSamples } from "../src/score-overlay.js";
+import { InputOverloadMonitor, isFrameClipped, measureFrameAmplitude } from "../src/signal-quality.js";
+import { appendAcceptedVisualSample, appendVisualHold } from "../src/visual-trace.js";
 
 function sungFrames(rms, clarity, frequency = 220, count = 60) {
   return Array.from({ length: count }, (_, index) => ({
@@ -61,6 +63,76 @@ test("advanced sensitivity overrides remain ordered around a saved calibration",
   assert.ok(high.reacquireAfterMs > normal.reacquireAfterMs);
   assert.ok(normaliseSavedMicrophoneCalibration(calibration));
   assert.equal(normaliseSavedMicrophoneCalibration({ ...calibration, version: 99 }), null);
+});
+
+test("every microphone frame exposes RMS, peak, and near-full-scale occupancy", () => {
+  const frame = Float32Array.from([0, 0.5, -0.5, 0.99]);
+  const amplitude = measureFrameAmplitude(frame);
+  assert.ok(Math.abs(amplitude.rms - Math.sqrt((0.25 + 0.25 + 0.9801) / 4)) < 1e-7);
+  assert.equal(amplitude.absolutePeak, frame[3]);
+  assert.equal(amplitude.nearFullScalePercent, 25);
+  assert.equal(isFrameClipped(amplitude), true);
+});
+
+test("overload warning requires a repeated clipped burst and recovers quickly", () => {
+  const monitor = new InputOverloadMonitor({ overloadMinimumDurationMs: 180, overloadWindowMs: 320, overloadRecoveryMs: 220 });
+  assert.equal(monitor.update(true, 0).overloadActive, false);
+  assert.equal(monitor.update(false, 50).overloadActive, false, "a single peak must not warn");
+  monitor.update(true, 400);
+  monitor.update(true, 500);
+  assert.equal(monitor.update(true, 590).overloadActive, true);
+  assert.equal(monitor.update(false, 820).overloadActive, false);
+});
+
+test("calibration records normal/louder levels and rejects sustained clipping", () => {
+  const frames = sungFrames(0.12, 0.9).map((frame, index) => ({
+    ...frame,
+    absolutePeak: index < 8 ? 0.999 : 0.7,
+    nearFullScalePercent: index < 8 ? 1.2 : 0,
+    clipped: index < 8,
+  }));
+  const calibration = deriveMicrophoneCalibration({ ambientRmsValues: Array(40).fill(0.002), sungFrames: frames });
+  assert.equal(calibration.overloaded, true);
+  assert.equal(calibration.signalGood, false);
+  assert.ok(calibration.expectedLouderRms >= calibration.expectedNormalRms);
+});
+
+test("headphone and speaker capture constraints preserve an unprocessed mono source", () => {
+  assert.deepEqual(LISTENING_SETUPS.headphones, {
+    echoCancellation: false,
+    noiseSuppression: false,
+    autoGainControl: false,
+    channelCount: 1,
+  });
+  assert.deepEqual(LISTENING_SETUPS.speakers, {
+    echoCancellation: true,
+    noiseSuppression: false,
+    autoGainControl: false,
+    channelCount: 1,
+  });
+});
+
+test("visual continuity interpolates only short gaps and never changes accepted samples", () => {
+  const accepted = [{ targetId: "n1", capturedAt: 0, scoreQuarter: 1, scoreSeconds: 0, midi: 60, cents: 0, visualOnly: false }];
+  const next = { targetId: "n1", capturedAt: 184, scoreQuarter: 1.4, scoreSeconds: 0.184, midi: 60.1, cents: 10 };
+  const visual = appendAcceptedVisualSample(accepted, next);
+  assert.ok(visual.some((sample) => sample.visualOnly && sample.interpolated));
+  assert.equal(visual.at(-1).visualOnly, false);
+  assert.equal(accepted.length, 1, "the scoring array remains untouched");
+
+  const held = appendVisualHold(accepted, {
+    capturedAt: 120,
+    scoreQuarter: 1.25,
+    scoreSeconds: 0.12,
+    rms: 0.02,
+    continuationGateThreshold: 0.01,
+    voiceEstablished: true,
+    clipped: false,
+  }, { id: "n1" });
+  assert.equal(held.at(-1).visualOnly, true);
+  assert.equal(accepted.length, 1);
+  const expired = appendVisualHold(accepted, { ...held.at(-1), capturedAt: 400, voiceEstablished: true, rms: 0.02, continuationGateThreshold: 0.01 }, { id: "n1" });
+  assert.equal(expired, accepted, "long silence is never filled");
 });
 
 test("trace bridging is limited to short, pitch-compatible missing spans", () => {

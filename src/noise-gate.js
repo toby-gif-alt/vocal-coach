@@ -2,13 +2,11 @@ import {
   AUDIO_CONFIG,
   DEFAULT_MICROPHONE_SENSITIVITY,
   MICROPHONE_SENSITIVITY,
-} from "./config.js?v=14";
+} from "./config.js?v=20";
+import { measureFrameAmplitude } from "./signal-quality.js?v=20";
 
 export function calculateRms(frame) {
-  if (!frame?.length) return 0;
-  let sumSquares = 0;
-  for (const sample of frame) sumSquares += sample * sample;
-  return Math.sqrt(sumSquares / frame.length);
+  return measureFrameAmplitude(frame).rms;
 }
 
 export function estimateAmbientRms(frameRmsValues) {
