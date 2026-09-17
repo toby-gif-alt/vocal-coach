@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#17382f" />
+    <meta name="description" content="Audition the vowel and future sampled-voice guide for Vocal Coach." />
+    <title>Vocal Guide Lab — Vocal Coach</title>
+    <link rel="stylesheet" href="./vocal-guide-demo.css" />
+    <script src="https://cdn.jsdelivr.net/npm/tone@15.1.22/build/Tone.js" defer></script>
+    <script type="module" src="./vocal-guide-demo.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="./" aria-label="Back to Vocal Coach">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 40 40"><path d="M6 22c4.8 0 4.8-9 9.6-9s4.8 16 9.6 16S30 19 34 19" /></svg>
+        </span>
+        <span>Vocal Coach</span>
+      </a>
+      <span class="lab-pill"><i></i> Instrument lab</span>
+    </header>
+
+    <main>
+      <section class="intro" aria-labelledby="pageTitle">
+        <div>
+          <p class="eyebrow">Vocal guide prototype</p>
+          <h1 id="pageTitle">A guide tone that<br /><em>sounds sung.</em></h1>
+        </div>
+        <p class="lede">Audition fixed vowel formants across choir pitches. The source pitch moves while the vocal resonances stay steady — closer to a held human vowel than an electronic sine tone.</p>
+      </section>
+
+      <section class="workbench" aria-label="Vocal guide audition controls">
+        <div class="controls-panel">
+          <div class="control-block">
+            <div class="control-heading"><span>01</span><div><p>Source</p><h2>Guide voice</h2></div></div>
+            <div class="segmented source-switch" role="radiogroup" aria-label="Guide voice source">
+              <button class="is-selected" type="button" role="radio" aria-checked="true" data-mode="vowel">Synthetic vowel</button>
+              <button type="button" role="radio" aria-checked="false" data-mode="sampled">Sampled voice</button>
+            </div>
+            <p class="source-status" id="sourceStatus" role="status">Using synthetic Ooh vowel.</p>
+          </div>
+
+          <div class="control-block">
+            <div class="control-heading"><span>02</span><div><p>Timbre</p><h2>Choose a vowel</h2></div></div>
+            <div class="vowel-grid" role="radiogroup" aria-label="Vowel timbre">
+              <button class="vowel-card is-selected" type="button" role="radio" aria-checked="true" data-vowel="ooh"><strong>Ooh</strong><small>Round · dark</small></button>
+              <button class="vowel-card" type="button" role="radio" aria-checked="false" data-vowel="oh"><strong>Oh</strong><small>Open · warm</small></button>
+              <button class="vowel-card" type="button" role="radio" aria-checked="false" data-vowel="ah"><strong>Ah</strong><small>Bright · clear</small></button>
+            </div>
+          </div>
+
+          <div class="control-row">
+            <label class="field" for="pitchSelect"><span>Pitch</span><select id="pitchSelect"><option value="36">C2 · bass</option><option value="43">G2</option><option value="48">C3 · baritone</option><option value="55">G3</option><option value="60" selected>C4 · middle C</option><option value="67">G4</option><option value="72">C5 · soprano</option></select></label>
+            <label class="field volume-field" for="volumeSlider"><span>Volume <output id="volumeOutput">70</output></span><input id="volumeSlider" type="range" min="0" max="100" value="70" /></label>
+          </div>
+        </div>
+
+        <div class="audition-panel">
+          <div class="audition-heading">
+            <div><p>03 · Audition</p><h2>Listen in context</h2></div>
+            <div class="signal" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          </div>
+
+          <div class="note-display" aria-live="polite">
+            <span class="note-orbit" aria-hidden="true"></span>
+            <p id="nowPlayingLabel">Ready to sing</p>
+            <strong id="nowPlayingNote">C4</strong>
+            <small id="nowPlayingDetail">Choose an audition below</small>
+          </div>
+
+          <div class="audition-actions">
+            <button type="button" data-action="short"><span>♪</span><strong>Play short note</strong><small>Quick response</small></button>
+            <button type="button" data-action="sustain"><span>𝅝</span><strong>Play sustained note</strong><small>Hold the vowel</small></button>
+            <button type="button" data-action="scale"><span>↗</span><strong>Play scale</strong><small>Legato phrase</small></button>
+            <button type="button" data-action="chord"><span>≋</span><strong>Play chord</strong><small>Four-part blend</small></button>
+          </div>
+
+          <div class="sequence-card">
+            <div><p>Guide phrase</p><span>Seven-note legato check</span></div>
+            <ol id="sequenceNotes" aria-label="C4 D4 E4 G4 E4 D4 C4">
+              <li>C4</li><li>D4</li><li>E4</li><li>G4</li><li>E4</li><li>D4</li><li>C4</li>
+            </ol>
+          </div>
+        </div>
+      </section>
+
+      <section class="lab-note" aria-labelledby="samplePackTitle">
+        <span class="lab-note-icon" aria-hidden="true">◎</span>
+        <div><p>Designed for what comes next</p><h2 id="samplePackTitle">Teacher voice packs can plug into the same instrument.</h2><span>Record sustained anchor notes, map them by pitch, and the guide will choose and transpose the nearest recording. Until a pack is installed, sampled mode falls back safely.</span></div>
+        <a href="./docs/vocal-guide.md">Read the voice-pack guide <span>→</span></a>
+      </section>
+    </main>
+
+    <footer><span>Vocal Guide Lab</span><p>Local browser audio · No microphone · No score coupling</p></footer>
+  </body>
+</html>
