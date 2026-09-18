@@ -5,7 +5,7 @@ import {
 } from "./src/vocal-guide-sample-packs.js";
 
 const NOTE_NAMES = Object.freeze({
-  36: "C2", 43: "G2", 48: "C3", 55: "G3", 60: "C4", 62: "D4", 64: "E4", 67: "G4", 72: "C5",
+  36: "C2", 43: "G2", 48: "C3", 52: "E3", 53: "F3", 54: "F♯3", 55: "G3", 56: "G♯3", 57: "A3", 59: "B3", 60: "C4", 62: "D4", 64: "E4", 67: "G4", 72: "C5",
 });
 const GUIDE_PHRASE = Object.freeze([60, 62, 64, 67, 64, 62, 60]);
 const CHORD = Object.freeze([48, 55, 64, 67]);
@@ -34,7 +34,7 @@ function setSelected(buttons, selected, attribute) {
 }
 
 function selectedGuideChoice() {
-  return document.querySelector("[data-guide-choice].is-selected")?.dataset.guideChoice || "ooh";
+  return document.querySelector("[data-guide-choice].is-selected")?.dataset.guideChoice || "human";
 }
 
 function updateStatus(status) {
@@ -81,10 +81,11 @@ async function ensureGuide() {
   if (!window.Tone) throw new Error("Tone.js did not load. Check the network connection and refresh.");
   await window.Tone.start();
   if (!guide) {
+    const choice = selectedGuideChoice();
     guide = new VocalGuideInstrument({
       tone: window.Tone,
-      mode: "vowel",
-      vowel: selectedGuideChoice() === "human" ? "ah" : selectedGuideChoice(),
+      mode: choice === "human" ? "sampled" : "vowel",
+      vowel: "ah",
       volume: Number(volumeSlider.value),
       samples: MARTIN_HUMAN_VOICE_PACK,
       sampleBaseUrl: MARTIN_HUMAN_VOICE_BASE_URL,
@@ -98,7 +99,7 @@ async function ensureGuide() {
 async function selectGuideChoice(choice) {
   setSelected(guideChoiceButtons, choice, "guideChoice");
   const instrument = await ensureGuide();
-  instrument.setVowel(choice === "human" ? "ah" : choice);
+  instrument.setVowel("ah");
   const status = instrument.setMode(choice === "human" ? "sampled" : "vowel");
   updateStatus(status);
   if (choice === "human" && status.sampleState === "loading") {

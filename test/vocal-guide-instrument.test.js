@@ -176,7 +176,7 @@ test("Martin human voice pack contains the five attributed anchors with correct 
     "B3.wav": { midi: 59, sha256: "2a94fe05d1918f2f83dc3d70bec2a06f32241be4aafb047a9131d7bf03f09cc3" },
     "C3.wav": { midi: 48, sha256: "03b4a7cfbd00235b54e118fed5588ab264f7e3af48375dc0bf9d21b17be1e28b" },
     "E3.wav": { midi: 52, sha256: "1ffad60e509debb9ebe6037ce1a45f798afac1ffa88401b646d9a2de2d9f4d24" },
-    "G3.wav": { midi: 55, sha256: "1ef52b32672620eab95b18ee21a2cddd8adbf6e38ebba1200ce03b0948dbc39a" },
+    "G3-3.wav": { midi: 55, sha256: "f0954d0056b016a05aa156bb8632aa0d8e341f7e5999782f0a12ede7b12ad398" },
   };
   const sampleDirectory = new URL("../samples/vocal-guide/martin/", import.meta.url);
   const files = (await readdir(sampleDirectory)).filter((file) => file.endsWith(".wav")).sort();
@@ -184,26 +184,44 @@ test("Martin human voice pack contains the five attributed anchors with correct 
   assert.equal(MARTIN_HUMAN_VOICE_BASE_URL, "./samples/vocal-guide/martin/");
 
   for (const file of files) {
-    const noteName = file.replace(/\.wav$/, "");
-    const descriptor = MARTIN_HUMAN_VOICE_PACK.ah[noteName];
+    const descriptor = Object.values(MARTIN_HUMAN_VOICE_PACK.ah).find((anchor) => anchor.url === file);
+    assert.ok(descriptor, `${file} is mapped by the sample pack`);
     assert.equal(descriptor.midi, expected[file].midi);
     assert.ok(descriptor.loopStart > 0);
     assert.ok(descriptor.loopEnd > descriptor.loopStart);
     const bytes = await readFile(new URL(file, sampleDirectory));
     assert.equal(createHash("sha256").update(bytes).digest("hex"), expected[file].sha256);
+    if (file === "G3-3.wav") {
+      const dataOffset = bytes.indexOf(Buffer.from("data")) + 8;
+      const sampleRate = bytes.readUInt32LE(24);
+      const sampleAt = (seconds) => bytes.readInt16LE(dataOffset + Math.round(seconds * sampleRate) * 2);
+      const startSample = Math.round(descriptor.loopStart * sampleRate);
+      const endSample = Math.round(descriptor.loopEnd * sampleRate);
+      assert.ok(sampleAt(descriptor.loopStart - (1 / sampleRate)) <= 0 && sampleAt(descriptor.loopStart) > 0);
+      assert.ok(sampleAt(descriptor.loopEnd - (1 / sampleRate)) <= 0 && sampleAt(descriptor.loopEnd) > 0);
+      assert.ok(Math.abs(sampleAt(descriptor.loopStart)) <= 32);
+      assert.ok(Math.abs(sampleAt(descriptor.loopEnd)) <= 32);
+      assert.ok(endSample - startSample > sampleRate * 0.4, "the stable loop is long enough to avoid a rapid repetition");
+    }
   }
 
   const anchors = normaliseSamplePack(MARTIN_HUMAN_VOICE_PACK, MARTIN_HUMAN_VOICE_BASE_URL).get("ah");
-  assert.equal(selectNearestSampleAnchor(54, anchors).midi, 55);
-  assert.equal(selectNearestSampleAnchor(60, anchors).midi, 59);
-  assert.equal(selectNearestSampleAnchor(66, anchors).midi, 69);
+  for (const [requested, expectedRoot] of [[52, 52], [53, 52], [54, 55], [55, 55], [56, 55], [57, 55], [59, 59]]) {
+    assert.equal(selectNearestSampleAnchor(requested, anchors).midi, expectedRoot, `MIDI ${requested} uses root ${expectedRoot}`);
+  }
+  assert.equal(MARTIN_HUMAN_VOICE_PACK.ah.G3.gain, 1.2);
+  assert.equal(MARTIN_HUMAN_VOICE_PACK.ah.G3.loopStart, 0.388685);
+  assert.equal(MARTIN_HUMAN_VOICE_PACK.ah.G3.loopEnd, 0.862018);
 });
 
-test("standalone demo names real and synthetic choices without a fake sampled option", async () => {
+test("standalone demo defaults to real voice with Synthetic Ah as its only comparison", async () => {
   const html = await readFile(new URL("../vocal-guide-demo.html", import.meta.url), "utf8");
-  for (const label of ["Synthetic Ooh", "Synthetic Oh", "Synthetic Ah", "Real human voice"]) {
+  for (const label of ["Synthetic Ah", "Real human voice"]) {
     assert.match(html, new RegExp(`>${label}<`));
   }
+  assert.match(html, /human-voice is-selected[^>]+data-guide-choice="human"/);
+  assert.doesNotMatch(html, />Synthetic Ooh</);
+  assert.doesNotMatch(html, />Synthetic Oh</);
   assert.doesNotMatch(html, />Sampled voice</);
 });
 

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#17382f" />
-    <meta name="description" content="Audition synthetic vowels and a real sampled human voice for Vocal Coach." />
+    <meta name="description" content="Audition a real sampled human Ah voice with a synthetic fallback for Vocal Coach." />
     <title>Vocal Guide Lab — Vocal Coach</title>
     <link rel="stylesheet" href="./vocal-guide-demo.css" />
     <script src="https://cdn.jsdelivr.net/npm/tone@15.1.22/build/Tone.js" defer></script>
@@ -27,7 +27,7 @@
           <p class="eyebrow">Vocal guide prototype</p>
           <h1 id="pageTitle">A guide tone that<br /><em>sounds sung.</em></h1>
         </div>
-        <p class="lede">Compare three fixed-formant synthetic vowels with a real sung voice across choir pitches. The human mode chooses the closest recorded anchor before transposing it to the requested note.</p>
+        <p class="lede">Audition a real sung Ah voice across choir pitches, with Synthetic Ah retained only for fallback and comparison. The sampler chooses the closest recorded anchor before transposing it to the requested note.</p>
       </section>
 
       <section class="workbench" aria-label="Vocal guide audition controls">
@@ -35,16 +35,14 @@
           <div class="control-block">
             <div class="control-heading"><span>01</span><div><p>Guide sound</p><h2>Choose a voice</h2></div></div>
             <div class="voice-grid" role="radiogroup" aria-label="Vocal guide sound">
-              <button class="voice-card is-selected" type="button" role="radio" aria-checked="true" data-guide-choice="ooh"><strong>Synthetic Ooh</strong><small>Round · dark formants</small></button>
-              <button class="voice-card" type="button" role="radio" aria-checked="false" data-guide-choice="oh"><strong>Synthetic Oh</strong><small>Open · warm formants</small></button>
-              <button class="voice-card" type="button" role="radio" aria-checked="false" data-guide-choice="ah"><strong>Synthetic Ah</strong><small>Bright · clear formants</small></button>
-              <button class="voice-card human-voice" type="button" role="radio" aria-checked="false" data-guide-choice="human"><strong>Real human voice</strong><small>Martin · five WAV anchors</small></button>
+              <button class="voice-card human-voice is-selected" type="button" role="radio" aria-checked="true" data-guide-choice="human"><strong>Real human voice</strong><small>Preferred · five WAV anchors</small></button>
+              <button class="voice-card" type="button" role="radio" aria-checked="false" data-guide-choice="ah"><strong>Synthetic Ah</strong><small>Fallback · comparison</small></button>
             </div>
-            <p class="source-status" id="sourceStatus" role="status">Using synthetic Ooh vowel.</p>
+            <p class="source-status" id="sourceStatus" role="status">Real human voice selected — choose an audition to load samples.</p>
           </div>
 
           <div class="control-row">
-            <label class="field" for="pitchSelect"><span>Pitch</span><select id="pitchSelect"><option value="36">C2 · bass</option><option value="43">G2</option><option value="48">C3 · baritone</option><option value="55">G3</option><option value="60" selected>C4 · middle C</option><option value="67">G4</option><option value="72">C5 · soprano</option></select></label>
+            <label class="field" for="pitchSelect"><span>Pitch</span><select id="pitchSelect"><option value="36">C2 · bass</option><option value="43">G2</option><option value="48">C3 · baritone</option><option value="52">E3</option><option value="53">F3</option><option value="54">F♯3</option><option value="55" selected>G3 · replacement</option><option value="56">G♯3</option><option value="57">A3</option><option value="59">B3</option><option value="60">C4 · middle C</option><option value="67">G4</option><option value="72">C5 · soprano</option></select></label>
             <label class="field volume-field" for="volumeSlider"><span>Volume <output id="volumeOutput">70</output></span><input id="volumeSlider" type="range" min="0" max="100" value="70" /></label>
           </div>
         </div>
@@ -58,7 +56,7 @@
           <div class="note-display" aria-live="polite">
             <span class="note-orbit" aria-hidden="true"></span>
             <p id="nowPlayingLabel">Ready to sing</p>
-            <strong id="nowPlayingNote">C4</strong>
+            <strong id="nowPlayingNote">G3</strong>
             <small id="nowPlayingDetail">Choose an audition below</small>
           </div>
 
@@ -80,7 +78,7 @@
 
       <section class="lab-note" aria-labelledby="samplePackTitle">
         <span class="lab-note-icon" aria-hidden="true">◎</span>
-        <div><p>Real samples, extensible design</p><h2 id="samplePackTitle">The demo uses five MIT-licensed recordings from Martin.</h2><span>C3, E3, G3, B3, and A4 act as anchors. Future teacher packs can use the same nearest-note mapping with any set of recorded pitches.</span></div>
+        <div><p>Real samples, extensible design</p><h2 id="samplePackTitle">The demo uses five MIT-licensed recordings from Martin.</h2><span>C3, E3, the open-vowel G3-3 take, B3, and A4 act as anchors. Future teacher packs can use the same nearest-note mapping with any set of recorded pitches.</span></div>
         <a href="./docs/vocal-guide.md">Read the voice-pack guide <span>→</span></a>
       </section>
     </main>
