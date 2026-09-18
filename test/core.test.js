@@ -91,6 +91,11 @@ test("GitHub Pages entry point references only present local assets", async () =
   assert.match(html, /id="tempoSlider"[^>]+max="150"/);
   for (const level of ["low", "normal", "high"]) assert.match(html, new RegExp(`data-sensitivity="${level}"`));
   for (const mode of ["assisted", "assessment"]) assert.match(html, new RegExp(`data-mode="${mode}"`));
+  assert.match(html, /id="guideVoice"/);
+  assert.match(html, /<option value="human" selected>Human voice<\/option>/);
+  assert.match(html, /<option value="synthetic-ah">Synthetic Ah<\/option>/);
+  assert.match(html, /id="guideVoiceStatus"/);
+  assert.doesNotMatch(html, /<option value="synthetic-(?:ooh|oh)"/);
   assert.doesNotMatch(html, /data-mode="practice"/);
   for (const bars of ["0", "1", "2"]) assert.match(html, new RegExp(`data-count-in="${bars}"`));
   for (const shift of ["-24", "-12", "0", "12"]) assert.match(html, new RegExp(`data-octave="${shift}"`));

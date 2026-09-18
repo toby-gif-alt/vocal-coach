@@ -15,11 +15,11 @@
     <meta name="twitter:image" content="https://toby-gif-alt.github.io/vocal-coach/og.png" />
     <title>Vocal Coach — Practise from the score</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%2317382f'/%3E%3Cpath d='M14 34c7 0 7-15 14-15s7 27 14 27 7-16 8-16' fill='none' stroke='%23d7ff72' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="./styles.css?v=20" />
+    <link rel="stylesheet" href="./styles.css?v=21" />
     <script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@2.1.2/build/opensheetmusicdisplay.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/tone@15.1.22/build/Tone.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" defer></script>
-    <script type="module" src="./app.js?v=20"></script>
+    <script type="module" src="./app.js?v=21"></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to the app</a>
@@ -97,6 +97,8 @@
             <div class="accompaniment-block"><div class="setting-label"><span>Accompaniment</span><button id="toggleAllParts" type="button">Mute all</button></div><div class="accompaniment-list" id="accompanimentList"></div></div>
             <div class="volume-block">
               <label class="volume-field" for="guideVolume"><span><strong>Vocal Guide</strong><output id="guideVolumeOutput">92%</output></span><input id="guideVolume" type="range" min="0" max="100" value="92" step="2" /></label>
+              <label class="guide-voice-field" for="guideVoice"><span>Guide voice</span><select id="guideVoice"><option value="human" selected>Human voice</option><option value="synthetic-ah">Synthetic Ah</option></select></label>
+              <p class="setting-message guide-voice-status" id="guideVoiceStatus" role="status" aria-live="polite" hidden></p>
             </div>
             <div class="compact-setting">
               <div class="setting-label"><span>Count-in</span><output id="countInOutput">1 bar</output></div>

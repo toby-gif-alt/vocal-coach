@@ -9,8 +9,12 @@ import {
   PLAYBACK_CONFIG,
   REVIEW_CONFIG,
   frequencyToMidi,
-  midiToFrequency,
 } from "./config.js?v=20";
+import {
+  DEFAULT_GUIDE_VOICE,
+  guideNoteRequest,
+  normaliseGuideVoice,
+} from "./guide-playback.js?v=21";
 import { deriveNoiseGate, RmsNoiseGate } from "./noise-gate.js?v=20";
 import { applyMicrophoneSensitivity, deriveMicrophoneCalibration } from "./microphone-calibration.js?v=20";
 import { SessionPerformanceRecorder } from "./performance-recorder.js?v=15";
@@ -19,13 +23,18 @@ import { playbackWindow } from "./practice-range.js?v=18";
 import { countInPattern, quartersToTransportTicks, transportTicksToQuarters } from "./timing.js?v=15";
 import { reviewDriftSeconds, reviewQuarterAtSeconds, reviewVolumes } from "./review-playback.js?v=20";
 import { InputOverloadMonitor, isFrameClipped, measureFrameAmplitude } from "./signal-quality.js?v=20";
+import { VocalGuideInstrument } from "./vocal-guide-instrument.js?v=21";
+import {
+  MARTIN_HUMAN_VOICE_BASE_URL,
+  MARTIN_HUMAN_VOICE_PACK,
+} from "./vocal-guide-sample-packs.js?v=21";
 
 export function microphoneConstraintsForSetup(setup = DEFAULT_LISTENING_SETUP) {
   return { ...(LISTENING_SETUPS[setup] || LISTENING_SETUPS[DEFAULT_LISTENING_SETUP]) };
 }
 
 export class AudioEngine {
-  constructor({ onPitchSample, onRawPitchSample, onPitchDiagnostic, onMicrophoneState, onMicrophoneCalibration, onRecordingState, onCountIn, onPlaybackEnd } = {}) {
+  constructor({ onPitchSample, onRawPitchSample, onPitchDiagnostic, onMicrophoneState, onMicrophoneCalibration, onRecordingState, onCountIn, onPlaybackEnd, onGuideVoiceStatus } = {}) {
     this.onPitchSample = onPitchSample || (() => {});
     this.onRawPitchSample = onRawPitchSample || (() => {});
     this.onPitchDiagnostic = onPitchDiagnostic || (() => {});
@@ -34,9 +43,10 @@ export class AudioEngine {
     this.onRecordingState = onRecordingState || (() => {});
     this.onCountIn = onCountIn || (() => {});
     this.onPlaybackEnd = onPlaybackEnd || (() => {});
+    this.onGuideVoiceStatus = onGuideVoiceStatus || (() => {});
     this.score = null;
     this.synths = new Map();
-    this.guideSynth = null;
+    this.vocalGuideInstrument = null;
     this.stream = null;
     this.analyser = null;
     this.mediaSource = null;
@@ -64,6 +74,7 @@ export class AudioEngine {
     this.isCountingIn = false;
     this.tempoPercent = 100;
     this.guideVolume = PLAYBACK_CONFIG.defaultGuideVolume;
+    this.guideVoice = DEFAULT_GUIDE_VOICE;
     this.partVolumes = new Map();
     this.enabledPartIds = new Set();
     this.listeningSetup = DEFAULT_LISTENING_SETUP;
@@ -132,7 +143,39 @@ export class AudioEngine {
 
   setGuideVolume(value) {
     this.guideVolume = Math.max(0, Math.min(100, Number(value) || 0));
-    if (this.guideSynth) this.guideSynth.volume.value = this.volumeToDb(this.guideVolume, PLAYBACK_CONFIG.guideTrimDb);
+    if (this.vocalGuideInstrument) {
+      this.vocalGuideInstrument.setVolume(this.review ? this.reviewVolumes.melody : this.guideVolume);
+    }
+  }
+
+  setGuideVoice(value) {
+    this.guideVoice = normaliseGuideVoice(value);
+    if (this.vocalGuideInstrument) {
+      this.vocalGuideInstrument.releaseAll();
+      this.vocalGuideInstrument.setVowel("ah");
+      const status = this.vocalGuideInstrument.setMode(this.guideVoice === "human" ? "sampled" : "vowel");
+      this.handleGuideVoiceStatus(status);
+    } else {
+      this.onGuideVoiceStatus({ selectedVoice: this.guideVoice, sampleState: "idle", effectiveMode: null });
+    }
+    return this.guideVoice;
+  }
+
+  handleGuideVoiceStatus(status = {}) {
+    this.onGuideVoiceStatus({ ...status, selectedVoice: this.guideVoice });
+  }
+
+  async ensureGuideReady() {
+    if (this.guideVoice !== "human" || !this.vocalGuideInstrument?.ready) return;
+    try {
+      await this.vocalGuideInstrument.ready;
+    } catch (error) {
+      this.handleGuideVoiceStatus({
+        sampleState: "unavailable",
+        effectiveMode: "vowel",
+        error,
+      });
+    }
   }
 
   setPartVolume(partId, value) {
@@ -187,15 +230,13 @@ export class AudioEngine {
   }
 
   applyReviewVolumes() {
-    const melodyDb = this.volumeToDb(this.reviewVolumes.melody, PLAYBACK_CONFIG.guideTrimDb);
     this.synths.forEach((_, partId) => this.applyPartVolume(partId));
-    if (this.guideSynth) this.guideSynth.volume.value = melodyDb;
+    this.vocalGuideInstrument?.setVolume(this.reviewVolumes.melody);
   }
 
   restorePerformanceVolumes() {
-    const guideDb = this.volumeToDb(this.guideVolume, PLAYBACK_CONFIG.guideTrimDb);
     this.synths.forEach((_, partId) => this.applyPartVolume(partId));
-    if (this.guideSynth) this.guideSynth.volume.value = guideDb;
+    this.vocalGuideInstrument?.setVolume(this.guideVolume);
   }
 
   volumeToDb(percent, trimDb) {
@@ -233,7 +274,6 @@ export class AudioEngine {
     guideEnabled,
     enabledPartIds,
     assessmentMode,
-    vocalOctaveSemitones = 0,
     countInBars = 1,
     targetMidiAtQuarter = () => null,
     startQuarter = 0,
@@ -251,6 +291,7 @@ export class AudioEngine {
     }
     if (assessmentMode) await this.startMicrophone();
     this.ensureSynths();
+    if (guideEnabled) await this.ensureGuideReady();
     if (assessmentMode && !resuming) this.pitchTracker.reset();
     if (!resuming) this.transport.ticks = quartersToTransportTicks(startQuarter, this.transport.PPQ);
     // Monitoring is already active in preparation mode where possible. Start
@@ -268,7 +309,6 @@ export class AudioEngine {
       vocalPartId,
       guideEnabled,
       enabledPartIds,
-      vocalOctaveSemitones,
       resumeQuarter: resuming ? this.currentQuarter : startQuarter,
       endQuarter,
     });
@@ -289,7 +329,7 @@ export class AudioEngine {
     if (!this.isPlaying) return;
     this.transport.pause();
     this.synths.forEach((synth) => synth.releaseAll?.());
-    this.guideSynth?.releaseAll?.();
+    this.vocalGuideInstrument?.releaseAll?.();
     this.isPlaying = false;
     this.isPaused = true;
     this.performanceRecorder.pause();
@@ -303,6 +343,9 @@ export class AudioEngine {
       if (reset) this.transport.ticks = quartersToTransportTicks(resetQuarter, this.transport.PPQ);
       this.transport.cancel(0);
     }
+    this.synths.forEach((synth) => synth.releaseAll?.());
+    this.vocalGuideInstrument?.releaseAll?.();
+    this.clickSynth?.releaseAll?.();
     this.isPlaying = false;
     this.isPaused = false;
     if (this.performanceRecorder.recorder) void this.performanceRecorder.stop();
@@ -318,33 +361,41 @@ export class AudioEngine {
   }
 
   ensureSynths() {
-    if (this.synths.size) return;
-    for (const part of this.score.parts) {
-      const synth = new this.tone.PolySynth(this.tone.Synth, {
-        oscillator: { type: "triangle" },
-        envelope: { attack: 0.015, decay: 0.12, sustain: 0.42, release: 0.28 },
-        volume: -Infinity,
-      }).toDestination();
-      this.synths.set(part.id, synth);
-      this.applyPartVolume(part.id);
+    if (!this.synths.size) {
+      for (const part of this.score.parts) {
+        const synth = new this.tone.PolySynth(this.tone.Synth, {
+          oscillator: { type: "triangle" },
+          envelope: { attack: 0.015, decay: 0.12, sustain: 0.42, release: 0.28 },
+          volume: -Infinity,
+        }).toDestination();
+        this.synths.set(part.id, synth);
+        this.applyPartVolume(part.id);
+      }
     }
-    this.guideSynth = new this.tone.PolySynth(this.tone.Synth, {
-      oscillator: { type: "sine" },
-      envelope: { attack: 0.02, decay: 0.08, sustain: 0.32, release: 0.18 },
-      volume: this.volumeToDb(this.guideVolume, PLAYBACK_CONFIG.guideTrimDb),
-    }).toDestination();
-    this.clickSynth = new this.tone.Synth({
-      oscillator: { type: "sine" },
-      envelope: { attack: 0.001, decay: 0.05, sustain: 0, release: 0.03 },
-      volume: -10,
-    }).toDestination();
+    if (!this.vocalGuideInstrument) {
+      this.vocalGuideInstrument = new VocalGuideInstrument({
+        tone: this.tone,
+        mode: this.guideVoice === "human" ? "sampled" : "vowel",
+        vowel: "ah",
+        volume: this.guideVolume,
+        samples: MARTIN_HUMAN_VOICE_PACK,
+        sampleBaseUrl: MARTIN_HUMAN_VOICE_BASE_URL,
+        onStatus: (status) => this.handleGuideVoiceStatus(status),
+      });
+    }
+    if (!this.clickSynth) {
+      this.clickSynth = new this.tone.Synth({
+        oscillator: { type: "sine" },
+        envelope: { attack: 0.001, decay: 0.05, sustain: 0, release: 0.03 },
+        volume: -10,
+      }).toDestination();
+    }
   }
 
   scheduleScore({
     vocalPartId,
     guideEnabled,
     enabledPartIds,
-    vocalOctaveSemitones = 0,
     resumeQuarter = this.currentQuarter,
     endQuarter = this.score?.durationQuarters || 0,
     notifyEnd = true,
@@ -355,7 +406,7 @@ export class AudioEngine {
     for (const part of this.score.parts) {
       const isVocal = part.id === vocalPartId;
       if (isVocal && !guideEnabled) continue;
-      const synth = isVocal ? this.guideSynth : this.synths.get(part.id);
+      const synth = isVocal ? null : this.synths.get(part.id);
       for (const note of part.notes) {
         const window = playbackWindow(note, resumeQuarter, endQuarter, ticksPerQuarter);
         if (!window) continue;
@@ -363,8 +414,12 @@ export class AudioEngine {
         transport.schedule((time) => {
           const durationTicks = Math.max(1, quartersToTransportTicks(window.durationQuarters, ticksPerQuarter));
           const duration = `${durationTicks}i`;
-          const frequency = isVocal ? midiToFrequency(note.midi + vocalOctaveSemitones) : note.frequency;
-          synth.triggerAttackRelease(frequency, duration, time, isVocal ? 0.52 : 0.28);
+          if (isVocal) {
+            const request = guideNoteRequest(note, { duration, time });
+            if (request) this.vocalGuideInstrument.triggerAttackRelease(request);
+          } else {
+            synth.triggerAttackRelease(note.frequency, duration, time, 0.28);
+          }
         }, when);
       }
     }
@@ -383,7 +438,8 @@ export class AudioEngine {
     if (!Number.isFinite(midi)) return;
     await this.tone.start();
     this.ensureSynths();
-    this.guideSynth.triggerAttackRelease(midiToFrequency(midi), durationSeconds, this.tone.now(), 0.5);
+    await this.ensureGuideReady();
+    this.vocalGuideInstrument.triggerAttackRelease({ midi, duration: durationSeconds, time: this.tone.now(), velocity: 0.5 });
   }
 
   reviewSettingsAt(seconds, take, layers) {
@@ -392,7 +448,6 @@ export class AudioEngine {
       vocalPartId: take?.vocalPartId,
       guideEnabled: Boolean(layers?.melody),
       enabledPartIds: layers?.accompaniment ? [...(take?.enabledPartIds || [])] : [],
-      vocalOctaveSemitones: Number(take?.octaveShift) || 0,
       resumeQuarter: reviewQuarterAtSeconds(seconds, bpm, take?.startQuarter, take?.endQuarter),
       endQuarter: Number(take?.endQuarter) || this.score.durationQuarters,
       notifyEnd: false,
@@ -404,10 +459,11 @@ export class AudioEngine {
     if (!this.score || !take) return;
     await this.tone.start();
     this.ensureSynths();
+    if (layers?.melody) await this.ensureGuideReady();
     this.reviewVolumes = reviewVolumes(volumeLevels);
     const settings = this.reviewSettingsAt(currentSeconds, take, layers);
     this.synths.forEach((synth) => synth.releaseAll?.());
-    this.guideSynth?.releaseAll?.();
+    this.vocalGuideInstrument?.releaseAll?.();
     this.transport.stop();
     const previousReview = this.review?.take === take ? this.review : null;
     this.review = {
@@ -428,7 +484,7 @@ export class AudioEngine {
     if (!this.review) return;
     this.transport.pause();
     this.synths.forEach((synth) => synth.releaseAll?.());
-    this.guideSynth?.releaseAll?.();
+    this.vocalGuideInstrument?.releaseAll?.();
   }
 
   stopReview({ reset = true } = {}) {
@@ -439,7 +495,7 @@ export class AudioEngine {
       if (reset) this.transport.ticks = 0;
     }
     this.synths.forEach((synth) => synth.releaseAll?.());
-    this.guideSynth?.releaseAll?.();
+    this.vocalGuideInstrument?.releaseAll?.();
     this.review = null;
     this.restorePerformanceVolumes();
   }
@@ -760,8 +816,8 @@ export class AudioEngine {
   disposeSynths() {
     this.synths.forEach((synth) => synth.dispose());
     this.synths.clear();
-    this.guideSynth?.dispose();
-    this.guideSynth = null;
+    this.vocalGuideInstrument?.dispose();
+    this.vocalGuideInstrument = null;
     this.clickSynth?.dispose();
     this.clickSynth = null;
   }

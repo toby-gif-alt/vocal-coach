@@ -1,4 +1,4 @@
-import { AudioEngine } from "./src/audio-engine.js?v=20";
+import { AudioEngine } from "./src/audio-engine.js?v=21";
 import { analysePerformance, performanceSummary } from "./src/analysis.js?v=14";
 import { buildCoachingFeedback } from "./src/coaching.js?v=14";
 import {
@@ -25,6 +25,11 @@ import {
   visualMidiForSample,
 } from "./src/live-tuning.js?v=17";
 import { normaliseSavedMicrophoneCalibration } from "./src/microphone-calibration.js?v=20";
+import {
+  DEFAULT_GUIDE_VOICE,
+  GUIDE_VOICE_STORAGE_KEY,
+  normaliseGuideVoice,
+} from "./src/guide-playback.js?v=21";
 import { measureAtQuarter, noteAtQuarter, readScoreFile, readScoreUrl, suggestVocalPart } from "./src/musicxml.js?v=18";
 import { AutomaticOctaveSelector } from "./src/octave-selection.js?v=20";
 import { detectAutocorrelationPitch, PitchDiagnosticSummary, StablePitchTracker } from "./src/pitch-tracker.js?v=20";
@@ -61,7 +66,7 @@ const els = {
   partBackButton: $("#partBackButton"), partCount: $("#partCount"), scoreTitle: $("#scoreTitle"), partOptions: $("#partOptions"), continueButton: $("#continueButton"),
   newScoreButton: $("#newScoreButton"), studioTitle: $("#studioTitle"), studioMeta: $("#studioMeta"), selectedPartName: $("#selectedPartName"), scoreBannerPart: $("#scoreBannerPart"),
   modeButtons: [...document.querySelectorAll("[data-mode]")], accompanimentList: $("#accompanimentList"), toggleAllParts: $("#toggleAllParts"),
-  guideVolume: $("#guideVolume"), guideVolumeOutput: $("#guideVolumeOutput"),
+  guideVolume: $("#guideVolume"), guideVolumeOutput: $("#guideVolumeOutput"), guideVoice: $("#guideVoice"), guideVoiceStatus: $("#guideVoiceStatus"),
   countInButtons: [...document.querySelectorAll("[data-count-in]")], countInOutput: $("#countInOutput"), countInDisplay: $("#countInDisplay"), countInBar: $("#countInBar"), countInBeats: $("#countInBeats"),
   sectionFrom: $("#sectionFrom"), sectionTo: $("#sectionTo"), practiceRangeStatus: $("#practiceRangeStatus"), sectionValidation: $("#sectionValidation"), selectBarsButton: $("#selectBarsButton"), clearSectionButton: $("#clearSectionButton"), startFromBar: $("#startFromBar"), chooseStartButton: $("#chooseStartButton"), scoreSelectionAction: $("#scoreSelectionAction"), scoreSelectionCopy: $("#scoreSelectionCopy"), startHereButton: $("#startHereButton"), cancelScoreSelectionButton: $("#cancelScoreSelectionButton"),
   octaveButtons: [...document.querySelectorAll("[data-octave]")], octaveOutput: $("#octaveOutput"), octaveHint: $("#octaveHint"), startingNoteName: $("#startingNoteName"), hearStartingNote: $("#hearStartingNote"), octaveConfirmation: $("#octaveConfirmation"), headphoneNote: $("#headphoneNote"),
@@ -114,6 +119,7 @@ const state = {
   awaitingOctaveResponse: false,
   octaveResponseTimer: null,
   guideVolume: PLAYBACK_CONFIG.defaultGuideVolume,
+  guideVoice: loadGuideVoice(),
   partVolumes: {},
   listeningSetup: DEFAULT_LISTENING_SETUP,
   lastTimingDebugAt: 0,
@@ -150,8 +156,26 @@ const audio = new AudioEngine({
   onRecordingState: handleRecordingState,
   onCountIn: handleCountIn,
   onPlaybackEnd: handlePlaybackEnd,
+  onGuideVoiceStatus: handleGuideVoiceStatus,
 });
 audio.setMicrophoneCalibration(state.microphoneCalibration);
+audio.setGuideVoice(state.guideVoice);
+
+function loadGuideVoice() {
+  try {
+    return normaliseGuideVoice(localStorage.getItem(GUIDE_VOICE_STORAGE_KEY) || DEFAULT_GUIDE_VOICE);
+  } catch {
+    return DEFAULT_GUIDE_VOICE;
+  }
+}
+
+function saveGuideVoice(value) {
+  try {
+    localStorage.setItem(GUIDE_VOICE_STORAGE_KEY, value);
+  } catch (error) {
+    console.warn("Could not save the guide voice locally", error);
+  }
+}
 
 function loadMicrophoneCalibration() {
   try {
@@ -267,6 +291,7 @@ async function enterStudio() {
   audio.setScore(state.score);
   audio.setTempo(100);
   audio.setGuideVolume(state.guideVolume);
+  audio.setGuideVoice(state.guideVoice);
   for (const [partId, volume] of Object.entries(state.partVolumes)) {
     audio.setPartVolume(partId, volume);
     audio.setPartEnabled(partId, state.enabledParts.has(partId));
@@ -856,7 +881,7 @@ function maybeConfirmStartingOctave(sample, targetInfo, phase) {
   state.awaitingOctaveResponse = false;
   clearTimeout(state.octaveResponseTimer);
   setOctaveShift(confirmation.shift, { confirmed: true });
-  setStatus("good", `✓ Great — we’ll use ${midiToName(confirmation.soundingMidi)}`, "Your score stays written as printed; guide and assessment will use this sounding octave.");
+  setStatus("good", `✓ Great — we’ll use ${midiToName(confirmation.soundingMidi)}`, "Assessment will use this sounding octave; the melody guide stays at the score pitch.");
 }
 
 async function hearStartingNote() {
@@ -868,7 +893,7 @@ async function hearStartingNote() {
   state.octaveSelector.reset();
   els.octaveConfirmation.classList.remove("confirmed");
   try {
-    await audio.previewPitch(starting.midi + effectiveOctaveShift());
+    await audio.previewPitch(starting.midi);
     setTimeout(() => {
       if (audio.isPlaying || audio.isCountingIn || state.sessionOctaveShift !== null) return;
       state.awaitingOctaveResponse = true;
@@ -896,6 +921,26 @@ function updateVolume(kind, value) {
     audio.setGuideVolume(percent);
     els.guideVolumeOutput.textContent = `${percent}%`;
   }
+}
+
+function setGuideVoice(value, { persist = true } = {}) {
+  state.guideVoice = normaliseGuideVoice(value);
+  els.guideVoice.value = state.guideVoice;
+  audio.setGuideVoice(state.guideVoice);
+  if (persist) saveGuideVoice(state.guideVoice);
+}
+
+function handleGuideVoiceStatus(status = {}) {
+  const humanSelected = (status.selectedVoice || state.guideVoice) === "human";
+  const loading = humanSelected && status.sampleState === "loading";
+  const fallback = humanSelected
+    && status.sampleState === "unavailable"
+    && status.effectiveMode !== "sampled";
+  els.guideVoiceStatus.hidden = !(loading || fallback);
+  els.guideVoiceStatus.classList.toggle("error", fallback);
+  els.guideVoiceStatus.textContent = fallback
+    ? "Human voice unavailable — using Synthetic Ah."
+    : loading ? "Loading human voice…" : "";
 }
 
 function tuningPhase() {
@@ -1100,7 +1145,6 @@ async function play() {
       guideEnabled: mode.guide,
       enabledPartIds: [...state.enabledParts],
       assessmentMode: mode.microphone,
-      vocalOctaveSemitones: takeOctaveShift,
       countInBars: state.countInBars,
       targetMidiAtQuarter: targetMidiAtQuarter,
       startQuarter: range.startQuarter,
@@ -1891,6 +1935,7 @@ function resetControls() {
   els.detailedAnalysis.hidden = false;
   els.guideVolume.value = String(state.guideVolume);
   updateVolume("guide", state.guideVolume);
+  setGuideVoice(state.guideVoice, { persist: false });
   setCountInBars(state.countInBars);
   state.octaveShift = DEFAULT_OCTAVE_SHIFT;
   setOctaveShift(state.octaveShift);
@@ -2025,6 +2070,7 @@ function wireEvents() {
   els.octaveButtons.forEach((button) => button.addEventListener("click", () => setOctaveShift(button.dataset.octave)));
   els.hearStartingNote.addEventListener("click", hearStartingNote);
   els.guideVolume.addEventListener("input", () => updateVolume("guide", els.guideVolume.value));
+  els.guideVoice.addEventListener("change", () => setGuideVoice(els.guideVoice.value));
   els.accompanimentList.addEventListener("change", (event) => {
     const input = event.target.closest("input[data-part-enabled]");
     if (!input) return;
