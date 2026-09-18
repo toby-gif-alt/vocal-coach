@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#17382f" />
+    <meta name="description" content="Audition a real sampled human Ah voice with a synthetic fallback for Vocal Coach." />
+    <title>Vocal Guide Lab — Vocal Coach</title>
+    <link rel="stylesheet" href="./vocal-guide-demo.css" />
+    <script src="https://cdn.jsdelivr.net/npm/tone@15.1.22/build/Tone.js" defer></script>
+    <script type="module" src="./vocal-guide-demo.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="./" aria-label="Back to Vocal Coach">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 40 40"><path d="M6 22c4.8 0 4.8-9 9.6-9s4.8 16 9.6 16S30 19 34 19" /></svg>
+        </span>
+        <span>Vocal Coach</span>
+      </a>
+      <span class="lab-pill"><i></i> Instrument lab</span>
+    </header>
+
+    <main>
+      <section class="intro" aria-labelledby="pageTitle">
+        <div>
+          <p class="eyebrow">Vocal guide prototype</p>
+          <h1 id="pageTitle">A guide tone that<br /><em>sounds sung.</em></h1>
+        </div>
+        <p class="lede">Audition a real sung Ah voice across choir pitches, with Synthetic Ah retained only for fallback and comparison. The sampler chooses the closest recorded anchor before transposing it to the requested note.</p>
+      </section>
+
+      <section class="workbench" aria-label="Vocal guide audition controls">
+        <div class="controls-panel">
+          <div class="control-block">
+            <div class="control-heading"><span>01</span><div><p>Guide sound</p><h2>Choose a voice</h2></div></div>
+            <div class="voice-grid" role="radiogroup" aria-label="Vocal guide sound">
+              <button class="voice-card human-voice is-selected" type="button" role="radio" aria-checked="true" data-guide-choice="human"><strong>Real human voice</strong><small>Preferred · five WAV anchors</small></button>
+              <button class="voice-card" type="button" role="radio" aria-checked="false" data-guide-choice="ah"><strong>Synthetic Ah</strong><small>Fallback · comparison</small></button>
+            </div>
+            <p class="source-status" id="sourceStatus" role="status">Real human voice selected — choose an audition to load samples.</p>
+          </div>
+
+          <div class="control-row">
+            <label class="field" for="pitchSelect"><span>Pitch</span><select id="pitchSelect"><option value="36">C2 · bass</option><option value="43">G2</option><option value="48">C3 · baritone</option><option value="52">E3</option><option value="53">F3 · anchor</option><option value="54">F♯3 · F3 +1</option><option value="55" selected>G3 · F3 +2</option><option value="56">G♯3 · F3 +3</option><option value="57">A3 · B3 −2</option><option value="59">B3</option><option value="60">C4 · middle C</option><option value="67">G4</option><option value="72">C5 · soprano</option></select></label>
+            <label class="field volume-field" for="volumeSlider"><span>Volume <output id="volumeOutput">70</output></span><input id="volumeSlider" type="range" min="0" max="100" value="70" /></label>
+          </div>
+        </div>
+
+        <div class="audition-panel">
+          <div class="audition-heading">
+            <div><p>02 · Audition</p><h2>Listen in context</h2></div>
+            <div class="signal" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          </div>
+
+          <div class="note-display" aria-live="polite">
+            <span class="note-orbit" aria-hidden="true"></span>
+            <p id="nowPlayingLabel">Ready to sing</p>
+            <strong id="nowPlayingNote">G3</strong>
+            <small id="nowPlayingDetail">Choose an audition below</small>
+          </div>
+
+          <div class="audition-actions">
+            <button type="button" data-action="short"><span>♪</span><strong>Play short note</strong><small>Quick response</small></button>
+            <button type="button" data-action="sustain"><span>𝅝</span><strong>Play sustained note</strong><small>Hold the vowel</small></button>
+            <button type="button" data-action="scale"><span>↗</span><strong>Play scale</strong><small>Legato phrase</small></button>
+            <button type="button" data-action="chord"><span>≋</span><strong>Play chord</strong><small>Four-part blend</small></button>
+          </div>
+
+          <div class="sequence-card">
+            <div><p>Guide phrase</p><span>Seven-note legato check</span></div>
+            <ol id="sequenceNotes" aria-label="C4 D4 E4 G4 E4 D4 C4">
+              <li>C4</li><li>D4</li><li>E4</li><li>G4</li><li>E4</li><li>D4</li><li>C4</li>
+            </ol>
+          </div>
+        </div>
+      </section>
+
+      <section class="lab-note" aria-labelledby="samplePackTitle">
+        <span class="lab-note-icon" aria-hidden="true">◎</span>
+        <div><p>Real samples, extensible design</p><h2 id="samplePackTitle">The demo uses five MIT-licensed recordings from Martin.</h2><span>C3, E3, F3, B3, and A4 act as anchors. G3 is deliberately produced from the open-vowel F3 recording at +2 semitones.</span></div>
+        <a href="./docs/vocal-guide.md">Read the voice-pack guide <span>→</span></a>
+      </section>
+    </main>
+
+    <footer><span>Vocal Guide Lab</span><p>Martin samples: vocobox/human-voice-dataset · MIT</p></footer>
+  </body>
+</html>
