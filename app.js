@@ -2,7 +2,6 @@ import { AudioEngine } from "./src/audio-engine.js?v=20";
 import { analysePerformance, performanceSummary } from "./src/analysis.js?v=14";
 import { buildCoachingFeedback } from "./src/coaching.js?v=14";
 import {
-  appendScoreTraceSample,
   colourForCents,
   DEBUG_CONFIG,
   DEFAULT_COUNT_IN_BARS,
@@ -40,6 +39,7 @@ import {
 } from "./src/practice-range.js?v=18";
 import { createTakeMetadata, reviewLayers, reviewQuarterAtSeconds, reviewVolumes } from "./src/review-playback.js?v=20";
 import {
+  appendScoreTraceSample,
   buildMeasureGeometry,
   buildScoreGeometry,
   focusScoreTarget,
