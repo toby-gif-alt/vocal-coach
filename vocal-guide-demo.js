@@ -1,4 +1,8 @@
 import { VocalGuideInstrument } from "./src/vocal-guide-instrument.js";
+import {
+  MARTIN_HUMAN_VOICE_BASE_URL,
+  MARTIN_HUMAN_VOICE_PACK,
+} from "./src/vocal-guide-sample-packs.js";
 
 const NOTE_NAMES = Object.freeze({
   36: "C2", 43: "G2", 48: "C3", 55: "G3", 60: "C4", 62: "D4", 64: "E4", 67: "G4", 72: "C5",
@@ -6,8 +10,7 @@ const NOTE_NAMES = Object.freeze({
 const GUIDE_PHRASE = Object.freeze([60, 62, 64, 67, 64, 62, 60]);
 const CHORD = Object.freeze([48, 55, 64, 67]);
 
-const modeButtons = [...document.querySelectorAll("[data-mode]")];
-const vowelButtons = [...document.querySelectorAll("[data-vowel]")];
+const guideChoiceButtons = [...document.querySelectorAll("[data-guide-choice]")];
 const actionButtons = [...document.querySelectorAll("[data-action]")];
 const sequenceNotes = [...document.querySelectorAll("#sequenceNotes li")];
 const pitchSelect = document.querySelector("#pitchSelect");
@@ -30,9 +33,26 @@ function setSelected(buttons, selected, attribute) {
   }
 }
 
+function selectedGuideChoice() {
+  return document.querySelector("[data-guide-choice].is-selected")?.dataset.guideChoice || "ooh";
+}
+
 function updateStatus(status) {
-  sourceStatus.textContent = status.message;
-  sourceStatus.classList.toggle("is-fallback", status.mode === "sampled" && status.effectiveMode !== "sampled");
+  const humanSelected = selectedGuideChoice() === "human";
+  let message = status.message;
+  let fallback = false;
+
+  if (humanSelected && status.sampleState === "loading") {
+    message = "Loading real human voice samples…";
+  } else if (humanSelected && status.effectiveMode === "sampled") {
+    message = "Real human voice ready — using the nearest Martin anchor for each note.";
+  } else if (humanSelected) {
+    message = "Real human voice unavailable — using Synthetic Ah.";
+    fallback = true;
+  }
+
+  sourceStatus.textContent = message;
+  sourceStatus.classList.toggle("is-fallback", fallback);
 }
 
 function clearVisualTimers() {
@@ -63,12 +83,11 @@ async function ensureGuide() {
   if (!guide) {
     guide = new VocalGuideInstrument({
       tone: window.Tone,
-      mode: document.querySelector("[data-mode].is-selected")?.dataset.mode || "vowel",
-      vowel: document.querySelector("[data-vowel].is-selected")?.dataset.vowel || "ooh",
+      mode: "vowel",
+      vowel: selectedGuideChoice() === "human" ? "ah" : selectedGuideChoice(),
       volume: Number(volumeSlider.value),
-      // Add a future teacher pack here. With no map installed, sampled mode
-      // intentionally reports its state and uses the synthetic vowel engine.
-      samples: {},
+      samples: MARTIN_HUMAN_VOICE_PACK,
+      sampleBaseUrl: MARTIN_HUMAN_VOICE_BASE_URL,
       onStatus: updateStatus,
     });
     updateStatus(guide.getStatus());
@@ -76,19 +95,38 @@ async function ensureGuide() {
   return guide;
 }
 
+async function selectGuideChoice(choice) {
+  setSelected(guideChoiceButtons, choice, "guideChoice");
+  const instrument = await ensureGuide();
+  instrument.setVowel(choice === "human" ? "ah" : choice);
+  const status = instrument.setMode(choice === "human" ? "sampled" : "vowel");
+  updateStatus(status);
+  if (choice === "human" && status.sampleState === "loading") {
+    await instrument.ready;
+    updateStatus(instrument.getStatus());
+  }
+  return instrument;
+}
+
 async function play(action) {
   try {
     const instrument = await ensureGuide();
+    const choice = selectedGuideChoice();
+    if (choice === "human" && instrument.getStatus().sampleState === "loading") {
+      updateStatus(instrument.getStatus());
+      await instrument.ready;
+      updateStatus(instrument.getStatus());
+    }
     const selectedMidi = Number(pitchSelect.value);
     const start = window.Tone.now() + 0.06;
     clearVisualTimers();
 
     if (action === "short") {
       instrument.triggerAttackRelease({ midi: selectedMidi, duration: 0.42, time: start, velocity: 0.72 });
-      showNote(selectedMidi, "Short note", "A quick attack with a softened release");
+      showNote(selectedMidi, "Short note", choice === "human" ? "Natural recorded attack with a softened release" : "A quick attack with a softened release");
     } else if (action === "sustain") {
       instrument.triggerAttackRelease({ midi: selectedMidi, duration: 3.2, time: start, velocity: 0.7 });
-      showNote(selectedMidi, "Sustained vowel", "The formants hold steady for the full note");
+      showNote(selectedMidi, "Sustained vowel", choice === "human" ? "The recorded vowel loops through its stable centre" : "The formants hold steady for the full note");
     } else if (action === "chord") {
       for (const midi of CHORD) instrument.triggerAttackRelease({ midi, duration: 2.8, time: start, velocity: 0.48 });
       showNote(60, "Four-part chord", "C3 · G3 · E4 · G4");
@@ -105,19 +143,14 @@ async function play(action) {
   }
 }
 
-for (const button of modeButtons) {
+for (const button of guideChoiceButtons) {
   button.addEventListener("click", async () => {
-    setSelected(modeButtons, button.dataset.mode, "mode");
-    const instrument = await ensureGuide();
-    updateStatus(instrument.setMode(button.dataset.mode));
-  });
-}
-
-for (const button of vowelButtons) {
-  button.addEventListener("click", async () => {
-    setSelected(vowelButtons, button.dataset.vowel, "vowel");
-    const instrument = await ensureGuide();
-    updateStatus(instrument.setVowel(button.dataset.vowel));
+    try {
+      await selectGuideChoice(button.dataset.guideChoice);
+    } catch (error) {
+      sourceStatus.textContent = error.message;
+      sourceStatus.classList.add("is-fallback");
+    }
   });
 }
 

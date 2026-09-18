@@ -139,6 +139,7 @@ function normaliseDescriptor(anchorName, value, baseUrl) {
     midi,
     url,
     buffer: descriptor.buffer || null,
+    gain: Number.isFinite(Number(descriptor.gain)) ? Math.max(0.25, Math.min(4, Number(descriptor.gain))) : 1,
     loop: descriptor.loop !== false,
     loopStart: Number.isFinite(Number(descriptor.loopStart)) ? Number(descriptor.loopStart) : null,
     loopEnd: Number.isFinite(Number(descriptor.loopEnd)) ? Number(descriptor.loopEnd) : null,
@@ -526,10 +527,13 @@ export class VocalGuideInstrument {
 
     const envelope = this.context.createGain();
     setAudioParam(envelope.gain, MIN_GAIN);
-    source.connect(envelope);
+    const sampleGain = this.context.createGain();
+    setAudioParam(sampleGain.gain, anchor.gain);
+    source.connect(sampleGain);
+    sampleGain.connect(envelope);
     envelope.connect(this.softener);
     const releaseEnd = this.scheduleEnvelope(envelope.gain, note, 0.025, 0.16);
-    const voice = this.registerVoice({ sources: [source], envelope, nodes: [source, envelope] });
+    const voice = this.registerVoice({ sources: [source], envelope, nodes: [source, sampleGain, envelope] });
     source.start(note.time);
     source.stop(releaseEnd + 0.025);
     source.onended = () => this.cleanupVoice(voice);

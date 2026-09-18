@@ -119,25 +119,22 @@ h1 em { font-family: "Newsreader", Georgia, serif; font-weight: 500; }
 }
 
 .controls-panel { padding: 34px; border-right: 1px solid var(--line); }
-.control-block + .control-block { margin-top: 30px; padding-top: 28px; border-top: 1px solid var(--line); }
 .control-heading { display: flex; align-items: center; gap: 13px; margin-bottom: 17px; }
 .control-heading > span { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 9px; color: var(--forest); background: var(--lime-soft); font-size: 11px; font-weight: 700; }
 .control-heading p { margin-bottom: 2px; }
 .control-heading h2, .audition-heading h2 { margin: 0; color: var(--forest); font-size: 19px; line-height: 1.1; letter-spacing: -0.025em; }
 
-.segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; padding: 5px; border: 1px solid var(--line); border-radius: 13px; background: #f0f0e9; }
-.segmented button { min-height: 42px; border: 0; border-radius: 9px; background: transparent; color: #6f7e77; font-size: 13px; font-weight: 700; cursor: pointer; }
-.segmented button.is-selected { color: white; background: var(--forest); box-shadow: 0 5px 16px rgba(23, 56, 47, 0.16); }
 .source-status { min-height: 19px; margin: 11px 3px 0; color: #6d7e76; font-size: 12px; }
 .source-status.is-fallback { color: #9a642f; }
 
-.vowel-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-.vowel-card { min-height: 82px; padding: 14px 12px; text-align: left; border: 1px solid var(--line); border-radius: 13px; background: transparent; cursor: pointer; transition: transform 160ms ease, border-color 160ms ease, background 160ms ease; }
-.vowel-card:hover { transform: translateY(-2px); border-color: #9db3a8; }
-.vowel-card strong, .vowel-card small { display: block; }
-.vowel-card strong { margin-bottom: 5px; color: var(--forest); font-size: 17px; }
-.vowel-card small { color: #75837c; font-size: 11px; }
-.vowel-card.is-selected { border-color: var(--forest); background: var(--lime-soft); box-shadow: inset 0 0 0 1px var(--forest); }
+.voice-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.voice-card { min-height: 82px; padding: 14px 12px; text-align: left; border: 1px solid var(--line); border-radius: 13px; background: transparent; cursor: pointer; transition: transform 160ms ease, border-color 160ms ease, background 160ms ease; }
+.voice-card:hover { transform: translateY(-2px); border-color: #9db3a8; }
+.voice-card strong, .voice-card small { display: block; }
+.voice-card strong { margin-bottom: 5px; color: var(--forest); font-size: 15px; }
+.voice-card small { color: #75837c; font-size: 11px; }
+.voice-card.human-voice { border-color: #a8c9b8; background: #f3f8f2; }
+.voice-card.is-selected { border-color: var(--forest); background: var(--lime-soft); box-shadow: inset 0 0 0 1px var(--forest); }
 
 .control-row { display: grid; grid-template-columns: 1fr 0.8fr; gap: 18px; margin-top: 30px; padding-top: 28px; border-top: 1px solid var(--line); }
 .field > span { display: flex; justify-content: space-between; margin: 0 0 8px 2px; color: #61736b; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
@@ -210,8 +207,8 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
   .lede { font-size: 15px; }
   .workbench { border-radius: 18px; }
   .controls-panel, .audition-panel { padding: 22px; }
-  .vowel-grid { grid-template-columns: 1fr; }
-  .vowel-card { min-height: 66px; }
+  .voice-grid { grid-template-columns: 1fr; }
+  .voice-card { min-height: 66px; }
   .control-row { grid-template-columns: 1fr; }
   .audition-actions { grid-template-columns: 1fr; }
   .sequence-card { grid-template-columns: 1fr; }

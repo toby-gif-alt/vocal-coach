@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { readdir, readFile } from "node:fs/promises";
 import { test } from "node:test";
 
 import {
@@ -13,6 +15,10 @@ import {
   noteNameToMidi,
   selectNearestSampleAnchor,
 } from "../src/vocal-guide-instrument.js";
+import {
+  MARTIN_HUMAN_VOICE_BASE_URL,
+  MARTIN_HUMAN_VOICE_PACK,
+} from "../src/vocal-guide-sample-packs.js";
 
 class FakeAudioParam {
   constructor(value = 0) {
@@ -162,6 +168,43 @@ test("sample packs accept arbitrary anchors and choose the nearest pitch", () =>
   assert.equal(selectNearestSampleAnchor(55, anchors).midi, 57);
   assert.equal(selectNearestSampleAnchor(70, anchors).midi, 73);
   assert.equal(selectNearestSampleAnchor(65, anchors).midi, 57, "ties prefer the lower anchor");
+});
+
+test("Martin human voice pack contains the five attributed anchors with correct roots", async () => {
+  const expected = {
+    "A4.wav": { midi: 69, sha256: "2564e8fa563ce0578c636304657a482c30de538c09bb851013a162ac59489bde" },
+    "B3.wav": { midi: 59, sha256: "2a94fe05d1918f2f83dc3d70bec2a06f32241be4aafb047a9131d7bf03f09cc3" },
+    "C3.wav": { midi: 48, sha256: "03b4a7cfbd00235b54e118fed5588ab264f7e3af48375dc0bf9d21b17be1e28b" },
+    "E3.wav": { midi: 52, sha256: "1ffad60e509debb9ebe6037ce1a45f798afac1ffa88401b646d9a2de2d9f4d24" },
+    "G3.wav": { midi: 55, sha256: "1ef52b32672620eab95b18ee21a2cddd8adbf6e38ebba1200ce03b0948dbc39a" },
+  };
+  const sampleDirectory = new URL("../samples/vocal-guide/martin/", import.meta.url);
+  const files = (await readdir(sampleDirectory)).filter((file) => file.endsWith(".wav")).sort();
+  assert.deepEqual(files, Object.keys(expected).sort());
+  assert.equal(MARTIN_HUMAN_VOICE_BASE_URL, "./samples/vocal-guide/martin/");
+
+  for (const file of files) {
+    const noteName = file.replace(/\.wav$/, "");
+    const descriptor = MARTIN_HUMAN_VOICE_PACK.ah[noteName];
+    assert.equal(descriptor.midi, expected[file].midi);
+    assert.ok(descriptor.loopStart > 0);
+    assert.ok(descriptor.loopEnd > descriptor.loopStart);
+    const bytes = await readFile(new URL(file, sampleDirectory));
+    assert.equal(createHash("sha256").update(bytes).digest("hex"), expected[file].sha256);
+  }
+
+  const anchors = normaliseSamplePack(MARTIN_HUMAN_VOICE_PACK, MARTIN_HUMAN_VOICE_BASE_URL).get("ah");
+  assert.equal(selectNearestSampleAnchor(54, anchors).midi, 55);
+  assert.equal(selectNearestSampleAnchor(60, anchors).midi, 59);
+  assert.equal(selectNearestSampleAnchor(66, anchors).midi, 69);
+});
+
+test("standalone demo names real and synthetic choices without a fake sampled option", async () => {
+  const html = await readFile(new URL("../vocal-guide-demo.html", import.meta.url), "utf8");
+  for (const label of ["Synthetic Ooh", "Synthetic Oh", "Synthetic Ah", "Real human voice"]) {
+    assert.match(html, new RegExp(`>${label}<`));
+  }
+  assert.doesNotMatch(html, />Sampled voice</);
 });
 
 test("sampled mode falls back cleanly when no voice assets are installed", () => {

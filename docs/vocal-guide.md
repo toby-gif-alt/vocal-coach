@@ -80,6 +80,22 @@ If no pack is configured, a pack cannot load, or the chosen vowel has no usable 
 
 Large sample transpositions move the recorded formants along with the fundamental and can sound unnatural. Closely spaced anchors reduce that effect. A future formant-preserving pitch shifter could improve wide-range use without requiring as many recordings.
 
+## Included Martin demo pack
+
+The standalone demo includes five real sung-note anchors from the MIT-licensed [`vocobox/human-voice-dataset`](https://github.com/vocobox/human-voice-dataset/tree/77248fc69fd93c40a69d49c0cade4144c5d7a9f4/data/voices/martin/notes/exports/mono). They are intentionally isolated from the main Vocal Coach app.
+
+| File | Root MIDI |
+| --- | ---: |
+| `C3.wav` | 48 |
+| `E3.wav` | 52 |
+| `G3.wav` | 55 |
+| `B3.wav` | 59 |
+| `A4.wav` | 69 |
+
+The recordings are mapped to the instrument's `ah` bank because the upstream note series uses its base `a` vowel. For every requested pitch, the engine chooses the closest root MIDI before changing playback rate. This keeps transposition as small as the available anchors allow. Playback begins at the original onset, uses hand-picked loop points in each recording's stable middle for long notes, and ends through a short gain-envelope release.
+
+The demo labels its four choices explicitly: **Synthetic Ooh**, **Synthetic Oh**, **Synthetic Ah**, and **Real human voice**. If the real WAV files cannot load, the status message says that Synthetic Ah is being used; the fallback is never presented as a human recording. Exact provenance, checksums, and the preserved MIT license are in [`samples/vocal-guide/martin/`](../samples/vocal-guide/martin/).
+
 ## Creating a custom teacher voice pack
 
 A future **Create my guide voice** flow can guide a teacher through these steps:
@@ -108,7 +124,7 @@ samples/vocal-guide/
     C4.wav
 ```
 
-Recordings should remain local/browser-served unless the teacher explicitly chooses another storage workflow. The current prototype deliberately includes no real voice assets.
+Recordings should remain local/browser-served unless the teacher explicitly chooses another storage workflow. The included Martin files are a demo pack, not a recording of the teacher and not yet part of the main app.
 
 ## Sung lyrics are separate future work
 

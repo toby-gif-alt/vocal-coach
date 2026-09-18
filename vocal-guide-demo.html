@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#17382f" />
-    <meta name="description" content="Audition the vowel and future sampled-voice guide for Vocal Coach." />
+    <meta name="description" content="Audition synthetic vowels and a real sampled human voice for Vocal Coach." />
     <title>Vocal Guide Lab — Vocal Coach</title>
     <link rel="stylesheet" href="./vocal-guide-demo.css" />
     <script src="https://cdn.jsdelivr.net/npm/tone@15.1.22/build/Tone.js" defer></script>
@@ -27,27 +27,20 @@
           <p class="eyebrow">Vocal guide prototype</p>
           <h1 id="pageTitle">A guide tone that<br /><em>sounds sung.</em></h1>
         </div>
-        <p class="lede">Audition fixed vowel formants across choir pitches. The source pitch moves while the vocal resonances stay steady — closer to a held human vowel than an electronic sine tone.</p>
+        <p class="lede">Compare three fixed-formant synthetic vowels with a real sung voice across choir pitches. The human mode chooses the closest recorded anchor before transposing it to the requested note.</p>
       </section>
 
       <section class="workbench" aria-label="Vocal guide audition controls">
         <div class="controls-panel">
           <div class="control-block">
-            <div class="control-heading"><span>01</span><div><p>Source</p><h2>Guide voice</h2></div></div>
-            <div class="segmented source-switch" role="radiogroup" aria-label="Guide voice source">
-              <button class="is-selected" type="button" role="radio" aria-checked="true" data-mode="vowel">Synthetic vowel</button>
-              <button type="button" role="radio" aria-checked="false" data-mode="sampled">Sampled voice</button>
+            <div class="control-heading"><span>01</span><div><p>Guide sound</p><h2>Choose a voice</h2></div></div>
+            <div class="voice-grid" role="radiogroup" aria-label="Vocal guide sound">
+              <button class="voice-card is-selected" type="button" role="radio" aria-checked="true" data-guide-choice="ooh"><strong>Synthetic Ooh</strong><small>Round · dark formants</small></button>
+              <button class="voice-card" type="button" role="radio" aria-checked="false" data-guide-choice="oh"><strong>Synthetic Oh</strong><small>Open · warm formants</small></button>
+              <button class="voice-card" type="button" role="radio" aria-checked="false" data-guide-choice="ah"><strong>Synthetic Ah</strong><small>Bright · clear formants</small></button>
+              <button class="voice-card human-voice" type="button" role="radio" aria-checked="false" data-guide-choice="human"><strong>Real human voice</strong><small>Martin · five WAV anchors</small></button>
             </div>
             <p class="source-status" id="sourceStatus" role="status">Using synthetic Ooh vowel.</p>
-          </div>
-
-          <div class="control-block">
-            <div class="control-heading"><span>02</span><div><p>Timbre</p><h2>Choose a vowel</h2></div></div>
-            <div class="vowel-grid" role="radiogroup" aria-label="Vowel timbre">
-              <button class="vowel-card is-selected" type="button" role="radio" aria-checked="true" data-vowel="ooh"><strong>Ooh</strong><small>Round · dark</small></button>
-              <button class="vowel-card" type="button" role="radio" aria-checked="false" data-vowel="oh"><strong>Oh</strong><small>Open · warm</small></button>
-              <button class="vowel-card" type="button" role="radio" aria-checked="false" data-vowel="ah"><strong>Ah</strong><small>Bright · clear</small></button>
-            </div>
           </div>
 
           <div class="control-row">
@@ -58,7 +51,7 @@
 
         <div class="audition-panel">
           <div class="audition-heading">
-            <div><p>03 · Audition</p><h2>Listen in context</h2></div>
+            <div><p>02 · Audition</p><h2>Listen in context</h2></div>
             <div class="signal" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
           </div>
 
@@ -87,11 +80,11 @@
 
       <section class="lab-note" aria-labelledby="samplePackTitle">
         <span class="lab-note-icon" aria-hidden="true">◎</span>
-        <div><p>Designed for what comes next</p><h2 id="samplePackTitle">Teacher voice packs can plug into the same instrument.</h2><span>Record sustained anchor notes, map them by pitch, and the guide will choose and transpose the nearest recording. Until a pack is installed, sampled mode falls back safely.</span></div>
+        <div><p>Real samples, extensible design</p><h2 id="samplePackTitle">The demo uses five MIT-licensed recordings from Martin.</h2><span>C3, E3, G3, B3, and A4 act as anchors. Future teacher packs can use the same nearest-note mapping with any set of recorded pitches.</span></div>
         <a href="./docs/vocal-guide.md">Read the voice-pack guide <span>→</span></a>
       </section>
     </main>
 
-    <footer><span>Vocal Guide Lab</span><p>Local browser audio · No microphone · No score coupling</p></footer>
+    <footer><span>Vocal Guide Lab</span><p>Martin samples: vocobox/human-voice-dataset · MIT</p></footer>
   </body>
 </html>
