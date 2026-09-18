@@ -9,7 +9,7 @@ No account, backend, upload service, or build step is required. Scores, calibrat
 1. Upload `.musicxml`, `.xml`, or compressed `.mxl`.
 2. Review every detected score part and select **I am singing this part**.
 3. View the selected part by itself or switch to the full score.
-4. Choose **Assisted** (guide + accompaniment + trace, without coaching judgement) or **Assessment** (accompaniment + trace + detailed coaching).
+4. Choose **Assisted** (guide + accompaniment + trace, without coaching judgement) or **Assessment** (accompaniment + trace + detailed coaching). The guide defaults to **Human voice**, with **Synthetic Ah** available from the same control panel.
 5. Practise the whole piece or enter/select a bar range directly on the score. **Start from** can begin later inside that section without assessing the deliberately skipped bars.
 6. Choose an Off/1-bar/2-bar musical count-in. Press **Hear starting note**, then sing it back during the explicit response window to confirm one of −24/−12/0/+12 semitones. The octave never changes automatically during count-in or performance, and manual controls remain under **Advanced**.
 7. Before the first microphone session, complete a saved room-and-voice **Microphone Check**: stay quiet for about one second, then sing a comfortable “Ah”, beginning normally and getting a little louder. Low/Normal/High remain available as advanced overrides.
@@ -25,7 +25,9 @@ The app deliberately keeps musical concerns separate:
 
 - `src/musicxml.js` reads MusicXML/MXL, detects parts, and builds independent note timelines. Each note includes written pitch, MIDI pitch, frequency, onset, duration, measure, beat, voice/staff, and tie data.
 - `src/timing.js` defines the exact bridge between Tone.Transport quarter notes and OSMD whole-note-fraction timestamps, applies MusicXML backup/forward/chord measure timing, and derives simple or compound-meter count-in pulses.
-- `src/audio-engine.js` owns Tone.js transport scheduling, independently gain-controlled part/guide synthesizers, headphone/speaker capture constraints, count-in clicks outside score time, the two-stage microphone check, raw Pitchy frames, score-time-aligned recording lifecycle, and XML review layers slaved to recorded-audio time.
+- `src/audio-engine.js` owns Tone.js transport scheduling, accompaniment synths, the dedicated vocal-guide instrument, headphone/speaker capture constraints, count-in clicks outside score time, the two-stage microphone check, raw Pitchy frames, score-time-aligned recording lifecycle, and XML review layers slaved to recorded-audio time.
+- `src/guide-playback.js` keeps the persisted Human/Synthetic Ah choice and converts parsed score notes into direct-MIDI guide requests without inheriting the singer's assessment octave.
+- `src/vocal-guide-instrument.js` provides sampled-human and synthetic-vowel playback, closest-anchor selection, smooth releases, sustained sample loops, and automatic Synthetic Ah fallback.
 - `src/noise-gate.js` measures RMS amplitude, derives a room-aware threshold for Low/Normal/High sensitivity, and applies gate hysteresis before pitch detection.
 - `src/signal-quality.js` measures RMS, absolute peak, and near-full-scale occupancy on every input frame, classifies clipping, and requires a sustained clipped burst before raising an overload warning.
 - `src/microphone-calibration.js` combines ambient, normal voice, and slightly louder voice distributions into saved acquisition/continuation gates, a clarity threshold, and tracker reacquisition setting. Sustained calibration clipping is rejected; there is no upper RMS gate for valid singing.
@@ -106,7 +108,7 @@ All app and sample-score paths are relative, so the site works at a project URL 
 - Partwise MusicXML is supported. Timewise MusicXML is rejected with an explanation.
 - The parser supports common divisions, time signatures, rests, chords, backups/forwards, chromatic transposition, multiple voices/staves, and ties. Complex repeats, jumps, tuplets, changing tempo maps, ornaments, and every notation-software extension are not yet interpreted for playback.
 - For a polyphonic selected part, the most populated voice is used as the assessment timeline; simultaneous pitches collapse to the upper pitch. True divisi assessment is future work.
-- Playback uses simple synthesized tones rather than a sampled piano or phoneme-aware vocal sound.
+- Accompaniment uses simple synthesized tones rather than a sampled piano. The melody guide provides sampled or synthetic “Ah”, not lyric- or phoneme-aware singing.
 - A note already sounding before a selected start is safely reconstructed at the boundary with a short re-attack. This keeps accompaniment and guide timing intact, although it cannot reproduce the original attackless continuation exactly.
 - Pitch detection estimates one fundamental frequency. It reports sustained-pitch stability and coverage, but it does not yet interpret vibrato or grade rhythm, consonants, dynamics, breathing technique, scoops, vocal range, tessitura, or voice type.
 - Note-level metrics are useful prototype signals, not clinical or pedagogical verdicts. The colour thresholds are intentionally configurable placeholders.
@@ -114,4 +116,4 @@ All app and sample-score paths are relative, so the site works at a project URL 
 
 ## Privacy
 
-MusicXML is parsed locally. Microphone input is analysed as short time-domain buffers; assessment audio is also captured locally for the **Hear my performance** control where MediaRecorder is supported. Imported files, pitch data, calibration values, and audio recordings are never uploaded. Calibration alone is saved in local browser storage; the recording is released with the session.
+MusicXML is parsed locally. Microphone input is analysed as short time-domain buffers; assessment audio is also captured locally for the **Hear my performance** control where MediaRecorder is supported. Imported files, pitch data, calibration values, and audio recordings are never uploaded. Microphone calibration and the guide-voice preference are saved in local browser storage; the recording is released with the session.

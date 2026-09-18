@@ -1,6 +1,6 @@
 # Vocal guide instrument
 
-`VocalGuideInstrument` is an isolated guide-sound module for the future Vocal Coach melody line. It has no dependencies on score rendering, microphone input, pitch tracking, or coaching. The standalone [`vocal-guide-demo.html`](../vocal-guide-demo.html) page is the safest place to audition it before main-app integration.
+`VocalGuideInstrument` is the isolated sound module behind the Vocal Coach melody guide. It has no dependencies on score rendering, microphone input, pitch tracking, or coaching. The normal studio uses it for Human voice and Synthetic Ah playback; the standalone [`vocal-guide-demo.html`](../vocal-guide-demo.html) page remains a developer audition surface.
 
 ## Synthetic vowel mode
 
@@ -80,9 +80,9 @@ If no pack is configured, a pack cannot load, or the chosen vowel has no usable 
 
 Large sample transpositions move the recorded formants along with the fundamental and can sound unnatural. Closely spaced anchors reduce that effect. A future formant-preserving pitch shifter could improve wide-range use without requiring as many recordings.
 
-## Included Martin demo pack
+## Included Martin human voice pack
 
-The standalone demo includes five real sung-note anchors from the MIT-licensed [`vocobox/human-voice-dataset`](https://github.com/vocobox/human-voice-dataset/tree/77248fc69fd93c40a69d49c0cade4144c5d7a9f4/data/voices/martin/notes/exports/mono). They are intentionally isolated from the main Vocal Coach app.
+The studio and standalone demo use five real sung-note anchors from the MIT-licensed [`vocobox/human-voice-dataset`](https://github.com/vocobox/human-voice-dataset/tree/77248fc69fd93c40a69d49c0cade4144c5d7a9f4/data/voices/martin/notes/exports/mono).
 
 | File | Root MIDI |
 | --- | ---: |
@@ -94,7 +94,7 @@ The standalone demo includes five real sung-note anchors from the MIT-licensed [
 
 The recordings are mapped to the instrument's `ah` bank because the upstream note series uses its base `a` vowel. For every requested pitch, the engine chooses the closest root MIDI before changing playback rate. This keeps transposition as small as the available anchors allow. The pack deliberately has no G3 recording: F3 supplies F♯3 / G♭3 and G3 at +1 and +2 semitones. Playback begins at the original onset, uses hand-picked loop points in each recording's stable middle for long notes, and ends through a short gain-envelope release.
 
-The demo presents **Real human voice** as its default and **Synthetic Ah** only as a fallback or comparison. If the real WAV files cannot load, the status message says that Synthetic Ah is being used; the fallback is never presented as a human recording. Exact provenance, checksums, and the preserved MIT license are in [`samples/vocal-guide/martin/`](../samples/vocal-guide/martin/).
+The studio presents **Human voice** as its default and **Synthetic Ah** as its only alternative. The demo uses the labels **Real human voice** and **Synthetic Ah**. If the WAV files cannot load, both surfaces report that Synthetic Ah is being used; the fallback is never presented as a human recording. Exact provenance, checksums, and the preserved MIT license are in [`samples/vocal-guide/martin/`](../samples/vocal-guide/martin/).
 
 ## Creating a custom teacher voice pack
 
@@ -124,7 +124,7 @@ samples/vocal-guide/
     C4.wav
 ```
 
-Recordings should remain local/browser-served unless the teacher explicitly chooses another storage workflow. The included Martin files are a demo pack, not a recording of the teacher and not yet part of the main app.
+Recordings should remain local/browser-served unless the teacher explicitly chooses another storage workflow. The included Martin files provide the app's current Human voice guide; they are not a recording of the teacher.
 
 ## Sung lyrics are separate future work
 
@@ -134,4 +134,4 @@ Ordinary browser `SpeechSynthesis` is not a substitute because it cannot accurat
 
 ## Integration boundary
 
-When the concurrent main audio work is finished, integration should be limited to creating one `VocalGuideInstrument`, forwarding guide volume, calling `releaseAll()` on pause/stop, calling `dispose()` during synth teardown, and replacing the existing vocal guide trigger. The module should stay independent from microphone analysis, score parsing/rendering, assessment, and coach feedback.
+`AudioEngine` owns one dedicated `VocalGuideInstrument`, forwards guide volume, releases it on pause/stop/restart/review stop, and disposes it during synth teardown. Each scheduled vocal note passes the sounding `note.midi` produced by the MusicXML parser directly to the instrument. Singer-octave selection remains confined to microphone, tuner, and assessment targets and never transposes guide playback. The instrument stays independent from microphone analysis, score parsing/rendering, assessment, and coach feedback.
