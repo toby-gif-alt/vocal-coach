@@ -88,11 +88,11 @@ The standalone demo includes five real sung-note anchors from the MIT-licensed [
 | --- | ---: |
 | `C3.wav` | 48 |
 | `E3.wav` | 52 |
-| `G3-3.wav` | 55 |
+| `F3.wav` | 53 |
 | `B3.wav` | 59 |
 | `A4.wav` | 69 |
 
-The recordings are mapped to the instrument's `ah` bank because the upstream note series uses its base `a` vowel. For every requested pitch, the engine chooses the closest root MIDI before changing playback rate. This keeps transposition as small as the available anchors allow. Playback begins at the original onset, uses hand-picked loop points in each recording's stable middle for long notes, and ends through a short gain-envelope release.
+The recordings are mapped to the instrument's `ah` bank because the upstream note series uses its base `a` vowel. For every requested pitch, the engine chooses the closest root MIDI before changing playback rate. This keeps transposition as small as the available anchors allow. The pack deliberately has no G3 recording: F3 supplies F♯3 / G♭3 and G3 at +1 and +2 semitones. Playback begins at the original onset, uses hand-picked loop points in each recording's stable middle for long notes, and ends through a short gain-envelope release.
 
 The demo presents **Real human voice** as its default and **Synthetic Ah** only as a fallback or comparison. If the real WAV files cannot load, the status message says that Synthetic Ah is being used; the fallback is never presented as a human recording. Exact provenance, checksums, and the preserved MIT license are in [`samples/vocal-guide/martin/`](../samples/vocal-guide/martin/).
 
