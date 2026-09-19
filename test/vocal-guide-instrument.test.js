@@ -67,7 +67,7 @@ class FakeSourceNode extends FakeNode {
     this.onended = null;
   }
 
-  start(time) { this.started.push(time); }
+  start(...args) { this.started.push(args); }
   stop(time) { this.stopped.push(time); }
 }
 
@@ -239,6 +239,27 @@ test("sampled mode falls back cleanly when no voice assets are installed", () =>
   guide.dispose();
 });
 
+test("generated MP3 anchors use the existing fetch and Web Audio decode path", async () => {
+  const { tone } = createTone();
+  const requested = [];
+  const guide = new VocalGuideInstrument({
+    tone,
+    mode: "sampled",
+    vowel: "ah",
+    samples: { ah: { C4: { url: "./samples/vocal-guide/female/C4.mp3", midi: 60 } } },
+    fetcher: async (url) => {
+      requested.push(url);
+      return { ok: true, arrayBuffer: async () => new ArrayBuffer(8) };
+    },
+  });
+  await guide.ready;
+
+  assert.deepEqual(requested, ["./samples/vocal-guide/female/C4.mp3"]);
+  assert.equal(guide.getStatus().sampleState, "ready");
+  assert.equal(guide.effectiveMode, "sampled");
+  guide.dispose();
+});
+
 test("predecoded sample anchors select and transpose without a network request", async () => {
   const { tone, context } = createTone();
   const sample = { duration: 3.4 };
@@ -251,11 +272,35 @@ test("predecoded sample anchors select and transpose without a network request",
   });
   await guide.ready;
 
-  guide.triggerAttackRelease({ midi: 67, duration: 2.5, time: tone.now(), velocity: 0.6 });
+  guide.triggerAttackRelease({ midi: 60, duration: 2.5, time: tone.now(), velocity: 0.6 });
   const source = context.nodes.findLast((node) => node.kind === "buffer-source");
   assert.equal(guide.effectiveMode, "sampled");
-  assert.ok(Math.abs(source.playbackRate.events[0].value - (2 ** (7 / 12))) < 1e-10);
-  assert.equal(source.loop, true);
+  assert.equal(source.playbackRate.events[0].value, 1);
+  assert.equal(source.loop, undefined, "a recording long enough for the note is not looped");
+  assert.deepEqual(source.started[0], [tone.now(), 0]);
+  guide.dispose();
+});
+
+test("a note longer than its recording crossfades late sustain segments without repeating the attack", async () => {
+  const { tone, context } = createTone();
+  const guide = new VocalGuideInstrument({
+    tone,
+    mode: "sampled",
+    vowel: "ah",
+    samples: { ah: { C4: { buffer: { duration: 1.2 }, loop: "adaptive" } } },
+    fetcher: null,
+  });
+  await guide.ready;
+
+  guide.triggerAttackRelease({ midi: 60, duration: 3.5, time: tone.now(), velocity: 0.6 });
+  const sources = context.nodes.filter((node) => node.kind === "buffer-source");
+  const segmentGains = context.nodes.filter((node) => node.kind === "gain" && node !== guide.masterGain)
+    .filter((node) => node.gain.events.some((event) => event.type === "ramp" && event.value === 1));
+  assert.ok(sources.length > 1, "long notes use more than one source segment");
+  assert.deepEqual(sources[0].started[0], [tone.now(), 0], "the first source preserves the natural attack");
+  assert.ok(sources.slice(1).every((source) => source.started[0][1] > 0), "extension segments begin inside the stable sustain");
+  assert.ok(sources.every((source) => source.loop !== true), "native BufferSource looping is not used");
+  assert.ok(segmentGains.length > 0, "overlapping sustain segments receive crossfade ramps");
   guide.dispose();
 });
 

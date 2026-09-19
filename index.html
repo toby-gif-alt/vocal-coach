@@ -15,11 +15,11 @@
     <meta name="twitter:image" content="https://toby-gif-alt.github.io/vocal-coach/og.png" />
     <title>Vocal Coach — Practise from the score</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%2317382f'/%3E%3Cpath d='M14 34c7 0 7-15 14-15s7 27 14 27 7-16 8-16' fill='none' stroke='%23d7ff72' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="./styles.css?v=21" />
+    <link rel="stylesheet" href="./styles.css?v=22" />
     <script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@2.1.2/build/opensheetmusicdisplay.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/tone@15.1.22/build/Tone.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" defer></script>
-    <script type="module" src="./app.js?v=21"></script>
+    <script type="module" src="./app.js?v=22"></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to the app</a>
@@ -40,11 +40,18 @@
         <div class="hero-copy">
           <p class="eyebrow"><span></span> Your score. Your voice. In sync.</p>
           <h1 id="homeTitle">Practise the music<br /><em>that matters to you.</em></h1>
-          <p class="hero-lede">Upload a MusicXML score, choose the line you sing, and see how each note lands — while the accompaniment plays with you.</p>
-          <div class="hero-actions">
-            <label class="upload-primary" for="scoreInput"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L8 8m4-4 4 4M5 14v5h14v-5" /></svg>Upload MusicXML</label>
-            <input id="scoreInput" type="file" accept=".musicxml,.xml,.mxl,application/vnd.recordare.musicxml+xml,application/vnd.recordare.musicxml" />
-            <button class="sample-button" id="sampleButton" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 7 8 5-8 5V7Z" /></svg>Try the sample score</button>
+          <p class="hero-lede">Choose a repertoire score or upload MusicXML, select the line you sing, and see how each note lands — while the accompaniment plays with you.</p>
+          <div class="score-chooser">
+            <label class="repertoire-field" for="repertoireSelect">
+              <span>Choose a score</span>
+              <select id="repertoireSelect" disabled><option value="">Select from repertoire</option></select>
+            </label>
+            <p class="repertoire-status" id="repertoireStatus" role="status">Loading repertoire…</p>
+            <span class="choice-divider">or</span>
+            <div class="hero-actions">
+              <label class="upload-primary" for="scoreInput"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L8 8m4-4 4 4M5 14v5h14v-5" /></svg>Upload MusicXML</label>
+              <input id="scoreInput" type="file" accept=".musicxml,.xml,.mxl,application/vnd.recordare.musicxml+xml,application/vnd.recordare.musicxml" />
+            </div>
           </div>
           <p class="file-note">MusicXML, XML, or MXL · Your files never leave this browser</p>
           <div class="flow-list" aria-label="How it works">

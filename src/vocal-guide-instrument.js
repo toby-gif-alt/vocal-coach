@@ -140,7 +140,7 @@ function normaliseDescriptor(anchorName, value, baseUrl) {
     url,
     buffer: descriptor.buffer || null,
     gain: Number.isFinite(Number(descriptor.gain)) ? Math.max(0.25, Math.min(4, Number(descriptor.gain))) : 1,
-    loop: descriptor.loop !== false,
+    loop: descriptor.loop === false ? false : descriptor.loop === true ? true : "adaptive",
     loopStart: Number.isFinite(Number(descriptor.loopStart)) ? Number(descriptor.loopStart) : null,
     loopEnd: Number.isFinite(Number(descriptor.loopEnd)) ? Number(descriptor.loopEnd) : null,
   };
@@ -515,28 +515,63 @@ export class VocalGuideInstrument {
       this.startSyntheticVoice(note);
       return;
     }
-    const source = this.context.createBufferSource();
-    source.buffer = anchor.buffer;
     const playbackRate = 2 ** ((note.midi - anchor.midi) / 12);
-    setAudioParam(source.playbackRate, playbackRate, note.time);
-    if (anchor.loop && anchor.buffer.duration > 0.18) {
-      source.loop = true;
-      source.loopStart = Math.max(0, Math.min(anchor.buffer.duration - 0.08, anchor.loopStart ?? anchor.buffer.duration * 0.22));
-      source.loopEnd = Math.max(source.loopStart + 0.04, Math.min(anchor.buffer.duration, anchor.loopEnd ?? anchor.buffer.duration * 0.78));
-    }
-
     const envelope = this.context.createGain();
     setAudioParam(envelope.gain, MIN_GAIN);
     const sampleGain = this.context.createGain();
     setAudioParam(sampleGain.gain, anchor.gain);
-    source.connect(sampleGain);
     sampleGain.connect(envelope);
     envelope.connect(this.softener);
     const releaseEnd = this.scheduleEnvelope(envelope.gain, note, 0.025, 0.16);
-    const voice = this.registerVoice({ sources: [source], envelope, nodes: [source, sampleGain, envelope] });
-    source.start(note.time);
-    source.stop(releaseEnd + 0.025);
-    source.onended = () => this.cleanupVoice(voice);
+    const naturalDuration = anchor.buffer.duration / playbackRate;
+    const needsSustain = note.duration > naturalDuration - 0.02;
+    const canExtend = anchor.loop !== false && anchor.buffer.duration > 0.25;
+    const sources = [];
+    const nodes = [sampleGain, envelope];
+
+    const addSource = ({ start, offset = 0, stop, fadeIn = 0, fadeOut = 0 }) => {
+      const source = this.context.createBufferSource();
+      source.buffer = anchor.buffer;
+      setAudioParam(source.playbackRate, playbackRate, start);
+      const segmentGain = this.context.createGain();
+      setAudioParam(segmentGain.gain, fadeIn > 0 ? MIN_GAIN : 1, start);
+      if (fadeIn > 0) segmentGain.gain.linearRampToValueAtTime?.(1, start + fadeIn);
+      if (fadeOut > 0) {
+        setAudioParam(segmentGain.gain, 1, Math.max(start + fadeIn, stop - fadeOut));
+        segmentGain.gain.linearRampToValueAtTime?.(MIN_GAIN, stop);
+      }
+      source.connect(segmentGain);
+      segmentGain.connect(sampleGain);
+      source.start(start, offset);
+      source.stop(stop + 0.02);
+      sources.push(source);
+      nodes.push(source, segmentGain);
+      return source;
+    };
+
+    if (!needsSustain || !canExtend) {
+      addSource({ start: note.time, stop: releaseEnd + 0.005 });
+    } else {
+      const sourceLoopStart = Math.max(0.08, Math.min(anchor.buffer.duration - 0.18, anchor.loopStart ?? anchor.buffer.duration * 0.58));
+      const sourceLoopEnd = Math.max(sourceLoopStart + 0.12, Math.min(anchor.buffer.duration - 0.03, anchor.loopEnd ?? anchor.buffer.duration * 0.9));
+      const loopDuration = (sourceLoopEnd - sourceLoopStart) / playbackRate;
+      const crossfade = Math.min(0.055, Math.max(0.018, loopDuration * 0.14));
+      let handoff = note.time + sourceLoopEnd / playbackRate;
+      addSource({ start: note.time, stop: handoff, fadeOut: crossfade });
+
+      while (handoff < releaseEnd) {
+        const start = handoff - crossfade;
+        const naturalStop = start + loopDuration;
+        const stop = Math.min(naturalStop, releaseEnd + crossfade);
+        addSource({ start, offset: sourceLoopStart, stop, fadeIn: crossfade, fadeOut: naturalStop < releaseEnd ? crossfade : 0 });
+        if (naturalStop <= handoff) break;
+        handoff = naturalStop;
+      }
+    }
+
+    const voice = this.registerVoice({ sources, envelope, nodes });
+    const finalSource = sources.at(-1);
+    if (finalSource) finalSource.onended = () => this.cleanupVoice(voice);
   }
 
   registerVoice(voice) {

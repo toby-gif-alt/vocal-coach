@@ -2,11 +2,11 @@
 
 Vocal Coach is a static, browser-based prototype for practising a vocal part directly from a MusicXML score. It separates the selected vocal line from accompaniment data, renders conventional staff notation, synthesizes score playback, follows the score with a cursor, and compares stabilised microphone pitch samples with the expected sounding note.
 
-No account, backend, upload service, or build step is required. Scores, calibration, pitch data, and captured assessment audio remain on the user's device.
+No account, backend, or upload service is required. Scores, calibration, pitch data, and captured assessment audio remain on the user's device. A small Node build step generates static repertoire and vocal-sample manifests for deployment.
 
 ## Prototype flow
 
-1. Upload `.musicxml`, `.xml`, or compressed `.mxl`.
+1. Choose a built-in repertoire score, or upload `.musicxml`, `.xml`, or compressed `.mxl`.
 2. Review every detected score part and select **I am singing this part**.
 3. View the selected part by itself or switch to the full score.
 4. Choose **Assisted** (guide + accompaniment + trace, without coaching judgement) or **Assessment** (accompaniment + trace + detailed coaching). The guide defaults to **Human voice**, with **Synthetic Ah** available from the same control panel.
@@ -26,8 +26,8 @@ The app deliberately keeps musical concerns separate:
 - `src/musicxml.js` reads MusicXML/MXL, detects parts, and builds independent note timelines. Each note includes written pitch, MIDI pitch, frequency, onset, duration, measure, beat, voice/staff, and tie data.
 - `src/timing.js` defines the exact bridge between Tone.Transport quarter notes and OSMD whole-note-fraction timestamps, applies MusicXML backup/forward/chord measure timing, and derives simple or compound-meter count-in pulses.
 - `src/audio-engine.js` owns Tone.js transport scheduling, accompaniment synths, the dedicated vocal-guide instrument, headphone/speaker capture constraints, count-in clicks outside score time, the two-stage microphone check, raw Pitchy frames, score-time-aligned recording lifecycle, and XML review layers slaved to recorded-audio time.
-- `src/guide-playback.js` keeps the persisted Human/Synthetic Ah choice and converts parsed score notes into direct-MIDI guide requests without inheriting the singer's assessment octave.
-- `src/vocal-guide-instrument.js` provides sampled-human and synthetic-vowel playback, closest-anchor selection, smooth releases, sustained sample loops, and automatic Synthetic Ah fallback.
+- `src/guide-playback.js` keeps the persisted Human/Synthetic Ah choice, chooses a generated male/female sample bank from the part name or transposition cost, and converts parsed score notes into direct-MIDI guide requests without inheriting the singer's assessment octave.
+- `src/vocal-guide-instrument.js` provides sampled-human and synthetic-vowel playback, closest-anchor selection, natural no-loop playback for ordinary notes, crossfaded late-sustain extension for unusually long notes, smooth releases, and automatic Synthetic Ah fallback.
 - `src/noise-gate.js` measures RMS amplitude, derives a room-aware threshold for Low/Normal/High sensitivity, and applies gate hysteresis before pitch detection.
 - `src/signal-quality.js` measures RMS, absolute peak, and near-full-scale occupancy on every input frame, classifies clipping, and requires a sustained clipped burst before raising an overload warning.
 - `src/microphone-calibration.js` combines ambient, normal voice, and slightly louder voice distributions into saved acquisition/continuation gates, a clarity threshold, and tracker reacquisition setting. Sustained calibration clipping is rejected; there is no upper RMS gate for valid singing.
@@ -65,7 +65,7 @@ Microphone access and ES modules require the files to be served over HTTP rather
 python3 -m http.server 8080
 ```
 
-Open `http://localhost:8080` and choose **Try the sample score**.
+Run `npm run generate` after adding repertoire scores or vocal samples, then open `http://localhost:8080` and choose a repertoire score.
 
 An internet connection is currently required to load the four pinned browser libraries. No score or microphone data is sent to those services.
 
@@ -74,8 +74,11 @@ An internet connection is currently required to load the four pinned browser lib
 The dependency-free Node test suite covers generated harmonic A3/C4/A4/C5 tones, strict acquisition and forgiving continuation, quiet/normal/loud/clipped calibration profiles, frame amplitude/overload classification, headphone/speaker constraints, visual-only continuity, octave response candidates, immutable per-part take mixes, MediaRecorder pause accounting, section boundaries, review offsets, coaching, Tone/OSMD time conversion, pickup and multi-staff MusicXML timing, and GitHub Pages asset paths. Run the full syntax and regression check with Node 20 or newer:
 
 ```sh
+npm run generate
 npm run check
 ```
+
+Use `npm run assets` to refresh only the vocal-sample manifest or `npm run repertoire` to refresh only the score index. `npm run check` verifies that both checked-in manifests match their source folders.
 
 For cursor diagnostics, add `?debugTiming=1` to the app URL. The console then logs:
 
@@ -93,7 +96,7 @@ Before release, try quiet, normal, loud, and deliberately overloaded “Ah” vo
 
 ## Deploy to GitHub Pages
 
-The included `.github/workflows/pages.yml` deploys the repository root whenever `main` changes. In the repository settings, select **GitHub Actions** as the Pages source if it is not selected automatically.
+The included `.github/workflows/pages.yml` regenerates and verifies both manifests, runs the full checks, and deploys the repository root whenever `main` changes. In the repository settings, select **GitHub Actions** as the Pages source if it is not selected automatically.
 
 All app and sample-score paths are relative, so the site works at a project URL such as `https://username.github.io/vocal-coach/`. GitHub Pages supplies the HTTPS context required for microphone access.
 

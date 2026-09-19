@@ -4,8 +4,12 @@ import { test } from "node:test";
 
 import {
   DEFAULT_GUIDE_VOICE,
+  chooseHumanVoiceBank,
+  explicitVoiceBank,
   guideNoteRequest,
   normaliseGuideVoice,
+  samplePackForVoiceBank,
+  voiceBankShiftCost,
 } from "../src/guide-playback.js";
 
 test("human guide is the default and only the two studio choices are accepted", () => {
@@ -35,6 +39,40 @@ test("SATB guide requests use each selected score part's sounding MIDI directly"
 
   const octaveTransposingTenor = guideNoteRequest({ writtenPitch: "C4", midi: 48 }, { duration: 1, time: 0 });
   assert.equal(octaveTransposingTenor.midi, 48, "the parser's sounding MIDI wins over a written pitch name");
+});
+
+test("part labels choose the intended hidden human voice bank", () => {
+  for (const name of ["Bass", "Baritone Solo", "Tenor 1", "TENOR II", "male voice"]) {
+    assert.equal(explicitVoiceBank(name), "male", name);
+  }
+  for (const name of ["Alto", "Contralto II", "Mezzo", "Mezzo-Soprano", "Soprano Solo", "female voice"]) {
+    assert.equal(explicitVoiceBank(name), "female", name);
+  }
+  assert.equal(explicitVoiceBank("Voice"), null);
+});
+
+test("generic vocal parts choose the bank needing the least sample transposition", () => {
+  const manifest = [
+    ...[40, 45, 50, 55, 60, 64].map((rootMidi) => ({ bank: "male", rootMidi, note: `M${rootMidi}`, file: `./male/${rootMidi}.mp3` })),
+    ...[60, 65, 69, 72, 77, 81].map((rootMidi) => ({ bank: "female", rootMidi, note: `F${rootMidi}`, file: `./female/${rootMidi}.mp3` })),
+  ];
+  const lowVoice = { name: "Voice 1", vocalTimeline: [42, 47, 52, 57, 62].map((midi) => ({ midi })) };
+  const highVoice = { name: "Solo voice", vocalTimeline: [67, 70, 74, 79].map((midi) => ({ midi })) };
+  assert.equal(chooseHumanVoiceBank(lowVoice, manifest), "male");
+  assert.equal(chooseHumanVoiceBank(highVoice, manifest), "female");
+  assert.deepEqual(voiceBankShiftCost([60, 62, 64], [60, 64]), { median: 0, average: 2 / 3, maximum: 2 });
+});
+
+test("generated bank entries become adaptive Ah anchors without changing MIDI", () => {
+  const manifest = [
+    { bank: "male", rootMidi: 53, note: "F3", file: "./samples/vocal-guide/male/F3.mp3" },
+    { bank: "female", rootMidi: 60, note: "C4", file: "./samples/vocal-guide/female/C4.mp3" },
+  ];
+  assert.deepEqual(samplePackForVoiceBank(manifest, "male"), {
+    ah: { "F3-0": { url: "./samples/vocal-guide/male/F3.mp3", midi: 53, loop: "adaptive" } },
+  });
+  assert.deepEqual(samplePackForVoiceBank(manifest, "other"), {});
+  assert.equal(guideNoteRequest({ midi: 55 }, { duration: 1, time: 0 }).midi, 55);
 });
 
 test("the audio scheduler has no singer-octave input and routes guide notes through the vocal instrument", async () => {

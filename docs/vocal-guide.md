@@ -74,15 +74,25 @@ const guide = new VocalGuideInstrument({
 await guide.ready;
 ```
 
-For each requested note, the engine selects the loaded anchor with the smallest semitone distance and adjusts its playback rate. Samples loop through their central sustain region so long minims and semibreves do not decay after the first second. Optional `loopStart` and `loopEnd` values, measured in seconds, should identify a stable part of the recorded vowel. Without explicit loop points, the engine uses a conservative central section of the recording.
+For each requested note, the engine selects the loaded anchor with the smallest semitone distance and adjusts its playback rate. Playback starts at the recording's natural beginning and does not loop when the decoded source is long enough for the musical note and its release. A short gain-envelope release avoids clicks. Only longer notes extend the stable late sustain; overlapping source segments crossfade without repeating the attack. Optional `loopStart` and `loopEnd` values, measured in seconds, can identify that stable region.
 
 If no pack is configured, a pack cannot load, or the chosen vowel has no usable anchors, playback falls back to the synthetic vowel engine. `getStatus()` and `onStatus` expose the active mode and the user-facing fallback message.
 
 Large sample transpositions move the recorded formants along with the fundamental and can sound unnatural. Closely spaced anchors reduce that effect. A future formant-preserving pitch shifter could improve wide-range use without requiring as many recordings.
 
-## Included Martin human voice pack
+## Generated male and female production banks
 
-The studio and standalone demo use five real sung-note anchors from the MIT-licensed [`vocobox/human-voice-dataset`](https://github.com/vocobox/human-voice-dataset/tree/77248fc69fd93c40a69d49c0cade4144c5d7a9f4/data/voices/martin/notes/exports/mono).
+Place sustained-Ah MP3s in `samples/vocal-guide/male/` and `samples/vocal-guide/female/`. Filenames are parsed as root pitches; `Fs3` and `F#3` both mean F sharp, and flat spellings such as `Gb3` are also supported. Run:
+
+```sh
+npm run assets
+```
+
+The generated `samples/vocal-guide/index.json` is the production source of truth. Explicit part names such as Tenor, Bass, Alto, Mezzo-Soprano, or Soprano select a bank. Generic part names use the actual sounding MIDI distribution and choose the bank requiring the least median/average pitch shift. Bank selection never changes the requested `note.midi`.
+
+## Included Martin demo pack
+
+The standalone demo uses five real sung-note anchors from the MIT-licensed [`vocobox/human-voice-dataset`](https://github.com/vocobox/human-voice-dataset/tree/77248fc69fd93c40a69d49c0cade4144c5d7a9f4/data/voices/martin/notes/exports/mono). The production studio does not load this pack.
 
 | File | Root MIDI |
 | --- | ---: |
@@ -94,7 +104,7 @@ The studio and standalone demo use five real sung-note anchors from the MIT-lice
 
 The recordings are mapped to the instrument's `ah` bank because the upstream note series uses its base `a` vowel. For every requested pitch, the engine chooses the closest root MIDI before changing playback rate. This keeps transposition as small as the available anchors allow. The pack deliberately has no G3 recording: F3 supplies F♯3 / G♭3 and G3 at +1 and +2 semitones. Playback begins at the original onset, uses hand-picked loop points in each recording's stable middle for long notes, and ends through a short gain-envelope release.
 
-The studio presents **Human voice** as its default and **Synthetic Ah** as its only alternative. The demo uses the labels **Real human voice** and **Synthetic Ah**. If the WAV files cannot load, both surfaces report that Synthetic Ah is being used; the fallback is never presented as a human recording. Exact provenance, checksums, and the preserved MIT license are in [`samples/vocal-guide/martin/`](../samples/vocal-guide/martin/).
+The studio presents **Human voice** as its default and **Synthetic Ah** as its only alternative. The demo uses the labels **Real human voice** and **Synthetic Ah**. If its selected generated bank cannot load, the studio reports that Synthetic Ah is being used. Exact demo-pack provenance, checksums, and the preserved MIT license are in [`samples/vocal-guide/martin/`](../samples/vocal-guide/martin/).
 
 ## Creating a custom teacher voice pack
 
@@ -124,7 +134,7 @@ samples/vocal-guide/
     C4.wav
 ```
 
-Recordings should remain local/browser-served unless the teacher explicitly chooses another storage workflow. The included Martin files provide the app's current Human voice guide; they are not a recording of the teacher.
+Recordings should remain local/browser-served unless the teacher explicitly chooses another storage workflow. The included Martin files are an audition reference only; they are not a production voice or a recording of the teacher.
 
 ## Sung lyrics are separate future work
 

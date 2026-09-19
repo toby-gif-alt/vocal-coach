@@ -14,20 +14,17 @@ import {
   DEFAULT_GUIDE_VOICE,
   guideNoteRequest,
   normaliseGuideVoice,
-} from "./guide-playback.js?v=21";
+} from "./guide-playback.js?v=22";
 import { deriveNoiseGate, RmsNoiseGate } from "./noise-gate.js?v=20";
 import { applyMicrophoneSensitivity, deriveMicrophoneCalibration } from "./microphone-calibration.js?v=20";
 import { SessionPerformanceRecorder } from "./performance-recorder.js?v=15";
 import { detectAutocorrelationPitch, StablePitchTracker } from "./pitch-tracker.js?v=20";
 import { playbackWindow } from "./practice-range.js?v=18";
+import { playbackRoutes } from "./playback-routing.js?v=22";
 import { countInPattern, quartersToTransportTicks, transportTicksToQuarters } from "./timing.js?v=15";
 import { reviewDriftSeconds, reviewQuarterAtSeconds, reviewVolumes } from "./review-playback.js?v=20";
 import { InputOverloadMonitor, isFrameClipped, measureFrameAmplitude } from "./signal-quality.js?v=20";
-import { VocalGuideInstrument } from "./vocal-guide-instrument.js?v=21";
-import {
-  MARTIN_HUMAN_VOICE_BASE_URL,
-  MARTIN_HUMAN_VOICE_PACK,
-} from "./vocal-guide-sample-packs.js?v=21";
+import { VocalGuideInstrument } from "./vocal-guide-instrument.js?v=22";
 
 export function microphoneConstraintsForSetup(setup = DEFAULT_LISTENING_SETUP) {
   return { ...(LISTENING_SETUPS[setup] || LISTENING_SETUPS[DEFAULT_LISTENING_SETUP]) };
@@ -75,6 +72,7 @@ export class AudioEngine {
     this.tempoPercent = 100;
     this.guideVolume = PLAYBACK_CONFIG.defaultGuideVolume;
     this.guideVoice = DEFAULT_GUIDE_VOICE;
+    this.humanVoiceSamples = {};
     this.partVolumes = new Map();
     this.enabledPartIds = new Set();
     this.listeningSetup = DEFAULT_LISTENING_SETUP;
@@ -159,6 +157,13 @@ export class AudioEngine {
       this.onGuideVoiceStatus({ selectedVoice: this.guideVoice, sampleState: "idle", effectiveMode: null });
     }
     return this.guideVoice;
+  }
+
+  setHumanVoiceSamples(samples = {}) {
+    this.humanVoiceSamples = samples && typeof samples === "object" ? samples : {};
+    if (!this.vocalGuideInstrument) return;
+    this.vocalGuideInstrument.releaseAll();
+    void this.vocalGuideInstrument.loadSamples(this.humanVoiceSamples);
   }
 
   handleGuideVoiceStatus(status = {}) {
@@ -378,8 +383,7 @@ export class AudioEngine {
         mode: this.guideVoice === "human" ? "sampled" : "vowel",
         vowel: "ah",
         volume: this.guideVolume,
-        samples: MARTIN_HUMAN_VOICE_PACK,
-        sampleBaseUrl: MARTIN_HUMAN_VOICE_BASE_URL,
+        samples: this.humanVoiceSamples,
         onStatus: (status) => this.handleGuideVoiceStatus(status),
       });
     }
@@ -403,10 +407,11 @@ export class AudioEngine {
     const transport = this.transport;
     transport.cancel(0);
     const ticksPerQuarter = transport.PPQ;
-    for (const part of this.score.parts) {
-      const isVocal = part.id === vocalPartId;
-      if (isVocal && !guideEnabled) continue;
+    const enabled = enabledPartIds instanceof Set ? enabledPartIds : new Set(enabledPartIds || []);
+    for (const { part, role } of playbackRoutes(this.score.parts, { vocalPartId, guideEnabled, enabledPartIds: enabled })) {
+      const isVocal = role === "guide";
       const synth = isVocal ? null : this.synths.get(part.id);
+      if (!isVocal && (!synth || synth.volume?.value === -Infinity)) continue;
       for (const note of part.notes) {
         const window = playbackWindow(note, resumeQuarter, endQuarter, ticksPerQuarter);
         if (!window) continue;

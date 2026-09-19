@@ -1,4 +1,4 @@
-import { AudioEngine } from "./src/audio-engine.js?v=21";
+import { AudioEngine } from "./src/audio-engine.js?v=22";
 import { analysePerformance, performanceSummary } from "./src/analysis.js?v=14";
 import { buildCoachingFeedback } from "./src/coaching.js?v=14";
 import {
@@ -28,9 +28,11 @@ import { normaliseSavedMicrophoneCalibration } from "./src/microphone-calibratio
 import {
   DEFAULT_GUIDE_VOICE,
   GUIDE_VOICE_STORAGE_KEY,
+  chooseHumanVoiceBank,
   normaliseGuideVoice,
-} from "./src/guide-playback.js?v=21";
-import { measureAtQuarter, noteAtQuarter, readScoreFile, readScoreUrl, suggestVocalPart } from "./src/musicxml.js?v=18";
+  samplePackForVoiceBank,
+} from "./src/guide-playback.js?v=22";
+import { measureAtQuarter, noteAtQuarter, readScoreFile, readScoreUrl, suggestVocalPart } from "./src/musicxml.js?v=22";
 import { AutomaticOctaveSelector } from "./src/octave-selection.js?v=20";
 import { detectAutocorrelationPitch, PitchDiagnosticSummary, StablePitchTracker } from "./src/pitch-tracker.js?v=20";
 import {
@@ -62,7 +64,7 @@ const MODE_CONFIG = SESSION_MODES;
 const $ = (selector) => document.querySelector(selector);
 const els = {
   uploadView: $("#uploadView"), loadingView: $("#loadingView"), partView: $("#partView"), studioView: $("#studioView"),
-  loadingTitle: $("#loadingTitle"), loadingMessage: $("#loadingMessage"), scoreInput: $("#scoreInput"), sampleButton: $("#sampleButton"),
+  loadingTitle: $("#loadingTitle"), loadingMessage: $("#loadingMessage"), scoreInput: $("#scoreInput"), repertoireSelect: $("#repertoireSelect"), repertoireStatus: $("#repertoireStatus"),
   partBackButton: $("#partBackButton"), partCount: $("#partCount"), scoreTitle: $("#scoreTitle"), partOptions: $("#partOptions"), continueButton: $("#continueButton"),
   newScoreButton: $("#newScoreButton"), studioTitle: $("#studioTitle"), studioMeta: $("#studioMeta"), selectedPartName: $("#selectedPartName"), scoreBannerPart: $("#scoreBannerPart"),
   modeButtons: [...document.querySelectorAll("[data-mode]")], accompanimentList: $("#accompanimentList"), toggleAllParts: $("#toggleAllParts"),
@@ -145,7 +147,40 @@ const state = {
   rangeSelectionStart: null,
   startPickMode: false,
   pendingStartMeasure: null,
+  repertoire: [],
+  humanVoiceBank: null,
 };
+
+async function fetchManifest(url) {
+  const response = await fetch(url, { cache: "no-cache" });
+  if (!response.ok) throw new Error(`Manifest request failed (${response.status}).`);
+  const entries = await response.json();
+  if (!Array.isArray(entries)) throw new TypeError("Manifest must contain an array.");
+  return entries;
+}
+
+const vocalSampleManifestPromise = fetchManifest("./samples/vocal-guide/index.json?v=22").catch((error) => {
+  console.warn("Human voice manifest is unavailable; Synthetic Ah will be used.", error);
+  return [];
+});
+
+async function loadRepertoireIndex() {
+  try {
+    const entries = await fetchManifest("./repertoire/index.json?v=22");
+    state.repertoire = entries.filter((entry) => entry?.title && entry?.file);
+    els.repertoireSelect.replaceChildren(new Option("Select from repertoire", ""));
+    for (const entry of state.repertoire) els.repertoireSelect.add(new Option(entry.title, entry.file));
+    els.repertoireSelect.disabled = state.repertoire.length === 0;
+    els.repertoireStatus.textContent = state.repertoire.length
+      ? `${state.repertoire.length} ${state.repertoire.length === 1 ? "score" : "scores"} available`
+      : "No built-in scores are available yet.";
+  } catch (error) {
+    console.warn("The repertoire index could not be loaded.", error);
+    state.repertoire = [];
+    els.repertoireSelect.disabled = true;
+    els.repertoireStatus.textContent = "Repertoire unavailable — upload a MusicXML file instead.";
+  }
+}
 
 const audio = new AudioEngine({
   onPitchSample: handlePitchSample,
@@ -234,6 +269,7 @@ async function loadScore(loader) {
   } catch (error) {
     console.error(error);
     toast(error.message || "This score could not be opened.");
+    els.repertoireSelect.value = "";
     showView("upload");
   }
 }
@@ -268,6 +304,8 @@ function selectPart(partId) {
 async function enterStudio() {
   const vocalPart = selectedPart();
   if (!vocalPart) return;
+  const vocalSampleManifest = await vocalSampleManifestPromise;
+  state.humanVoiceBank = chooseHumanVoiceBank(vocalPart, vocalSampleManifest);
   state.enabledParts = new Set(state.score.parts.filter((part) => part.id !== vocalPart.id).map((part) => part.id));
   state.partVolumes = Object.fromEntries(state.score.parts
     .filter((part) => part.id !== vocalPart.id)
@@ -289,6 +327,7 @@ async function enterStudio() {
   state.startPickMode = false;
   state.pendingStartMeasure = null;
   audio.setScore(state.score);
+  audio.setHumanVoiceSamples(samplePackForVoiceBank(vocalSampleManifest, state.humanVoiceBank));
   audio.setTempo(100);
   audio.setGuideVolume(state.guideVolume);
   audio.setGuideVoice(state.guideVoice);
@@ -1982,6 +2021,7 @@ function resetToUpload() {
   els.scoreContainer.innerHTML = "";
   clearPerformancePlayback();
   els.scoreInput.value = "";
+  els.repertoireSelect.value = "";
   showView("upload");
 }
 
@@ -2036,7 +2076,10 @@ function runPitchSelfTest() {
 
 function wireEvents() {
   els.scoreInput.addEventListener("change", () => { const file = els.scoreInput.files?.[0]; if (file) loadScore(() => readScoreFile(file)); });
-  els.sampleButton.addEventListener("click", () => loadScore(() => readScoreUrl("./samples/first-flight.musicxml", "First Flight")));
+  els.repertoireSelect.addEventListener("change", () => {
+    const entry = state.repertoire.find((candidate) => candidate.file === els.repertoireSelect.value);
+    if (entry) loadScore(() => readScoreUrl(entry.file, entry.title));
+  });
   els.partBackButton.addEventListener("click", resetToUpload);
   els.newScoreButton.addEventListener("click", resetToUpload);
   els.partOptions.addEventListener("click", (event) => { const button = event.target.closest("[data-part-id]"); if (button) selectPart(button.dataset.partId); });
@@ -2143,6 +2186,7 @@ function wireEvents() {
 }
 
 wireEvents();
+void loadRepertoireIndex();
 if (TIMING_DEBUG_ENABLED) {
   console.info("Vocal Coach timing debug: transport quarter | OSMD timestamp | measure | expected note");
   Object.defineProperty(window, "__vocalCoachTiming", {

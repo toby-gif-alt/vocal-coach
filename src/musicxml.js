@@ -44,9 +44,10 @@ function parseXml(text) {
   return documentNode;
 }
 
-async function unzipMxl(file) {
+async function unzipMxl(source) {
   if (!window.JSZip) throw new Error("Compressed MusicXML support did not load. Try an uncompressed .musicxml file.");
-  const zip = await window.JSZip.loadAsync(await file.arrayBuffer());
+  const encoded = source?.arrayBuffer ? await source.arrayBuffer() : source;
+  const zip = await window.JSZip.loadAsync(encoded);
   let scorePath = null;
   const container = zip.file("META-INF/container.xml");
   if (container) {
@@ -66,17 +67,27 @@ function parseContainer(text) {
   return documentNode;
 }
 
+export function isCompressedScoreSource(name, contentType = "") {
+  const mime = String(contentType).split(";", 1)[0].trim().toLowerCase();
+  return /\.mxl(?:[?#]|$)/i.test(String(name))
+    || mime === "application/vnd.recordare.musicxml"
+    || mime === "application/zip";
+}
+
 export async function readScoreFile(file) {
   if (!file) throw new Error("Choose a MusicXML file first.");
-  const isCompressed = /\.mxl$/i.test(file.name) || file.type === "application/vnd.recordare.musicxml";
+  const isCompressed = isCompressedScoreSource(file.name, file.type);
   const xmlText = isCompressed ? await unzipMxl(file) : await file.text();
   return parseMusicXml(xmlText, file.name.replace(/\.(musicxml|xml|mxl)$/i, ""));
 }
 
 export async function readScoreUrl(url, fallbackName = "Sample score") {
   const response = await fetch(url);
-  if (!response.ok) throw new Error("The sample score could not be loaded.");
-  return parseMusicXml(await response.text(), fallbackName);
+  if (!response.ok) throw new Error("The score could not be loaded.");
+  const contentType = response.headers?.get?.("content-type") || "";
+  const isCompressed = isCompressedScoreSource(url, contentType);
+  const xmlText = isCompressed ? await unzipMxl(await response.arrayBuffer()) : await response.text();
+  return parseMusicXml(xmlText, fallbackName);
 }
 
 export function parseMusicXml(xmlText, fallbackName = "Untitled score") {

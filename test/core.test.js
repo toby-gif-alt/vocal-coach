@@ -10,6 +10,7 @@ import {
   midiToName,
   SESSION_MODES,
 } from "../src/config.js";
+import { isCompressedScoreSource } from "../src/musicxml.js";
 
 test("MIDI and frequency conversions round-trip across a vocal range", () => {
   for (const midi of [36, 48, 60, 69, 72, 84]) {
@@ -34,6 +35,14 @@ test("playback modes keep guide and microphone behaviour unambiguous", () => {
       assessment: { guide: false, microphone: true },
     },
   );
+});
+
+test("repository score URLs distinguish compressed MXL from uncompressed MusicXML", () => {
+  assert.equal(isCompressedScoreSource("./repertoire/The Blessing.mxl"), true);
+  assert.equal(isCompressedScoreSource("./repertoire/The Blessing.mxl?v=22"), true);
+  assert.equal(isCompressedScoreSource("score", "application/vnd.recordare.musicxml"), true);
+  assert.equal(isCompressedScoreSource("score.musicxml", "application/vnd.recordare.musicxml+xml"), false);
+  assert.equal(isCompressedScoreSource("score.xml", "application/xml; charset=utf-8"), false);
 });
 
 test("note analysis preserves onset, settling, sustain, and in-zone metrics", () => {
@@ -95,6 +104,10 @@ test("GitHub Pages entry point references only present local assets", async () =
   assert.match(html, /<option value="human" selected>Human voice<\/option>/);
   assert.match(html, /<option value="synthetic-ah">Synthetic Ah<\/option>/);
   assert.match(html, /id="guideVoiceStatus"/);
+  assert.match(html, /id="repertoireSelect"/);
+  assert.match(html, />Select from repertoire</);
+  assert.match(html, />Upload MusicXML</);
+  assert.doesNotMatch(html, /id="sampleButton"/);
   assert.doesNotMatch(html, /<option value="synthetic-(?:ooh|oh)"/);
   assert.doesNotMatch(html, /data-mode="practice"/);
   for (const bars of ["0", "1", "2"]) assert.match(html, new RegExp(`data-count-in="${bars}"`));

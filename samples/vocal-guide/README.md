@@ -1,5 +1,9 @@
 # Vocal guide sample packs
 
-The `martin/` folder contains the demo's five real human voice anchors from the MIT-licensed [vocobox/human-voice-dataset](https://github.com/vocobox/human-voice-dataset). Its local README records the exact source paths, root MIDI values, checksums, and attribution.
+Production sustained-`Ah` recordings belong in `male/` and `female/` as MP3 files. Name each file for its sounding root pitch, for example `E2.mp3`, `Fs3.mp3`, `C4.mp3`, or `Db4.mp3`. Run `npm run assets` after adding or removing files; this regenerates `index.json` with the URL, normalised note name, root MIDI, and bank. Do not edit the manifest by hand.
 
-Future teacher voice packs can use the same arbitrary-anchor map. See [`docs/vocal-guide.md`](../../docs/vocal-guide.md) for the file-map format, suggested recording workflow, loop-point metadata, fallback behaviour, and transposition limitations.
+The app chooses the bank from an explicit vocal part name when possible, otherwise from the bank whose anchors require the least median/average transposition across the part's sounding MIDI notes. Missing or failed samples fall back to Synthetic Ah.
+
+The `martin/` folder remains only for the standalone developer demo. It is not the production voice source. Its local README records the upstream MIT attribution and checksums.
+
+See [`docs/vocal-guide.md`](../../docs/vocal-guide.md) for playback and recording details.
