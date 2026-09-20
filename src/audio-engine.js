@@ -12,26 +12,29 @@ import {
 } from "./config.js?v=20";
 import {
   DEFAULT_GUIDE_VOICE,
+  chooseHumanVoiceBank,
   guideNoteRequest,
   normaliseGuideVoice,
+  samplePackForVoiceBank,
 } from "./guide-playback.js?v=22";
 import { deriveNoiseGate, RmsNoiseGate } from "./noise-gate.js?v=20";
 import { applyMicrophoneSensitivity, deriveMicrophoneCalibration } from "./microphone-calibration.js?v=20";
 import { SessionPerformanceRecorder } from "./performance-recorder.js?v=15";
 import { detectAutocorrelationPitch, StablePitchTracker } from "./pitch-tracker.js?v=20";
 import { playbackWindow } from "./practice-range.js?v=18";
-import { playbackRoutes } from "./playback-routing.js?v=22";
+import { classifyPlaybackPart, playbackRoutes } from "./playback-routing.js?v=24";
+import { SampledPianoInstrument, SampledPianoLibrary } from "./sampled-piano-instrument.js?v=24";
 import { countInPattern, quartersToTransportTicks, transportTicksToQuarters } from "./timing.js?v=15";
-import { reviewDriftSeconds, reviewQuarterAtSeconds, reviewVolumes } from "./review-playback.js?v=20";
+import { reviewDriftSeconds, reviewQuarterAtSeconds, reviewVolumes } from "./review-playback.js?v=24";
 import { InputOverloadMonitor, isFrameClipped, measureFrameAmplitude } from "./signal-quality.js?v=20";
-import { VocalGuideInstrument } from "./vocal-guide-instrument.js?v=22";
+import { VocalGuideInstrument } from "./vocal-guide-instrument.js?v=24";
 
 export function microphoneConstraintsForSetup(setup = DEFAULT_LISTENING_SETUP) {
   return { ...(LISTENING_SETUPS[setup] || LISTENING_SETUPS[DEFAULT_LISTENING_SETUP]) };
 }
 
 export class AudioEngine {
-  constructor({ onPitchSample, onRawPitchSample, onPitchDiagnostic, onMicrophoneState, onMicrophoneCalibration, onRecordingState, onCountIn, onPlaybackEnd, onGuideVoiceStatus } = {}) {
+  constructor({ onPitchSample, onRawPitchSample, onPitchDiagnostic, onMicrophoneState, onMicrophoneCalibration, onRecordingState, onCountIn, onPlaybackEnd, onGuideVoiceStatus, onPlaybackRoute } = {}) {
     this.onPitchSample = onPitchSample || (() => {});
     this.onRawPitchSample = onRawPitchSample || (() => {});
     this.onPitchDiagnostic = onPitchDiagnostic || (() => {});
@@ -41,9 +44,14 @@ export class AudioEngine {
     this.onCountIn = onCountIn || (() => {});
     this.onPlaybackEnd = onPlaybackEnd || (() => {});
     this.onGuideVoiceStatus = onGuideVoiceStatus || (() => {});
+    this.onPlaybackRoute = onPlaybackRoute || (() => {});
     this.score = null;
-    this.synths = new Map();
+    this.partEngines = new Map();
+    this.selectedPartId = null;
     this.vocalGuideInstrument = null;
+    this.pianoLibrary = null;
+    this.pianoBufferCache = new Map();
+    this.vocalSampleBufferCache = new Map();
     this.stream = null;
     this.analyser = null;
     this.mediaSource = null;
@@ -72,8 +80,9 @@ export class AudioEngine {
     this.tempoPercent = 100;
     this.guideVolume = PLAYBACK_CONFIG.defaultGuideVolume;
     this.guideVoice = DEFAULT_GUIDE_VOICE;
-    this.humanVoiceSamples = {};
+    this.humanVoiceManifest = [];
     this.partVolumes = new Map();
+    this.partVoices = new Map();
     this.enabledPartIds = new Set();
     this.listeningSetup = DEFAULT_LISTENING_SETUP;
     this.reviewVolumes = reviewVolumes();
@@ -92,9 +101,10 @@ export class AudioEngine {
 
   setScore(score) {
     this.stop({ reset: true, microphone: true });
-    this.disposeSynths();
+    this.disposePlaybackEngines();
     this.score = score;
     this.partVolumes = new Map((score?.parts || []).map((part) => [part.id, PLAYBACK_CONFIG.defaultPartVolume]));
+    this.partVoices = new Map((score?.parts || []).map((part) => [part.id, DEFAULT_GUIDE_VOICE]));
     this.enabledPartIds = new Set((score?.parts || []).map((part) => part.id));
   }
 
@@ -159,11 +169,36 @@ export class AudioEngine {
     return this.guideVoice;
   }
 
-  setHumanVoiceSamples(samples = {}) {
-    this.humanVoiceSamples = samples && typeof samples === "object" ? samples : {};
-    if (!this.vocalGuideInstrument) return;
-    this.vocalGuideInstrument.releaseAll();
-    void this.vocalGuideInstrument.loadSamples(this.humanVoiceSamples);
+  setHumanVoiceManifest(entries = []) {
+    this.humanVoiceManifest = Array.isArray(entries) ? entries : [];
+    for (const [partId, channel] of this.partEngines) {
+      if (channel.classification !== "vocal") continue;
+      const part = this.score?.parts.find((candidate) => candidate.id === partId);
+      const pack = this.humanVoicePackForPart(part);
+      channel.instrument.releaseAll();
+      void channel.instrument.loadSamples(pack);
+    }
+  }
+
+  humanVoicePackForPart(part) {
+    const bank = chooseHumanVoiceBank(part, this.humanVoiceManifest);
+    return samplePackForVoiceBank(this.humanVoiceManifest, bank);
+  }
+
+  setPartVoice(partId, value) {
+    const id = String(partId);
+    const voice = normaliseGuideVoice(value);
+    this.partVoices.set(id, voice);
+    const channel = this.partEngines.get(id);
+    if (!channel || channel.classification !== "vocal" || id === this.selectedPartId) return voice;
+    channel.instrument.releaseAll();
+    channel.instrument.setVowel("ah");
+    const status = channel.instrument.setMode(voice === "human" ? "sampled" : "vowel");
+    if (voice === "human" && status.sampleState === "unavailable") {
+      const part = this.score?.parts.find((candidate) => candidate.id === id);
+      void channel.instrument.loadSamples(this.humanVoicePackForPart(part));
+    }
+    return voice;
   }
 
   handleGuideVoiceStatus(status = {}) {
@@ -199,13 +234,13 @@ export class AudioEngine {
       if (enabled) this.review.enabledPartIds.add(id);
       else this.review.enabledPartIds.delete(id);
     }
-    if (!enabled) this.synths.get(id)?.releaseAll?.();
+    if (!enabled) this.partEngines.get(id)?.instrument.releaseAll?.();
     this.applyPartVolume(id);
   }
 
   applyPartVolume(partId) {
-    const synth = this.synths.get(partId);
-    if (!synth) return;
+    const channel = this.partEngines.get(partId);
+    if (!channel || partId === this.selectedPartId) return;
     const enabled = this.review
       ? Boolean(this.review.layers.accompaniment) && this.review.enabledPartIds.has(partId)
       : this.enabledPartIds.has(partId);
@@ -213,9 +248,7 @@ export class AudioEngine {
       ? Number(this.review.partVolumes?.[partId] ?? PLAYBACK_CONFIG.defaultPartVolume)
       : Number(this.partVolumes.get(partId) ?? PLAYBACK_CONFIG.defaultPartVolume);
     const master = this.review ? this.reviewVolumes.accompaniment / 100 : 1;
-    synth.volume.value = enabled
-      ? this.volumeToDb(base * master, PLAYBACK_CONFIG.accompanimentTrimDb)
-      : -Infinity;
+    channel.instrument.setVolume(enabled ? base * master : 0);
   }
 
   setListeningSetup(setup) {
@@ -235,18 +268,13 @@ export class AudioEngine {
   }
 
   applyReviewVolumes() {
-    this.synths.forEach((_, partId) => this.applyPartVolume(partId));
+    this.partEngines.forEach((_, partId) => this.applyPartVolume(partId));
     this.vocalGuideInstrument?.setVolume(this.reviewVolumes.melody);
   }
 
   restorePerformanceVolumes() {
-    this.synths.forEach((_, partId) => this.applyPartVolume(partId));
+    this.partEngines.forEach((_, partId) => this.applyPartVolume(partId));
     this.vocalGuideInstrument?.setVolume(this.guideVolume);
-  }
-
-  volumeToDb(percent, trimDb) {
-    if (percent <= 0) return -Infinity;
-    return 20 * Math.log10(percent / 100) + trimDb;
   }
 
   get currentQuarter() {
@@ -290,13 +318,17 @@ export class AudioEngine {
     const resuming = this.isPaused;
     await this.tone.start();
     this.targetMidiAtQuarter = targetMidiAtQuarter;
+    this.ensurePlaybackEngines(vocalPartId);
     const enabled = new Set(enabledPartIds || []);
     for (const part of this.score.parts) {
       if (part.id !== vocalPartId) this.setPartEnabled(part.id, enabled.has(part.id));
     }
     if (assessmentMode) await this.startMicrophone();
-    this.ensureSynths();
-    if (guideEnabled) await this.ensureGuideReady();
+    const routes = playbackRoutes(this.score.parts, { vocalPartId, guideEnabled, enabledPartIds: enabled });
+    await this.ensureRoutesReady(routes);
+    if (guideEnabled && classifyPlaybackPart(this.score.parts.find((part) => part.id === vocalPartId)) === "vocal") {
+      await this.ensureGuideReady();
+    }
     if (assessmentMode && !resuming) this.pitchTracker.reset();
     if (!resuming) this.transport.ticks = quartersToTransportTicks(startQuarter, this.transport.PPQ);
     // Monitoring is already active in preparation mode where possible. Start
@@ -333,8 +365,7 @@ export class AudioEngine {
   pause() {
     if (!this.isPlaying) return;
     this.transport.pause();
-    this.synths.forEach((synth) => synth.releaseAll?.());
-    this.vocalGuideInstrument?.releaseAll?.();
+    this.releaseAllPlaybackEngines();
     this.isPlaying = false;
     this.isPaused = true;
     this.performanceRecorder.pause();
@@ -348,8 +379,7 @@ export class AudioEngine {
       if (reset) this.transport.ticks = quartersToTransportTicks(resetQuarter, this.transport.PPQ);
       this.transport.cancel(0);
     }
-    this.synths.forEach((synth) => synth.releaseAll?.());
-    this.vocalGuideInstrument?.releaseAll?.();
+    this.releaseAllPlaybackEngines();
     this.clickSynth?.releaseAll?.();
     this.isPlaying = false;
     this.isPaused = false;
@@ -365,27 +395,50 @@ export class AudioEngine {
     this.performanceRecorder.disposeRecording();
   }
 
-  ensureSynths() {
-    if (!this.synths.size) {
+  setSelectedPart(partId) {
+    const id = partId == null ? null : String(partId);
+    if (this.partEngines.size && id !== this.selectedPartId) this.disposePartEngines();
+    this.selectedPartId = id;
+  }
+
+  ensurePlaybackEngines(vocalPartId = this.selectedPartId) {
+    const selectedId = vocalPartId == null ? null : String(vocalPartId);
+    if (this.partEngines.size && selectedId !== this.selectedPartId) this.disposePartEngines();
+    this.selectedPartId = selectedId;
+    if (!this.partEngines.size) {
       for (const part of this.score.parts) {
-        const synth = new this.tone.PolySynth(this.tone.Synth, {
-          oscillator: { type: "triangle" },
-          envelope: { attack: 0.015, decay: 0.12, sustain: 0.42, release: 0.28 },
-          volume: -Infinity,
-        }).toDestination();
-        this.synths.set(part.id, synth);
-        this.applyPartVolume(part.id);
+        const classification = classifyPlaybackPart(part);
+        const selected = part.id === selectedId;
+        const volume = selected
+          ? this.guideVolume
+          : Number(this.partVolumes.get(part.id) ?? PLAYBACK_CONFIG.defaultPartVolume);
+        const instrument = classification === "vocal"
+          ? new VocalGuideInstrument({
+            tone: this.tone,
+            mode: (selected ? this.guideVoice : this.partVoices.get(part.id)) === "human" ? "sampled" : "vowel",
+            vowel: "ah",
+            volume,
+            samples: this.humanVoicePackForPart(part),
+            sampleBufferCache: this.vocalSampleBufferCache,
+            onStatus: selected ? (status) => this.handleGuideVoiceStatus(status) : null,
+          })
+          : (() => {
+            if (!this.pianoLibrary) {
+              this.pianoLibrary = new SampledPianoLibrary({
+                tone: this.tone,
+                bufferCache: this.pianoBufferCache,
+              });
+            }
+            return new SampledPianoInstrument({
+              tone: this.tone,
+              library: this.pianoLibrary,
+              volume,
+            });
+          })();
+        this.partEngines.set(part.id, { classification, instrument });
+        if (selected && classification === "vocal") this.vocalGuideInstrument = instrument;
       }
-    }
-    if (!this.vocalGuideInstrument) {
-      this.vocalGuideInstrument = new VocalGuideInstrument({
-        tone: this.tone,
-        mode: this.guideVoice === "human" ? "sampled" : "vowel",
-        vowel: "ah",
-        volume: this.guideVolume,
-        samples: this.humanVoiceSamples,
-        onStatus: (status) => this.handleGuideVoiceStatus(status),
-      });
+      this.partEngines.forEach((_, partId) => this.applyPartVolume(partId));
     }
     if (!this.clickSynth) {
       this.clickSynth = new this.tone.Synth({
@@ -394,6 +447,19 @@ export class AudioEngine {
         volume: -10,
       }).toDestination();
     }
+  }
+
+  async ensureRoutesReady(routes) {
+    const waits = routes.map(({ part }) => {
+      const channel = this.partEngines.get(part.id);
+      if (!channel) throw new Error(`No playback channel exists for ${part.name || part.id}.`);
+      return channel.instrument.ready;
+    }).filter(Boolean);
+    await Promise.all(waits);
+  }
+
+  releaseAllPlaybackEngines() {
+    this.partEngines.forEach(({ instrument }) => instrument.releaseAll?.());
   }
 
   scheduleScore({
@@ -408,10 +474,11 @@ export class AudioEngine {
     transport.cancel(0);
     const ticksPerQuarter = transport.PPQ;
     const enabled = enabledPartIds instanceof Set ? enabledPartIds : new Set(enabledPartIds || []);
-    for (const { part, role } of playbackRoutes(this.score.parts, { vocalPartId, guideEnabled, enabledPartIds: enabled })) {
-      const isVocal = role === "guide";
-      const synth = isVocal ? null : this.synths.get(part.id);
-      if (!isVocal && (!synth || synth.volume?.value === -Infinity)) continue;
+    for (const { part, role, classification } of playbackRoutes(this.score.parts, { vocalPartId, guideEnabled, enabledPartIds: enabled })) {
+      const channel = this.partEngines.get(part.id);
+      if (!channel || channel.classification !== classification) {
+        throw new Error(`Playback channel mismatch for ${part.name || part.id}.`);
+      }
       for (const note of part.notes) {
         const window = playbackWindow(note, resumeQuarter, endQuarter, ticksPerQuarter);
         if (!window) continue;
@@ -419,12 +486,13 @@ export class AudioEngine {
         transport.schedule((time) => {
           const durationTicks = Math.max(1, quartersToTransportTicks(window.durationQuarters, ticksPerQuarter));
           const duration = `${durationTicks}i`;
-          if (isVocal) {
+          if (classification === "vocal") {
             const request = guideNoteRequest(note, { duration, time });
-            if (request) this.vocalGuideInstrument.triggerAttackRelease(request);
+            if (request) channel.instrument.triggerAttackRelease(request);
           } else {
-            synth.triggerAttackRelease(note.frequency, duration, time, 0.28);
+            channel.instrument.triggerAttackRelease({ midi: note.midi, duration, time, velocity: 0.38 });
           }
+          this.onPlaybackRoute({ partId: part.id, partName: part.name, role, classification, midi: note.midi });
         }, when);
       }
     }
@@ -442,9 +510,11 @@ export class AudioEngine {
   async previewPitch(midi, durationSeconds = 0.7) {
     if (!Number.isFinite(midi)) return;
     await this.tone.start();
-    this.ensureSynths();
-    await this.ensureGuideReady();
-    this.vocalGuideInstrument.triggerAttackRelease({ midi, duration: durationSeconds, time: this.tone.now(), velocity: 0.5 });
+    this.ensurePlaybackEngines();
+    const channel = this.partEngines.get(this.selectedPartId);
+    if (!channel) return;
+    if (channel.classification === "vocal") await this.ensureGuideReady();
+    channel.instrument.triggerAttackRelease({ midi, duration: durationSeconds, time: this.tone.now(), velocity: 0.5 });
   }
 
   reviewSettingsAt(seconds, take, layers) {
@@ -463,12 +533,14 @@ export class AudioEngine {
   async startReview({ currentSeconds = 0, take, layers, volumes: volumeLevels = this.reviewVolumes } = {}) {
     if (!this.score || !take) return;
     await this.tone.start();
-    this.ensureSynths();
-    if (layers?.melody) await this.ensureGuideReady();
+    if (take.guideVoice) this.setGuideVoice(take.guideVoice);
+    this.ensurePlaybackEngines(take.vocalPartId);
+    for (const [partId, voice] of Object.entries(take.partVoices || {})) this.setPartVoice(partId, voice);
     this.reviewVolumes = reviewVolumes(volumeLevels);
     const settings = this.reviewSettingsAt(currentSeconds, take, layers);
-    this.synths.forEach((synth) => synth.releaseAll?.());
-    this.vocalGuideInstrument?.releaseAll?.();
+    await this.ensureRoutesReady(playbackRoutes(this.score.parts, settings));
+    if (layers?.melody) await this.ensureGuideReady();
+    this.releaseAllPlaybackEngines();
     this.transport.stop();
     const previousReview = this.review?.take === take ? this.review : null;
     this.review = {
@@ -488,8 +560,7 @@ export class AudioEngine {
   pauseReview() {
     if (!this.review) return;
     this.transport.pause();
-    this.synths.forEach((synth) => synth.releaseAll?.());
-    this.vocalGuideInstrument?.releaseAll?.();
+    this.releaseAllPlaybackEngines();
   }
 
   stopReview({ reset = true } = {}) {
@@ -499,8 +570,7 @@ export class AudioEngine {
       this.transport.cancel(0);
       if (reset) this.transport.ticks = 0;
     }
-    this.synths.forEach((synth) => synth.releaseAll?.());
-    this.vocalGuideInstrument?.releaseAll?.();
+    this.releaseAllPlaybackEngines();
     this.review = null;
     this.restorePerformanceVolumes();
   }
@@ -818,11 +888,15 @@ export class AudioEngine {
     if (notify) this.onMicrophoneState("idle");
   }
 
-  disposeSynths() {
-    this.synths.forEach((synth) => synth.dispose());
-    this.synths.clear();
-    this.vocalGuideInstrument?.dispose();
+  disposePartEngines() {
+    this.partEngines.forEach(({ instrument }) => instrument.dispose());
+    this.partEngines.clear();
     this.vocalGuideInstrument = null;
+  }
+
+  disposePlaybackEngines() {
+    this.disposePartEngines();
+    this.pianoLibrary = null;
     this.clickSynth?.dispose();
     this.clickSynth = null;
   }
@@ -830,6 +904,6 @@ export class AudioEngine {
   destroy() {
     this.stop({ reset: true, microphone: true });
     this.performanceRecorder.destroy();
-    this.disposeSynths();
+    this.disposePlaybackEngines();
   }
 }

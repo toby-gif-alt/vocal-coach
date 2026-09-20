@@ -82,7 +82,7 @@ test("the audio scheduler has no singer-octave input and routes guide notes thro
   assert.doesNotMatch(source, /take\?\.octaveShift/);
   assert.match(source, /guideNoteRequest\(note, \{ duration, time \}\)/);
   assert.match(source, /new VocalGuideInstrument\(/);
-  assert.match(source, /vocalGuideInstrument\.triggerAttackRelease\(request\)/);
+  assert.match(source, /channel\.instrument\.triggerAttackRelease\(request\)/);
 });
 
 test("the starting-note preview also stays at the selected part's score pitch", async () => {

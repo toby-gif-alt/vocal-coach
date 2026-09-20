@@ -191,6 +191,7 @@ export class VocalGuideInstrument {
     samples = {},
     sampleBaseUrl = "",
     fetcher = globalThis.fetch?.bind(globalThis),
+    sampleBufferCache = null,
     destination = null,
     onStatus = null,
   } = {}) {
@@ -203,6 +204,7 @@ export class VocalGuideInstrument {
     this.sampleError = null;
     this.sampleBaseUrl = sampleBaseUrl;
     this.fetcher = fetcher;
+    this.sampleBufferCache = sampleBufferCache;
     this.onStatus = typeof onStatus === "function" ? onStatus : null;
     this.disposed = false;
     this.activeVoices = new Set();
@@ -371,10 +373,25 @@ export class VocalGuideInstrument {
 
   async fetchAndDecode(url, signal) {
     if (!url || !this.fetcher) throw new Error("No sample loader is available.");
-    const response = await this.fetcher(url, signal ? { signal } : undefined);
-    if (!response?.ok) throw new Error(`Could not load vocal sample (${response?.status || "network error"}).`);
-    const encoded = await response.arrayBuffer();
-    return this.context.decodeAudioData(encoded.slice(0));
+    if (!this.sampleBufferCache) {
+      const response = await this.fetcher(url, signal ? { signal } : undefined);
+      if (!response?.ok) throw new Error(`Could not load vocal sample (${response?.status || "network error"}).`);
+      const encoded = await response.arrayBuffer();
+      return this.context.decodeAudioData(encoded.slice(0));
+    }
+    if (!this.sampleBufferCache.has(url)) {
+      // Shared loads deliberately outlive an individual channel. Disposing one
+      // vocal part must not abort the same decode used by another part.
+      const load = (async () => {
+        const response = await this.fetcher(url);
+        if (!response?.ok) throw new Error(`Could not load vocal sample (${response?.status || "network error"}).`);
+        const encoded = await response.arrayBuffer();
+        return this.context.decodeAudioData(encoded.slice(0));
+      })();
+      this.sampleBufferCache.set(url, load);
+      load.catch(() => this.sampleBufferCache.delete(url));
+    }
+    return this.sampleBufferCache.get(url);
   }
 
   normaliseTrigger(noteOrOptions, duration, time, velocity) {

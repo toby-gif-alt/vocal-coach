@@ -260,6 +260,31 @@ test("generated MP3 anchors use the existing fetch and Web Audio decode path", a
   guide.dispose();
 });
 
+test("independent vocal channels share decoded sample buffers without sharing gain", async () => {
+  const { tone } = createTone();
+  const cache = new Map();
+  let fetchCount = 0;
+  const options = {
+    tone,
+    mode: "sampled",
+    vowel: "ah",
+    samples: { ah: { C4: { url: "./female/C4.mp3", midi: 60 } } },
+    sampleBufferCache: cache,
+    fetcher: async () => {
+      fetchCount += 1;
+      return { ok: true, arrayBuffer: async () => new ArrayBuffer(8) };
+    },
+  };
+  const soprano = new VocalGuideInstrument({ ...options, volume: 35 });
+  const alto = new VocalGuideInstrument({ ...options, volume: 80 });
+  await Promise.all([soprano.ready, alto.ready]);
+  assert.equal(fetchCount, 1);
+  assert.equal(cache.size, 1);
+  assert.notEqual(soprano.masterGain.gain.value, alto.masterGain.gain.value);
+  soprano.dispose();
+  alto.dispose();
+});
+
 test("predecoded sample anchors select and transpose without a network request", async () => {
   const { tone, context } = createTone();
   const sample = { duration: 3.4 };

@@ -46,6 +46,8 @@ test("take metadata is immutable and review time maps to the take tempo", () => 
     octaveShift: -12,
     enabledPartIds: ["P2", "P3"],
     partVolumes: { P2: 42, P3: 81 },
+    partVoices: { P2: "human", P3: "synthetic-ah" },
+    guideVoice: "human",
     guideEnabled: false,
     durationSeconds: 12,
     vocalPartId: "P1",
@@ -58,6 +60,8 @@ test("take metadata is immutable and review time maps to the take tempo", () => 
   assert.equal(reviewQuarterAtSeconds(90, take.bpm, take.startQuarter, take.endQuarter), 100);
   assert.deepEqual(take.enabledPartIds, ["P2", "P3"]);
   assert.deepEqual(take.partVolumes, { P2: 42, P3: 81 });
+  assert.deepEqual(take.partVoices, { P2: "human", P3: "synthetic-ah" });
+  assert.equal(take.guideVoice, "human");
   assert.equal(take.octaveShift, -12);
   assert.equal(take.vocalPartId, "P1");
   assert.deepEqual(
@@ -67,6 +71,7 @@ test("take metadata is immutable and review time maps to the take tempo", () => 
   assert.equal(Object.isFrozen(take), true);
   assert.equal(Object.isFrozen(take.enabledPartIds), true);
   assert.equal(Object.isFrozen(take.partVolumes), true);
+  assert.equal(Object.isFrozen(take.partVoices), true);
 });
 
 test("recorded-audio time remains the review authority at slow, normal, and fast tempos", () => {

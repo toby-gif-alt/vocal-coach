@@ -1,4 +1,4 @@
-import { AudioEngine } from "./src/audio-engine.js?v=22";
+import { AudioEngine } from "./src/audio-engine.js?v=24";
 import { analysePerformance, performanceSummary } from "./src/analysis.js?v=14";
 import { buildCoachingFeedback } from "./src/coaching.js?v=14";
 import {
@@ -28,9 +28,7 @@ import { normaliseSavedMicrophoneCalibration } from "./src/microphone-calibratio
 import {
   DEFAULT_GUIDE_VOICE,
   GUIDE_VOICE_STORAGE_KEY,
-  chooseHumanVoiceBank,
   normaliseGuideVoice,
-  samplePackForVoiceBank,
 } from "./src/guide-playback.js?v=22";
 import { measureAtQuarter, noteAtQuarter, readScoreFile, readScoreUrl, suggestVocalPart } from "./src/musicxml.js?v=22";
 import { AutomaticOctaveSelector } from "./src/octave-selection.js?v=20";
@@ -44,7 +42,8 @@ import {
   sampleWithinRange,
   validateSection,
 } from "./src/practice-range.js?v=18";
-import { createTakeMetadata, reviewLayers, reviewQuarterAtSeconds, reviewVolumes } from "./src/review-playback.js?v=20";
+import { createTakeMetadata, reviewLayers, reviewQuarterAtSeconds, reviewVolumes } from "./src/review-playback.js?v=24";
+import { classifyPlaybackPart } from "./src/playback-routing.js?v=24";
 import {
   appendScoreTraceSample,
   buildMeasureGeometry,
@@ -123,6 +122,7 @@ const state = {
   guideVolume: PLAYBACK_CONFIG.defaultGuideVolume,
   guideVoice: loadGuideVoice(),
   partVolumes: {},
+  partVoices: {},
   listeningSetup: DEFAULT_LISTENING_SETUP,
   lastTimingDebugAt: 0,
   followScore: true,
@@ -148,7 +148,6 @@ const state = {
   startPickMode: false,
   pendingStartMeasure: null,
   repertoire: [],
-  humanVoiceBank: null,
 };
 
 async function fetchManifest(url) {
@@ -159,14 +158,14 @@ async function fetchManifest(url) {
   return entries;
 }
 
-const vocalSampleManifestPromise = fetchManifest("./samples/vocal-guide/index.json?v=22").catch((error) => {
+const vocalSampleManifestPromise = fetchManifest("./samples/vocal-guide/index.json?v=24").catch((error) => {
   console.warn("Human voice manifest is unavailable; Synthetic Ah will be used.", error);
   return [];
 });
 
 async function loadRepertoireIndex() {
   try {
-    const entries = await fetchManifest("./repertoire/index.json?v=22");
+    const entries = await fetchManifest("./repertoire/index.json?v=24");
     state.repertoire = entries.filter((entry) => entry?.title && entry?.file);
     els.repertoireSelect.replaceChildren(new Option("Select from repertoire", ""));
     for (const entry of state.repertoire) els.repertoireSelect.add(new Option(entry.title, entry.file));
@@ -305,11 +304,13 @@ async function enterStudio() {
   const vocalPart = selectedPart();
   if (!vocalPart) return;
   const vocalSampleManifest = await vocalSampleManifestPromise;
-  state.humanVoiceBank = chooseHumanVoiceBank(vocalPart, vocalSampleManifest);
   state.enabledParts = new Set(state.score.parts.filter((part) => part.id !== vocalPart.id).map((part) => part.id));
   state.partVolumes = Object.fromEntries(state.score.parts
     .filter((part) => part.id !== vocalPart.id)
     .map((part) => [part.id, PLAYBACK_CONFIG.defaultPartVolume]));
+  state.partVoices = Object.fromEntries(state.score.parts
+    .filter((part) => part.id !== vocalPart.id && classifyPlaybackPart(part) === "vocal")
+    .map((part) => [part.id, DEFAULT_GUIDE_VOICE]));
   state.mode = "assisted";
   state.scoreView = "vocal";
   state.samples = [];
@@ -327,7 +328,8 @@ async function enterStudio() {
   state.startPickMode = false;
   state.pendingStartMeasure = null;
   audio.setScore(state.score);
-  audio.setHumanVoiceSamples(samplePackForVoiceBank(vocalSampleManifest, state.humanVoiceBank));
+  audio.setSelectedPart(vocalPart.id);
+  audio.setHumanVoiceManifest(vocalSampleManifest);
   audio.setTempo(100);
   audio.setGuideVolume(state.guideVolume);
   audio.setGuideVoice(state.guideVoice);
@@ -335,6 +337,7 @@ async function enterStudio() {
     audio.setPartVolume(partId, volume);
     audio.setPartEnabled(partId, state.enabledParts.has(partId));
   }
+  for (const [partId, voice] of Object.entries(state.partVoices)) audio.setPartVoice(partId, voice);
   els.studioTitle.textContent = state.score.title;
   els.studioMeta.textContent = `${state.score.creator ? `${state.score.creator} · ` : ""}${vocalPart.name} · ${vocalPart.vocalTimeline.length} target notes`;
   els.selectedPartName.textContent = vocalPart.name;
@@ -613,7 +616,11 @@ function renderAccompaniment() {
     const row = document.createElement("div");
     row.className = "part-mixer-row";
     const volume = state.partVolumes[part.id] ?? PLAYBACK_CONFIG.defaultPartVolume;
-    row.innerHTML = `<label class="part-toggle"><input type="checkbox" data-part-enabled="${escapeHtml(part.id)}" ${state.enabledParts.has(part.id) ? "checked" : ""} /><span>${escapeHtml(part.name)}</span></label><input class="part-volume" type="range" min="0" max="100" step="1" value="${volume}" data-part-volume="${escapeHtml(part.id)}" aria-label="${escapeHtml(part.name)} volume" /><output class="part-volume-output" data-part-volume-output="${escapeHtml(part.id)}">${volume}%</output>`;
+    const classification = classifyPlaybackPart(part);
+    const soundControl = classification === "vocal"
+      ? `<label class="part-sound"><span>Sound</span><select data-part-voice="${escapeHtml(part.id)}" aria-label="${escapeHtml(part.name)} sound"><option value="human" ${state.partVoices[part.id] !== "synthetic-ah" ? "selected" : ""}>Human voice</option><option value="synthetic-ah" ${state.partVoices[part.id] === "synthetic-ah" ? "selected" : ""}>Synthetic Ah</option></select></label>`
+      : `<span class="part-sound part-sound-static"><span>Sound</span><strong>${classification === "piano" ? "Sampled piano" : "Sampled piano (fallback)"}</strong></span>`;
+    row.innerHTML = `<label class="part-toggle"><input type="checkbox" data-part-enabled="${escapeHtml(part.id)}" ${state.enabledParts.has(part.id) ? "checked" : ""} /><span>${escapeHtml(part.name)}</span></label>${soundControl}<input class="part-volume" type="range" min="0" max="100" step="1" value="${volume}" data-part-volume="${escapeHtml(part.id)}" aria-label="${escapeHtml(part.name)} volume" /><output class="part-volume-output" data-part-volume-output="${escapeHtml(part.id)}">${volume}%</output>`;
     els.accompanimentList.append(row);
   }
   updateMuteAllLabel();
@@ -1162,6 +1169,8 @@ async function play() {
       octaveShift: takeOctaveShift,
       enabledPartIds: [...state.enabledParts],
       partVolumes: state.partVolumes,
+      partVoices: state.partVoices,
+      guideVoice: state.guideVoice,
       guideEnabled: mode.guide,
       mode: state.mode,
       durationSeconds: (range.endQuarter - range.startQuarter) * 60 / audio.bpm,
@@ -1307,6 +1316,9 @@ function setSetupControlsDisabled(disabled) {
   els.countInButtons.forEach((button) => { button.disabled = disabled; });
   els.octaveButtons.forEach((button) => { button.disabled = disabled; });
   els.hearStartingNote.disabled = disabled;
+  els.guideVolume.disabled = disabled;
+  els.guideVoice.disabled = disabled;
+  els.accompanimentList.querySelectorAll("input, select").forEach((control) => { control.disabled = disabled; });
   for (const control of [els.sectionFrom, els.sectionTo, els.selectBarsButton, els.clearSectionButton, els.startFromBar, els.chooseStartButton]) {
     control.disabled = disabled;
   }
@@ -1584,6 +1596,8 @@ async function finishAssessment() {
     octaveShift: plannedRange.octaveShift ?? effectiveOctaveShift(),
     enabledPartIds: plannedRange.enabledPartIds || [...state.enabledParts],
     partVolumes: plannedRange.partVolumes || state.partVolumes,
+    partVoices: plannedRange.partVoices || state.partVoices,
+    guideVoice: plannedRange.guideVoice || state.guideVoice,
     guideEnabled: plannedRange.guideEnabled ?? MODE_CONFIG[state.mode].guide,
     mode: plannedRange.mode || state.mode,
     vocalPartId: plannedRange.vocalPartId || state.selectedPartId,
@@ -2116,11 +2130,18 @@ function wireEvents() {
   els.guideVoice.addEventListener("change", () => setGuideVoice(els.guideVoice.value));
   els.accompanimentList.addEventListener("change", (event) => {
     const input = event.target.closest("input[data-part-enabled]");
-    if (!input) return;
-    const partId = input.dataset.partEnabled;
-    if (input.checked) state.enabledParts.add(partId); else state.enabledParts.delete(partId);
-    audio.setPartEnabled(partId, input.checked);
-    updateMuteAllLabel();
+    if (input) {
+      const partId = input.dataset.partEnabled;
+      if (input.checked) state.enabledParts.add(partId); else state.enabledParts.delete(partId);
+      audio.setPartEnabled(partId, input.checked);
+      updateMuteAllLabel();
+      return;
+    }
+    const select = event.target.closest("select[data-part-voice]");
+    if (!select) return;
+    const partId = select.dataset.partVoice;
+    state.partVoices[partId] = normaliseGuideVoice(select.value);
+    audio.setPartVoice(partId, state.partVoices[partId]);
   });
   els.accompanimentList.addEventListener("input", (event) => {
     const input = event.target.closest("input[data-part-volume]");

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Multi-part playback QA</title>
+    <style>
+      body { max-width: 760px; margin: 40px auto; padding: 0 20px; background: #f4f7f3; color: #17382f; font: 16px/1.5 system-ui, sans-serif; }
+      button { margin: 0 8px 8px 0; padding: 10px 14px; border: 0; border-radius: 8px; background: #17382f; color: white; cursor: pointer; }
+      pre { min-height: 260px; padding: 16px; overflow: auto; border-radius: 12px; background: #fff; white-space: pre-wrap; }
+      [data-state="pass"] { color: #17643e; } [data-state="fail"] { color: #a02b2b; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/tone@15.1.22/build/Tone.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  </head>
+  <body>
+    <h1>Multi-part playback QA</h1>
+    <p>This page exercises the real MusicXML parser, transport scheduler, vocal channels, and shared Salamander piano bank.</p>
+    <button type="button" data-run="S">Play with Soprano selected</button>
+    <button type="button" data-run="B">Play with Bass selected</button>
+    <button type="button" data-action="pause">Pause</button>
+    <button type="button" data-action="resume">Resume</button>
+    <button type="button" data-action="stop">Stop</button>
+    <h2 id="result">Ready</h2>
+    <pre id="log" aria-live="polite"></pre>
+    <script type="module" src="./playback-browser.js?v=24"></script>
+  </body>
+</html>
