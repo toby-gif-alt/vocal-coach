@@ -2,6 +2,7 @@ import { colourForCents, frequencyToMidi, SCORE_TRACE_CONFIG } from "./config.js
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const EPSILON = 0.015;
+const NOTEHEAD_HALF_WIDTH_PIXELS = Object.freeze({ minimum: 4, fallback: 6, maximum: 8 });
 
 function fractionValue(value) {
   const candidate = value?.realValue ?? value?.RealValue;
@@ -14,6 +15,43 @@ function absolutePosition(item) {
 
 function sizeOf(item) {
   return item?.boundingBox?.size || item?.PositionAndShape?.Size || { width: 0, height: 0 };
+}
+
+function boundingBoxOf(item) {
+  return item?.boundingBox || item?.PositionAndShape || null;
+}
+
+function noteheadExtent(value, fallback) {
+  const candidate = Number.isFinite(value) && value > 0 ? value : fallback;
+  return Math.max(NOTEHEAD_HALF_WIDTH_PIXELS.minimum, Math.min(NOTEHEAD_HALF_WIDTH_PIXELS.maximum, candidate));
+}
+
+function graphicalNotePoint(graphicalNote) {
+  const position = absolutePosition(graphicalNote);
+  const size = sizeOf(graphicalNote);
+  const boundingBox = boundingBoxOf(graphicalNote);
+  const scale = SCORE_TRACE_CONFIG.osmdPixelsPerUnit;
+  const xCenter = position.x * scale;
+  const width = Number(size?.width) * scale;
+  const sizeFallback = Number.isFinite(width) && width > 0
+    ? width / 2
+    : NOTEHEAD_HALF_WIDTH_PIXELS.fallback;
+  const borderLeft = Number(boundingBox?.borderLeft ?? boundingBox?.BorderLeft);
+  const borderRight = Number(boundingBox?.borderRight ?? boundingBox?.BorderRight);
+
+  // OSMD's absolute X is the rendered note anchor (visually the notehead centre).
+  // Its borders are offsets from that anchor. Clamp unusually broad boxes to a
+  // notehead-sized envelope because some renderers include stems or accidentals.
+  const leftExtent = noteheadExtent(borderLeft < 0 ? -borderLeft * scale : NaN, sizeFallback);
+  const rightExtent = noteheadExtent(borderRight > 0 ? borderRight * scale : NaN, sizeFallback);
+
+  return {
+    xCenter,
+    xLeft: xCenter - leftExtent,
+    xRight: xCenter + rightExtent,
+    y: position.y * scale,
+    midi: sourcePitchMidi(graphicalNote),
+  };
 }
 
 function stavesOf(instrument) {
@@ -86,7 +124,13 @@ function matchingGraphicalPoint(system, quarter, midi) {
   if (!candidates.length) return null;
   candidates.sort((a, b) => Math.abs(a.midi - midi) - Math.abs(b.midi - midi));
   const match = candidates[0];
-  return { x: match.x || match.entry.x, y: match.y, midi: match.midi };
+  return {
+    xCenter: match.xCenter ?? match.entry.x,
+    xLeft: match.xLeft ?? match.entry.x,
+    xRight: match.xRight ?? match.entry.x,
+    y: match.y,
+    midi: match.midi,
+  };
 }
 
 function selectedStaffOffset(osmd, instrumentIndex) {
@@ -158,12 +202,7 @@ function collectSystems(osmd, timeline, instrumentIndex) {
           for (const graphicalNote of voiceEntry.notes || voiceEntry.Notes || []) {
             const sourceNote = graphicalNote.sourceNote || graphicalNote.SourceNote;
             if (sourceNote?.isRestFlag || sourceNote?.IsRest) continue;
-            const notePosition = absolutePosition(graphicalNote);
-            notes.push({
-              midi: sourcePitchMidi(graphicalNote),
-              x: notePosition.x * SCORE_TRACE_CONFIG.osmdPixelsPerUnit,
-              y: notePosition.y * SCORE_TRACE_CONFIG.osmdPixelsPerUnit,
-            });
+            notes.push(graphicalNotePoint(graphicalNote));
           }
         }
         system.entries.push({ quarter, x, notes });
@@ -200,8 +239,8 @@ export function buildScoreGeometry(osmd, timeline, instrumentIndex) {
       if (qEnd - qStart <= EPSILON) continue;
       const continuationPoint = matchingGraphicalPoint(system, qStart, note.midi);
       const xStart = qStart <= note.onsetQuarters + EPSILON && onsetPoint && system === onsetSystem
-        ? onsetPoint.x
-        : continuationPoint?.x ?? xForQuarter(system, qStart, "start");
+        ? onsetPoint.xLeft
+        : continuationPoint?.xCenter ?? xForQuarter(system, qStart, "start");
       let xEnd = endXForQuarter(system, qEnd);
       if (xEnd <= xStart + SCORE_TRACE_CONFIG.minimumRegionWidth) {
         xEnd = xStart + SCORE_TRACE_CONFIG.minimumRegionWidth;

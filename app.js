@@ -51,7 +51,7 @@ import {
   focusScoreTarget,
   renderMeasureSelection,
   renderScoreTrace,
-} from "./src/score-overlay.js?v=20";
+} from "./src/score-overlay.js?v=25";
 import { cursorIndexAtTimestamp, osmdTimestampToQuarters, quartersToOsmdTimestamp } from "./src/timing.js?v=14";
 import { appendAcceptedVisualSample, appendVisualHold } from "./src/visual-trace.js?v=20";
 
@@ -158,14 +158,14 @@ async function fetchManifest(url) {
   return entries;
 }
 
-const vocalSampleManifestPromise = fetchManifest("./samples/vocal-guide/index.json?v=24").catch((error) => {
+const vocalSampleManifestPromise = fetchManifest("./samples/vocal-guide/index.json?v=25").catch((error) => {
   console.warn("Human voice manifest is unavailable; Synthetic Ah will be used.", error);
   return [];
 });
 
 async function loadRepertoireIndex() {
   try {
-    const entries = await fetchManifest("./repertoire/index.json?v=24");
+    const entries = await fetchManifest("./repertoire/index.json?v=25");
     state.repertoire = entries.filter((entry) => entry?.title && entry?.file);
     els.repertoireSelect.replaceChildren(new Option("Select from repertoire", ""));
     for (const entry of state.repertoire) els.repertoireSelect.add(new Option(entry.title, entry.file));

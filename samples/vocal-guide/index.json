@@ -1,1 +1,194 @@
-[]
+[
+  {
+    "file": "./samples/vocal-guide/male/C2.mp3",
+    "note": "C2",
+    "rootMidi": 36,
+    "bank": "male"
+  },
+  {
+    "file": "./samples/vocal-guide/male/Cs2.mp3",
+    "note": "C#2",
+    "rootMidi": 37,
+    "bank": "male"
+  },
+  {
+    "file": "./samples/vocal-guide/male/D2.mp3",
+    "note": "D2",
+    "rootMidi": 38,
+    "bank": "male"
+  },
+  {
+    "file": "./samples/vocal-guide/male/Ds2.mp3",
+    "note": "D#2",
+    "rootMidi": 39,
+    "bank": "male"
+  },
+  {
+    "file": "./samples/vocal-guide/male/E2.mp3",
+    "note": "E2",
+    "rootMidi": 40,
+    "bank": "male"
+  },
+  {
+    "file": "./samples/vocal-guide/male/F2.mp3",
+    "note": "F2",
+    "rootMidi": 41,
+    "bank": "male"
+  },
+  {
+    "file": "./samples/vocal-guide/male/Fs2.mp3",
+    "note": "F#2",
+    "rootMidi": 42,
+    "bank": "male"
+  },
+  {
+    "file": "./samples/vocal-guide/male/G2.mp3",
+    "note": "G2",
+    "rootMidi": 43,
+    "bank": "male"
+  },
+  {
+    "file": "./samples/vocal-guide/male/Gs2.mp3",
+    "note": "G#2",
+    "rootMidi": 44,
+    "bank": "male"
+  },
+  {
+    "file": "./samples/vocal-guide/male/A2.mp3",
+    "note": "A2",
+    "rootMidi": 45,
+    "bank": "male"
+  },
+  {
+    "file": "./samples/vocal-guide/male/As2.mp3",
+    "note": "A#2",
+    "rootMidi": 46,
+    "bank": "male"
+  },
+  {
+    "file": "./samples/vocal-guide/male/B2.mp3",
+    "note": "B2",
+    "rootMidi": 47,
+    "bank": "male"
+  },
+  {
+    "file": "./samples/vocal-guide/male/C3.mp3",
+    "note": "C3",
+    "rootMidi": 48,
+    "bank": "male"
+  },
+  {
+    "file": "./samples/vocal-guide/male/Cs3.mp3",
+    "note": "C#3",
+    "rootMidi": 49,
+    "bank": "male"
+  },
+  {
+    "file": "./samples/vocal-guide/male/D3.mp3",
+    "note": "D3",
+    "rootMidi": 50,
+    "bank": "male"
+  },
+  {
+    "file": "./samples/vocal-guide/male/Ds3.mp3",
+    "note": "D#3",
+    "rootMidi": 51,
+    "bank": "male"
+  },
+  {
+    "file": "./samples/vocal-guide/male/E3.mp3",
+    "note": "E3",
+    "rootMidi": 52,
+    "bank": "male"
+  },
+  {
+    "file": "./samples/vocal-guide/male/F3.mp3",
+    "note": "F3",
+    "rootMidi": 53,
+    "bank": "male"
+  },
+  {
+    "file": "./samples/vocal-guide/male/Fs3.mp3",
+    "note": "F#3",
+    "rootMidi": 54,
+    "bank": "male"
+  },
+  {
+    "file": "./samples/vocal-guide/male/G3.mp3",
+    "note": "G3",
+    "rootMidi": 55,
+    "bank": "male"
+  },
+  {
+    "file": "./samples/vocal-guide/male/Gs3.mp3",
+    "note": "G#3",
+    "rootMidi": 56,
+    "bank": "male"
+  },
+  {
+    "file": "./samples/vocal-guide/male/A3.mp3",
+    "note": "A3",
+    "rootMidi": 57,
+    "bank": "male"
+  },
+  {
+    "file": "./samples/vocal-guide/male/As3.mp3",
+    "note": "A#3",
+    "rootMidi": 58,
+    "bank": "male"
+  },
+  {
+    "file": "./samples/vocal-guide/male/B3.mp3",
+    "note": "B3",
+    "rootMidi": 59,
+    "bank": "male"
+  },
+  {
+    "file": "./samples/vocal-guide/male/C4.mp3",
+    "note": "C4",
+    "rootMidi": 60,
+    "bank": "male"
+  },
+  {
+    "file": "./samples/vocal-guide/male/Cs4.mp3",
+    "note": "C#4",
+    "rootMidi": 61,
+    "bank": "male"
+  },
+  {
+    "file": "./samples/vocal-guide/male/D4.mp3",
+    "note": "D4",
+    "rootMidi": 62,
+    "bank": "male"
+  },
+  {
+    "file": "./samples/vocal-guide/male/Ds4.mp3",
+    "note": "D#4",
+    "rootMidi": 63,
+    "bank": "male"
+  },
+  {
+    "file": "./samples/vocal-guide/male/E4.mp3",
+    "note": "E4",
+    "rootMidi": 64,
+    "bank": "male"
+  },
+  {
+    "file": "./samples/vocal-guide/male/F4.mp3",
+    "note": "F4",
+    "rootMidi": 65,
+    "bank": "male"
+  },
+  {
+    "file": "./samples/vocal-guide/male/Fs4.mp3",
+    "note": "F#4",
+    "rootMidi": 66,
+    "bank": "male"
+  },
+  {
+    "file": "./samples/vocal-guide/male/G4.mp3",
+    "note": "G4",
+    "rootMidi": 67,
+    "bank": "male"
+  }
+]
