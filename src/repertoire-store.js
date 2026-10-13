@@ -33,3 +33,11 @@ export class RepertoireStore {
 export async function fileHash(file) {const bytes=await file.arrayBuffer();const hash=await crypto.subtle.digest('SHA-256',bytes);return [...new Uint8Array(hash)].map(b=>b.toString(16).padStart(2,'0')).join('');}
 export function scoreRecord(file,score,hash) {return {id:crypto.randomUUID(),title:score.title,filename:file.name.split(/[/\\]/).at(-1),composer:score.creator||'',importedAt:new Date().toISOString(),format:file.name.split('.').at(-1).toLowerCase(),hash,bytes:file,selectedPartId:null,settings:{},lastOpenedAt:null};}
 export function storageMessage(error) {return error?.name==='QuotaExceededError'?'This device is out of space. Export a backup and remove scores you no longer need.':error?.message||'Your score could not be saved on this device.';}
+
+// File metadata is explicit because some structured-clone implementations retain
+// the Blob bytes/type but discard File.name. Older browser records remain readable.
+export function incomingScoreFile(item) {
+  const filename=item.filename||item.file?.name;
+  if(!filename||!item.file)throw new Error('The shared score has no filename. Use Import Score to choose the original file.');
+  return new File([item.file],filename,{type:item.mimeType??item.file.type??''});
+}

@@ -1,3 +1,4 @@
+import { incomingScoreFile } from "./src/repertoire-store.js";
 import { createLibraryUI } from "./src/library-ui.js";
 import { setupPWA } from "./src/pwa.js";
 import { createCalibrationDialog } from "./src/calibration-dialog.js";
@@ -2420,7 +2421,7 @@ window.addEventListener("repertoirevisibilitychange",()=>void renderBuiltInOptio
 wireEvents();
 void loadRepertoireIndex();
 async function receiveIncomingFiles() {
-  try {for(const item of await library.store.incoming()) {await importAndOpen(item.file);await library.store.consumeIncoming(item.id);}}catch(error){toast(error.message||"Use Import Score to open the shared file.");}
+  try {for(const item of await library.store.incoming()) {await importAndOpen(incomingScoreFile(item));await library.store.consumeIncoming(item.id);}}catch(error){toast(error.message||"Use Import Score to open the shared file.");}
 }
 if(new URL(location.href).searchParams.has("shared")) void receiveIncomingFiles();
 if("launchQueue" in window) window.launchQueue.setConsumer(async launch => {for(const handle of launch.files||[])try{await importAndOpen(await handle.getFile());}catch(error){toast(error.message);}});

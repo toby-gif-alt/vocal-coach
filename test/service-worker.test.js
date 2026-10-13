@@ -1,4 +1,4 @@
-import {test} from 'node:test';import assert from 'node:assert/strict';import vm from 'node:vm';import {build} from 'esbuild';import {digest} from '../src/offline-cache.js';import {RepertoireStore} from '../src/repertoire-store.js';import {IDBFactory} from 'fake-indexeddb';
+import {test} from 'node:test';import assert from 'node:assert/strict';import vm from 'node:vm';import {build} from 'esbuild';import {digest} from '../src/offline-cache.js';import {RepertoireStore,incomingScoreFile} from '../src/repertoire-store.js';import {IDBFactory} from 'fake-indexeddb';
 const scope='https://example.com/vocal-coach/';
 function cacheStorage(){const caches=new Map();return {caches,async keys(){return [...caches.keys()];},async delete(key){return caches.delete(key);},async open(key){if(!caches.has(key))caches.set(key,new Map());const map=caches.get(key);return {async match(url){return map.get(String(url))?.clone();},async put(url,response){map.set(String(url),response.clone());}};}};}
 async function worker(version,storage,files,options={}) {
@@ -37,11 +37,20 @@ test('shared attachments are stored locally and redirected into the scoped impor
   const form=new FormData();form.append('score',new File(['<score-partwise/>'],'teacher.musicxml',{type:'application/xml'}));
   let response;w.handlers.fetch({request:new Request(new URL('share-score',scope),{method:'POST',body:form}),respondWith:p=>response=p});
   const received=await response;assert.equal(received.status,303);assert.equal(received.headers.get('location'),`${scope}?shared=1`);
-  const items=await library.incoming();assert.equal(items.length,1);assert.equal(items[0].file.name,'teacher.musicxml');assert.equal(await items[0].file.text(),'<score-partwise/>');
+  const items=await library.incoming();assert.equal(items.length,1);assert.equal(items[0].filename,'teacher.musicxml');assert.equal(items[0].mimeType,'application/xml');
+  const restored=incomingScoreFile(items[0]);assert.equal(restored.name,'teacher.musicxml');assert.equal(restored.type,'application/xml');assert.deepEqual(new Uint8Array(await restored.arrayBuffer()),new TextEncoder().encode('<score-partwise/>'));
+  // Exercise the Node 20 Blob-only clone explicitly on every test runtime.
+  const blobOnly=incomingScoreFile({...items[0],file:new Blob([await restored.arrayBuffer()],{type:restored.type})});assert.equal(blobOnly.name,restored.name);assert.equal(blobOnly.type,restored.type);assert.deepEqual(await blobOnly.arrayBuffer(),await restored.arrayBuffer());
   await library.consumeIncoming(items[0].id);assert.deepEqual(await library.incoming(),[]);(await library.ready).close();
 });
 test('share receipt rejects unrelated file types without saving incoming data',async()=>{
   const factory=new IDBFactory(),library=new RepertoireStore(factory),w=await worker('share',cacheStorage(),{'index.html':'shell'},{factory});
   const form=new FormData();form.append('score',new File(['script'],'unsafe.html'));let response;
   w.handlers.fetch({request:new Request(new URL('share-score',scope),{method:'POST',body:form}),respondWith:p=>response=p});assert.equal((await response).status,400);assert.deepEqual(await library.incoming(),[]);(await library.ready).close();
+});
+
+test('incoming attachment reconstruction supports older File records and exact binary MXL bytes',()=>{
+  const original=new File([new Uint8Array([80,75,0,255,1,128])],'teacher.mxl',{type:'application/vnd.recordare.musicxml'});
+  const legacy=incomingScoreFile({file:original});assert.equal(legacy.name,original.name);assert.equal(legacy.type,original.type);
+  return Promise.all([legacy.arrayBuffer(),original.arrayBuffer()]).then(([a,b])=>assert.deepEqual(a,b));
 });
