@@ -100,3 +100,9 @@ test("playback schedules only interval events and safely reconstructs carry-over
   assert.equal(ending.durationQuarters, 2);
   assert.equal(playbackWindow({ onsetQuarters: 12, durationQuarters: 1 }, 5, 12), null);
 });
+
+test("explicitly selecting the whole piece remains visually whole while retaining Start From", () => {
+  const part={durationQuarters:12,measureStarts:[1,2,3].map((measureNumber,index)=>({measureNumber,onsetQuarters:index*4}))};
+  const range=resolvePracticeRange(part,{sectionStartMeasure:1,sectionEndMeasure:3,startMeasure:2});
+  assert.equal(range.wholePiece,true);assert.equal(range.startQuarter,4);assert.equal(range.endQuarter,12);
+});

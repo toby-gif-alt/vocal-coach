@@ -1,4 +1,4 @@
-import { PITCH_THRESHOLDS } from "./config.js?v=14";
+import { PITCH_THRESHOLDS, COACHING_CONFIG } from "./config.js?v=27";
 
 function mean(values) {
   const usable = values.filter(Number.isFinite);
@@ -91,10 +91,14 @@ export function analysePerformance(timeline, samples, bpm) {
     const end = onset + duration;
     const noteWithAdjustedTime = { ...note, onsetTimeAdjusted: onset };
     const usable = samples
-      .filter((sample) => sample.targetId === note.id && sample.scoreSeconds >= onset && sample.scoreSeconds < end)
+      .filter((sample) => !sample.visualOnly && (!sample.status || sample.status === "accepted") && (!Number.isFinite(sample.clarity) || sample.clarity >= COACHING_CONFIG.minimumClarity) && Number.isFinite(sample.cents) && sample.targetId === note.id && sample.scoreSeconds >= onset && sample.scoreSeconds < end)
       .sort((a, b) => a.scoreSeconds - b.scoreSeconds);
     const empty = {
       note,
+      durationSeconds: duration,
+      evidenceReliable: false, entranceReliable: false, offsetReliable: false,
+      entranceCentre: null, sustainCentre: null, endingCentre: null, offsetDriftCents: null,
+      onsetTimingSeconds: null, releaseEarlySeconds: null,
       sampleCount: 0,
       averageError: null,
       initialError: null,
@@ -120,8 +124,28 @@ export function analysePerformance(timeline, samples, bpm) {
     const directionalDriftCents = regressionDrift(sustain);
     const startedOutside = Math.abs(initialError) > PITCH_THRESHOLDS.green;
     const startedAccurate = Math.abs(initialError) <= PITCH_THRESHOLDS.green;
+    const coverage = voicedCoverage(usable, onset, end);
+    const evidenceReliable = duration >= COACHING_CONFIG.minimumDuration
+      && usable.length >= COACHING_CONFIG.minimumSamples && coverage >= COACHING_CONFIG.minimumCoverage;
+    const entranceReliable = evidenceReliable && !note.clippedAtRangeStart
+      && initialSamples.length >= COACHING_CONFIG.minimumWindowSamples && usable[0].scoreSeconds - onset <= 0.12;
+    const middleSamples = usable.filter((sample) => sample.scoreSeconds >= onset + duration * 0.35 && sample.scoreSeconds < onset + duration * 0.65);
+    const endingSamples = usable.filter((sample) => sample.scoreSeconds >= onset + duration * 0.75);
+    const offsetReliable = evidenceReliable && duration >= COACHING_CONFIG.minimumSustainDuration
+      && !note.clippedAtRangeEnd && middleSamples.length >= 3 && endingSamples.length >= 3
+      && end - usable.at(-1).scoreSeconds <= 0.12 && fragmentationCount(sustain) === 0;
+    const middleCentre = median(middleSamples.map((sample) => sample.cents));
+    const endingCentre = median(endingSamples.map((sample) => sample.cents));
     return {
       note,
+      durationSeconds: duration, evidenceReliable, entranceReliable, offsetReliable,
+      entranceCentre: entranceReliable ? median(initialSamples.map((sample) => sample.cents)) : null,
+      sustainCentre: evidenceReliable && sustainedSamples.length >= 3 ? median(sustainedSamples.map((sample) => sample.cents)) : null,
+      endingCentre: offsetReliable ? endingCentre : null,
+      offsetDriftCents: offsetReliable ? endingCentre - middleCentre : null,
+      // Accepted pitch alone cannot distinguish silence, consonants and detector delay.
+      sustainBiasFraction: sustainedSamples.length ? sustainedSamples.filter(sample => Math.sign(sample.cents) === Math.sign(sustainedError) && Math.abs(sample.cents) >= COACHING_CONFIG.pitchBias).length / sustainedSamples.length : 0,
+      onsetTimingSeconds: null, releaseEarlySeconds: null,
       sampleCount: usable.length,
       averageError: mean(usable.map((sample) => sample.cents)),
       initialError,

@@ -77,14 +77,18 @@ test("adaptive coaching changes level, balance, and language for three singer pr
   assert.equal(summarisePerformance(accurateResults).level, "excellent");
   assert.ok(["developing", "foundation"].includes(summarisePerformance(inconsistentResults).level));
   assert.equal(summarisePerformance(beginnerResults).level, "early-foundation");
-  for (const feedback of [accurate, inconsistent, beginner]) assert.equal(feedback.observations.length, 10);
-  assert.equal(accurate.observations.filter((item) => item.tone === "positive").length, 8);
-  assert.equal(beginner.observations.filter((item) => item.tone === "positive").length, 3);
+  for (const feedback of [accurate, inconsistent, beginner]) {
+    assert.equal(feedback.observations.length, 5);
+    assert.equal(feedback.improvements.length, 3);
+    assert.equal(feedback.strengths.length, 2);
+  }
+  assert.equal(accurate.observations.filter((item) => item.tone === "positive").length, 2);
+  assert.equal(beginner.observations.filter((item) => item.tone === "positive").length, 2);
   assert.notDeepEqual(accurate.observations.map((item) => item.title), inconsistent.observations.map((item) => item.title));
-  assert.notDeepEqual(inconsistent.observations.map((item) => item.title), beginner.observations.map((item) => item.title));
+  assert.ok(inconsistent.observations.every(item => item.provisional), "Sparse or inconsistent coverage should get honest guidance, not forced findings.");
   assert.ok(accurate.observations.some((item) => /steady|secure|centre/i.test(item.title + item.body)));
-  assert.ok(beginner.observations.some((item) => /Assisted|slow|one steady pitch|full value/i.test(item.title + item.body)));
-  assert.ok(beginner.observations.filter((item) => item.noteId && item.measureNumber).length >= 3);
+  assert.ok(beginner.observations.some((item) => /Assisted|slow|pitch|phrase/i.test(item.title + item.body)));
+  assert.ok(beginner.observations.every(item => item.provisional));
   assert.ok([...accurate.observations, ...inconsistent.observations, ...beginner.observations].every((item) => !/bad vibrato/i.test(item.title + item.body)));
 });
 

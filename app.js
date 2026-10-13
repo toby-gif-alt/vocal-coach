@@ -1,7 +1,8 @@
-import { createTutorial } from "./src/tutorial.js?v=26";
+import { draftFromRange, dragRange, validateDraft, measureAtPoint } from "./src/practice-selection.js?v=27";
+import { createTutorial } from "./src/tutorial.js?v=27";
 import { AudioEngine } from "./src/audio-engine.js?v=26";
-import { analysePerformance, performanceSummary } from "./src/analysis.js?v=14";
-import { buildCoachingFeedback } from "./src/coaching.js?v=14";
+import { analysePerformance, performanceSummary } from "./src/analysis.js?v=27";
+import { buildCoachingFeedback } from "./src/coaching.js?v=27";
 import {
   colourForCents,
   DEBUG_CONFIG,
@@ -18,7 +19,7 @@ import {
   frequencyToMidi,
   midiToName,
   PITCH_THRESHOLDS,
-} from "./src/config.js?v=26";
+} from "./src/config.js?v=27";
 import {
   assessmentSampleEligible,
   LiveTuningFeedback,
@@ -42,7 +43,7 @@ import {
   resolvePracticeRange,
   sampleWithinRange,
   validateSection,
-} from "./src/practice-range.js?v=18";
+} from "./src/practice-range.js?v=27";
 import { createTakeMetadata, reviewLayers, reviewQuarterAtSeconds, reviewVolumes } from "./src/review-playback.js?v=24";
 import { classifyPlaybackPart } from "./src/playback-routing.js?v=24";
 import {
@@ -52,7 +53,7 @@ import {
   focusScoreTarget,
   renderMeasureSelection,
   renderScoreTrace,
-} from "./src/score-overlay.js?v=25";
+} from "./src/score-overlay.js?v=27";
 import { cursorIndexAtTimestamp, osmdTimestampToQuarters, quartersToOsmdTimestamp } from "./src/timing.js?v=14";
 import { appendAcceptedVisualSample, appendVisualHold } from "./src/visual-trace.js?v=20";
 
@@ -144,6 +145,7 @@ const state = {
   sectionStartMeasure: null,
   sectionEndMeasure: null,
   startMeasure: null,
+  practiceDraft: null,
   rangeSelectionMode: false,
   rangeSelectionStart: null,
   startPickMode: false,
@@ -384,10 +386,13 @@ function setSectionMessage(message, error = false) {
 function renderPracticeRangeOverlay() {
   if (!state.osmd) return;
   const range = currentPracticeRange();
+  const draft = state.practiceDraft;
+  const validDraft = draft && validateDraft(selectedPart(), draft).valid;
   renderMeasureSelection(els.scoreContainer, state.measureGeometry, {
-    sectionStartMeasure: range.sectionStartMeasure,
-    sectionEndMeasure: range.sectionEndMeasure,
-    startMeasure: range.startMeasure,
+    sectionStartMeasure: validDraft ? Number(draft.from) : range.sectionStartMeasure,
+    sectionEndMeasure: validDraft ? Number(draft.to) : range.sectionEndMeasure,
+    startMeasure: validDraft ? Number(draft.start) : range.startMeasure,
+    wholePiece: validDraft ? Number(draft.from) === range.firstMeasure && Number(draft.to) === range.lastMeasure : range.wholePiece,
     interactionMode: state.rangeSelectionMode ? "range" : state.startPickMode ? "start" : null,
     pendingMeasure: state.pendingStartMeasure ?? state.rangeSelectionStart,
   });
@@ -402,12 +407,16 @@ function renderPracticeRangeControls() {
   }
   els.startFromBar.min = String(range.sectionStartMeasure);
   els.startFromBar.max = String(range.sectionEndMeasure);
-  els.sectionFrom.value = String(range.sectionStartMeasure);
-  els.sectionTo.value = String(range.sectionEndMeasure);
-  els.startFromBar.value = String(range.startMeasure);
-  els.practiceRangeStatus.textContent = range.wholePiece
-    ? "Whole piece"
-    : `Selected: bars ${range.sectionStartMeasure}–${range.sectionEndMeasure}`;
+  if (!state.practiceDraft) {
+    els.sectionFrom.value = String(range.sectionStartMeasure);
+    els.sectionTo.value = String(range.sectionEndMeasure);
+    els.startFromBar.value = String(range.startMeasure);
+  }
+  els.startFromBar.min = els.sectionFrom.value;
+  els.startFromBar.max = els.sectionTo.value;
+  els.practiceRangeStatus.textContent = state.practiceDraft
+    ? `Preview: bars ${state.practiceDraft.from}–${state.practiceDraft.to}`
+    : range.wholePiece ? "Whole piece" : `Selected: bars ${range.sectionStartMeasure}–${range.sectionEndMeasure}`;
   els.selectBarsButton.classList.toggle("active", state.rangeSelectionMode);
   els.selectBarsButton.setAttribute("aria-pressed", String(state.rangeSelectionMode));
   els.chooseStartButton.classList.toggle("active", state.startPickMode);
@@ -502,107 +511,148 @@ function moveToPracticeStart({ clearTake = true } = {}) {
   renderPracticeRangeControls();
 }
 
+function practiceLocked() { return audio.isPlaying || audio.isPaused || audio.isCountingIn || state.rendering; }
+function openPracticeEditor(measure = null) {
+  if (practiceLocked()) return;
+  state.practiceDraft = draftFromRange(currentPracticeRange(), measure);
+  state.rangeSelectionMode = false; state.rangeSelectionStart = null;
+  state.startPickMode = false; state.pendingStartMeasure = null;
+  $("#practiceEditor").hidden = false;
+  updateDraftFields();
+  setSectionMessage("Edit bars or select by dragging. Apply saves; Cancel keeps your current section.");
+  $("#practiceEditor").scrollIntoView({ block: "nearest" });
+  els.sectionFrom.focus({ preventScroll: true });
+}
+function updateDraftFields() {
+  const draft = state.practiceDraft;
+  if (!draft) return;
+  els.sectionFrom.value = String(draft.from); els.sectionTo.value = String(draft.to);
+  els.startFromBar.value = String(draft.start);
+  renderPracticeRangeControls();
+}
+function updateDraftFromInputs(event) {
+  if (!state.practiceDraft || practiceLocked()) return;
+  state.practiceDraft = { from: els.sectionFrom.value, to: els.sectionTo.value, start: els.startFromBar.value };
+  if (event?.target === els.sectionFrom || event?.target === els.sectionTo) {
+    const section = validateSection(selectedPart(), state.practiceDraft.from, state.practiceDraft.to);
+    if (section.valid && (Number(state.practiceDraft.start) < section.startMeasure || Number(state.practiceDraft.start) > section.endMeasure)) {
+      state.practiceDraft.start = section.startMeasure; els.startFromBar.value = String(section.startMeasure);
+    }
+  }
+  const validation = validateDraft(selectedPart(), state.practiceDraft);
+  setSectionMessage(validation.valid ? "Preview only — press Apply to practise these bars." : validation.message, !validation.valid);
+  renderPracticeRangeControls();
+}
 function cancelScoreSelection() {
-  state.rangeSelectionMode = false;
-  state.rangeSelectionStart = null;
-  state.startPickMode = false;
-  state.pendingStartMeasure = null;
+  state.practiceDraft = null; state.rangeSelectionMode = false; state.rangeSelectionStart = null;
+  state.startPickMode = false; state.pendingStartMeasure = null;
+  els.scoreContainer.classList.remove("is-selecting");
+  $("#practiceEditor").hidden = true;
   renderPracticeRangeControls();
 }
-
 function applySectionInputs() {
-  if (audio.isPlaying || audio.isPaused || audio.isCountingIn) return;
-  const validation = validateSection(selectedPart(), els.sectionFrom.value, els.sectionTo.value);
-  if (!validation.valid) {
-    setSectionMessage(validation.message, true);
-    return;
-  }
-  state.sectionStartMeasure = validation.startMeasure;
-  state.sectionEndMeasure = validation.endMeasure;
-  state.startMeasure = validation.startMeasure;
-  cancelScoreSelection();
-  setSectionMessage(`Selected bars ${validation.startMeasure}–${validation.endMeasure}.`);
-  moveToPracticeStart();
+  if (practiceLocked() || !state.practiceDraft) return;
+  updateDraftFromInputs();
+  const validation = validateDraft(selectedPart(), state.practiceDraft);
+  if (!validation.valid) { setSectionMessage(validation.message, true); return; }
+  state.sectionStartMeasure = validation.startMeasure; state.sectionEndMeasure = validation.endMeasure;
+  state.startMeasure = validation.startMeasurePosition;
+  cancelScoreSelection(); moveToPracticeStart();
 }
-
 function clearPracticeSection() {
-  if (audio.isPlaying || audio.isPaused || audio.isCountingIn) return;
-  const { firstMeasure, lastMeasure } = practiceLimits(selectedPart());
-  state.sectionStartMeasure = null;
-  state.sectionEndMeasure = null;
-  state.startMeasure = firstMeasure;
-  cancelScoreSelection();
-  setSectionMessage(`Whole piece selected: bars ${firstMeasure}–${lastMeasure}.`);
-  moveToPracticeStart();
+  if (practiceLocked()) return;
+  state.sectionStartMeasure = null; state.sectionEndMeasure = null;
+  state.startMeasure = practiceLimits(selectedPart()).firstMeasure;
+  cancelScoreSelection(); moveToPracticeStart();
 }
-
-function applyStartFromInput(value = els.startFromBar.value) {
-  if (audio.isPlaying || audio.isPaused || audio.isCountingIn) return false;
-  const requested = Number(value);
-  const range = currentPracticeRange();
-  const exists = practiceLimits(selectedPart()).measures.some((measure) => measure.measureNumber === requested);
-  if (!Number.isInteger(requested) || !exists || requested < range.sectionStartMeasure || requested > range.sectionEndMeasure) {
-    const bounds = range.wholePiece
-      ? `${range.firstMeasure} to ${range.lastMeasure}`
-      : `${range.sectionStartMeasure} to ${range.sectionEndMeasure}`;
-    setSectionMessage(`Start from must be an existing bar from ${bounds}.`, true);
-    els.startFromBar.value = String(range.startMeasure);
-    return false;
-  }
-  state.startMeasure = requested;
-  cancelScoreSelection();
-  setSectionMessage(range.wholePiece
-    ? `Playback will start at bar ${requested} and continue to the end.`
-    : `Playback will assess bars ${requested}–${range.sectionEndMeasure}.`);
-  moveToPracticeStart();
-  return true;
-}
-
 function toggleRangeSelection() {
-  if (audio.isPlaying || audio.isPaused || audio.isCountingIn) return;
-  const enabling = !state.rangeSelectionMode;
-  state.rangeSelectionMode = enabling;
-  state.rangeSelectionStart = null;
+  if (practiceLocked()) return;
+  if (!state.practiceDraft) openPracticeEditor();
+  state.rangeSelectionMode = !state.rangeSelectionMode; state.rangeSelectionStart = null;
   state.startPickMode = false;
-  state.pendingStartMeasure = null;
-  setSectionMessage(enabling ? "Select the first bar in the score." : "Score selection cancelled.");
+  els.scoreContainer.classList.toggle("is-selecting", state.rangeSelectionMode);
+  setSectionMessage(state.rangeSelectionMode ? "Drag across bars, or use Tab and Enter to choose the first and last bar. Escape cancels." : "Adjust bar numbers, then Apply.");
   renderPracticeRangeControls();
 }
-
 function toggleStartPick() {
-  if (audio.isPlaying || audio.isPaused || audio.isCountingIn) return;
-  const enabling = !state.startPickMode;
-  state.startPickMode = enabling;
-  state.pendingStartMeasure = null;
-  state.rangeSelectionMode = false;
-  state.rangeSelectionStart = null;
-  setSectionMessage(enabling ? "Select a bar in the score, then choose Start here." : "Start selection cancelled.");
-  renderPracticeRangeControls();
+  if (practiceLocked()) return;
+  if (!state.practiceDraft) openPracticeEditor();
+  state.startPickMode = !state.startPickMode; state.rangeSelectionMode = false;
+  els.scoreContainer.classList.remove("is-selecting"); renderPracticeRangeControls();
+  setSectionMessage("Choose a start bar within the draft section, then Apply.");
 }
+function selectScoreMeasure(measure) {
+  if (practiceLocked() || !state.practiceDraft) return;
+  if (state.startPickMode) { state.practiceDraft.start = Number(measure); updateDraftFields(); return; }
+  if (!state.rangeSelectionMode) return;
+  if (state.rangeSelectionStart === null) state.rangeSelectionStart = Number(measure);
+  else { state.practiceDraft = dragRange(state.practiceDraft, state.rangeSelectionStart, Number(measure)); state.rangeSelectionStart = null; }
+  updateDraftFields();
+}
+function scoreMeasureAt(event) {
+  const pages = [...els.scoreContainer.querySelectorAll('svg[id^="osmdSvgPage"]')];
+  for (const [pageIndex, page] of pages.entries()) {
+    const matrix = page.getScreenCTM(); if (!matrix) continue;
+    const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
+    const measure = measureAtPoint(state.measureGeometry, pageIndex, point.x, point.y);
+    if (measure !== null) return measure;
+  }
+  return null;
+}
+function wirePracticePointers() {
+  let drag = null;
+  function scrollDrag() {
+    if (!drag || !state.rangeSelectionMode || !state.practiceDraft) return;
+    const rect = els.scoreContainer.getBoundingClientRect();
+    const top = Math.max(0, rect.top), bottom = Math.min(innerHeight - 85, rect.bottom);
+    const delta = drag.y > bottom - 40 ? 12 : drag.y < top + 40 ? -12 : 0;
+    if (delta) {
+      const before = els.scoreContainer.scrollTop;
+      els.scoreContainer.scrollTop += delta;
+      if (els.scoreContainer.scrollTop === before) window.scrollBy(0, delta);
+      const measure = scoreMeasureAt({ clientX: drag.x, clientY: drag.y });
+      if (measure !== null) {
+        const next = dragRange(state.practiceDraft, drag.anchor, measure);
+        if (next.from !== state.practiceDraft.from || next.to !== state.practiceDraft.to) { state.practiceDraft = next; updateDraftFields(); }
+      }
+    }
+    requestAnimationFrame(scrollDrag);
+  }
+  els.scoreContainer.addEventListener("dblclick", event => {
+    const measure = scoreMeasureAt(event);
+    if (measure !== null) openPracticeEditor(measure);
+  });
+  els.scoreContainer.addEventListener("pointerdown", event => {
+    if (!state.rangeSelectionMode || practiceLocked() || !event.isPrimary || event.button !== 0) return;
+    const measure = scoreMeasureAt(event); if (measure === null) return;
+    event.preventDefault();
+    drag = { id: event.pointerId, anchor: measure, original: { ...state.practiceDraft }, x: event.clientX, y: event.clientY };
+    requestAnimationFrame(scrollDrag);
+    els.scoreContainer.setPointerCapture(event.pointerId);
+    state.practiceDraft = dragRange(state.practiceDraft, measure, measure); updateDraftFields();
+  });
+  els.scoreContainer.addEventListener("pointermove", event => {
+    if (!drag || event.pointerId !== drag.id) return;
+    drag.x = event.clientX; drag.y = event.clientY;
+    const measure = scoreMeasureAt(event);
+    if (measure !== null) { state.practiceDraft = dragRange(state.practiceDraft, drag.anchor, measure); updateDraftFields(); }
 
-function selectScoreMeasure(measureNumber) {
-  const measure = Number(measureNumber);
-  if (state.rangeSelectionMode) {
-    if (state.rangeSelectionStart === null) {
-      state.rangeSelectionStart = measure;
-      setSectionMessage(`Bar ${measure} selected as the section start. Choose the last bar.`);
-      renderPracticeRangeControls();
-      return;
+  });
+  const finish = (event, cancelled = false) => {
+    if (!drag || event.pointerId !== drag.id) return;
+    if (cancelled) state.practiceDraft = drag.original;
+    if (els.scoreContainer.hasPointerCapture(event.pointerId)) els.scoreContainer.releasePointerCapture(event.pointerId);
+    drag = null; updateDraftFields();
+  };
+  els.scoreContainer.addEventListener("pointerup", event => finish(event));
+  els.scoreContainer.addEventListener("pointercancel", event => finish(event, true));
+  els.scoreContainer.addEventListener("lostpointercapture", event => finish(event, true));
+  document.addEventListener("keydown", event => {
+    if (event.key === "Escape" && state.practiceDraft) {
+      if (drag) { const id = drag.id; drag = null; if (els.scoreContainer.hasPointerCapture(id)) els.scoreContainer.releasePointerCapture(id); }
+      cancelScoreSelection(); $("#editPracticeButton").focus();
     }
-    if (measure < state.rangeSelectionStart) {
-      setSectionMessage("The last bar must be the same as or later than the first bar.", true);
-      return;
-    }
-    els.sectionFrom.value = String(state.rangeSelectionStart);
-    els.sectionTo.value = String(measure);
-    applySectionInputs();
-    return;
-  }
-  if (state.startPickMode) {
-    state.pendingStartMeasure = measure;
-    setSectionMessage(`Bar ${measure} selected. Choose Start here to confirm.`);
-    renderPracticeRangeControls();
-  }
+  });
 }
 
 function renderAccompaniment() {
@@ -654,6 +704,8 @@ async function renderScore() {
       });
       await state.osmd.load(state.score.xmlText);
     }
+    els.scoreContainer.classList.toggle("full-score", state.scoreView === "full");
+    state.osmd.setOptions({ drawTitle: false, drawPartNames: state.scoreView === "full" });
     state.osmd.Sheet.Instruments.forEach((instrument, index) => {
       instrument.Visible = state.scoreView === "full" || state.score.parts[index]?.id === state.selectedPartId;
     });
@@ -832,6 +884,7 @@ async function recheckMicrophone() {
   state.microphoneCalibration = null;
   clearSavedMicrophoneCalibration();
   updateMicrophoneCheckSetting();
+  tutorial.setActive(true);
   setTransportBusy(true);
   els.recheckMicrophoneButton.disabled = true;
   try {
@@ -1092,6 +1145,7 @@ function renderTuningDropout(sample) {
 
 async function activateMicrophonePreparation(token) {
   if (!MODE_CONFIG[state.mode].microphone) return;
+  tutorial.setActive(true);
   state.microphonePreparing = true;
   els.playButton.disabled = true;
   els.dockPlayPauseButton.disabled = true;
@@ -1119,6 +1173,7 @@ async function activateMicrophonePreparation(token) {
   } finally {
     if (token === state.microphoneActivationToken) {
       state.microphonePreparing = false;
+      tutorial.setActive(audio.isPlaying || audio.isPaused || audio.isCountingIn);
       els.playButton.disabled = false;
       els.dockPlayPauseButton.disabled = false;
       els.recheckMicrophoneButton.disabled = false;
@@ -1131,6 +1186,7 @@ function setMode(mode) {
   state.microphoneActivationToken += 1;
   const activationToken = state.microphoneActivationToken;
   state.mode = mode;
+  updateSetupSummary();
   els.modeButtons.forEach((button) => {
     const active = button.dataset.mode === mode;
     button.classList.toggle("active", active);
@@ -1141,7 +1197,7 @@ function setMode(mode) {
   els.playButton.disabled = false;
   els.dockPlayPauseButton.disabled = false;
   els.recheckMicrophoneButton.disabled = false;
-  if (!config.microphone) audio.stopMicrophone();
+  if (!config.microphone) { audio.stopMicrophone(); tutorial.setActive(false); }
   els.headphoneNote.hidden = !config.microphone;
   document.body.classList.toggle("microphone-mode", config.microphone);
   els.transportState.textContent = `${config.label} ready`;
@@ -1165,6 +1221,10 @@ function setMode(mode) {
 
 async function play() {
   if (!state.score || state.rendering || state.microphonePreparing) return;
+  cancelScoreSelection();
+  $("#setupPanel").open = false; $("#mixerPanel").open = false;
+  tutorial.setActive(true);
+  updateSetupSummary();
   stopPerformanceReview({ resetCursorPosition: false });
   const mode = MODE_CONFIG[state.mode];
   const range = currentPracticeRange();
@@ -1292,6 +1352,7 @@ async function restartTransport() {
 }
 
 function setTransportBusy(busy) {
+  if (!busy) tutorial.setActive(audio.isPlaying || audio.isPaused || audio.isCountingIn);
   els.playButton.disabled = busy || audio.isPlaying;
   els.pauseButton.disabled = busy || !audio.isPlaying;
   els.stopButton.disabled = (!audio.isPlaying && !audio.isPaused && !audio.isCountingIn);
@@ -1305,7 +1366,12 @@ function setTransportBusy(busy) {
   els.dockStopButton.disabled = !audio.isPlaying && !audio.isPaused && !audio.isCountingIn;
 }
 
+function updateSetupSummary() {
+  $("#setupSummary").textContent = `${MODE_CONFIG[state.mode].label} · ${state.countInBars ? state.countInBars + " bar count-in" : "no count-in"} · ${audio.tempoPercent}% tempo · ${els.octaveOutput.textContent}`;
+}
 function setPlaybackState(status) {
+  updateSetupSummary();
+  tutorial.setActive(status === "playing" || status === "paused" || audio.isCountingIn);
   const playing = status === "playing";
   const paused = status === "paused";
   els.playButton.disabled = playing;
@@ -1325,6 +1391,7 @@ function setPlaybackState(status) {
   els.dockRestartButton.disabled = false;
   els.recheckMicrophoneButton.disabled = playing || paused;
   if (playing) setStatus("idle", MODE_CONFIG[state.mode].microphone ? "Listening" : "Playing your score", MODE_CONFIG[state.mode].microphone ? "Sing the selected line while the cursor moves." : "Follow the guide and accompaniment.");
+  else if (!MODE_CONFIG[state.mode].microphone) setStatus("idle", paused ? "Paused" : "Listen mode — ready", "Press Play to hear the guide and accompaniment without a microphone.");
 }
 
 function setSetupControlsDisabled(disabled) {
@@ -1339,6 +1406,8 @@ function setSetupControlsDisabled(disabled) {
   els.guideVolume.disabled = disabled;
   els.guideVoice.disabled = disabled;
   els.accompanimentList.querySelectorAll("input, select").forEach((control) => { control.disabled = disabled; });
+  $("#editPracticeButton").disabled = disabled;
+  $("#applySectionButton").disabled = disabled;
   for (const control of [els.sectionFrom, els.sectionTo, els.selectBarsButton, els.clearSectionButton, els.startFromBar, els.chooseStartButton]) {
     control.disabled = disabled;
   }
@@ -1446,7 +1515,7 @@ function handlePitchSample(sample) {
     if (liveError <= PITCH_THRESHOLDS.green) {
       setStatus("good", `✓ ${targetLabel} centred`, `${soundingTargetName(currentTargetInfo.note)} is ready. This tuning check is not assessed.`);
     } else if (liveError <= PITCH_THRESHOLDS.yellow) {
-      setStatus("warn", `${targetLabel} nearly centred`, live.cents > 0 ? "Ease the pitch down a touch." : "Lift the pitch gently from the breath.");
+      setStatus("warn", `${targetLabel} nearly centred`, live.cents > 0 ? "Ease the pitch down a touch." : "Listen to the target and match it gently.");
     } else {
       setStatus("off", `${targetLabel} ${live.cents > 0 ? "sharp" : "flat"}`, `Adjust toward ${soundingTargetName(currentTargetInfo.note)}. This tuning check is not assessed.`);
     }
@@ -1467,7 +1536,7 @@ function handlePitchSample(sample) {
   els.sampleCount.textContent = state.samples.length.toLocaleString();
   const error = liveError;
   if (error <= PITCH_THRESHOLDS.green) setStatus("good", "In the centre", "Keep the airflow and shape just like this.");
-  else if (error <= PITCH_THRESHOLDS.yellow) setStatus("warn", "Nearly there", live.cents > 0 ? "Ease the pitch down a touch." : "Lift the pitch gently from the breath.");
+  else if (error <= PITCH_THRESHOLDS.yellow) setStatus("warn", "Nearly there", live.cents > 0 ? "Ease the pitch down a touch." : "Listen to the target and match it gently.");
   else setStatus("off", live.cents > 0 ? "Running sharp" : "Running flat", "Keep listening — the trace preserves how this note settles.");
   els.finishButton.disabled = false;
 }
@@ -1660,10 +1729,10 @@ async function finishAssessment() {
       els.assessmentScope.textContent = `Assessment: ${assessmentRangeLabel(takeRange)}`;
       els.coachLevel.textContent = "No pitch result";
       els.coachIntro.textContent = "No clear pitch samples were captured, so there is no pitch coaching for this take.";
-      els.coachObservations.innerHTML = "";
+      renderCoaching([], assessmentRangeLabel(takeRange));
       els.resultsBody.innerHTML = '<tr><td colspan="11" class="result-empty">No target notes had enough usable samples.</td></tr>';
       els.resultsSummary.textContent = `Assessment: ${assessmentRangeLabel(takeRange)} · Try the microphone check again, move a little closer, or use headphones.`;
-      els.resultsPanel.hidden = !recording;
+      els.resultsPanel.hidden = false;
       if (recording) els.resultsPanel.scrollIntoView({ behavior: "smooth", block: "start" });
       toast("No clear pitch samples were captured. Recheck the microphone and try again.");
       setStatus("off", "No reliable pitch captured", "Your local voice recording is still available below when supported.");
@@ -1917,49 +1986,30 @@ function renderResults(results, takeRange = state.activeTake || currentPracticeR
 }
 
 function renderCoaching(results, scope = assessmentRangeLabel(state.activeTake || currentPracticeRange())) {
-  const { profile, observations } = buildCoachingFeedback(results);
-  els.resultsPanel.dataset.level = profile.level;
-  els.coachLevel.textContent = `${profile.label} · ${Math.round(profile.score)}%`;
-  els.coachIntro.textContent = profile.level === "excellent"
-    ? `A highly secure performance across ${scope}. These strengths and fine refinements come only from the notes you just sang.`
-    : profile.level === "strong"
-      ? `A confident performance across ${scope}, with a few specific details that can make this section even more consistent.`
-      : profile.level === "developing"
-        ? `In ${scope}, you have clear strengths to keep and a focused set of next priorities.`
-        : profile.level === "foundation"
-          ? `There are useful notes in ${scope} to build from. Work through the priorities one at a time.`
-          : `Start with the genuine successes from ${scope}, then use the achievable next steps to build a steadier line.`;
-  els.coachObservations.innerHTML = "";
-  observations.forEach((item, index) => {
-    const card = document.createElement(item.noteId || item.measureNumber ? "button" : "article");
-    if (card instanceof HTMLButtonElement) {
-      card.type = "button";
-      if (item.noteId) card.dataset.noteId = item.noteId;
-      if (item.measureNumber !== null) card.dataset.measureNumber = String(item.measureNumber);
-      card.setAttribute("aria-label", `${item.title}. Show this note in the score.`);
+  const feedback = buildCoachingFeedback(results);
+  els.resultsPanel.dataset.level = feedback.profile.level;
+  els.coachLevel.hidden = true;
+  els.coachIntro.textContent = `One priority at a time · ${scope}. ${feedback.observations.some(item => item.provisional) ? "Provisional cards are practice ideas, not measured findings." : "Tap a finding to locate it in the score."}`;
+  els.coachObservations.replaceChildren();
+  for (const [heading, items] of [["3 Things to Work On", feedback.improvements], ["2 Things You Did Well", feedback.strengths]]) {
+    const group = document.createElement("section"); group.className = "coach-group";
+    const h = document.createElement("h3"); h.textContent = heading; group.append(h);
+    for (const [index, item] of items.entries()) {
+      const card = document.createElement(item.noteId ? "button" : "article");
+      card.className = `coach-card ${item.tone}${item.provisional ? " provisional" : ""}`;
+      if (item.noteId) { card.type = "button"; card.dataset.noteId = item.noteId; card.dataset.measureNumber = item.measureNumber; card.setAttribute("aria-label", `${item.title}. Show in score.`); }
+      const number = document.createElement("span"); number.className = "coach-card-number"; number.textContent = index + 1;
+      const copy = document.createElement("span"); copy.className = "coach-card-copy";
+      const label = document.createElement("small"); label.textContent = item.provisional ? "Provisional guidance" : item.tone === "positive" ? "Measured strength" : "Measured priority";
+      const title = document.createElement("strong"); title.textContent = item.title;
+      const body = document.createElement("span"); body.textContent = item.body;
+      const exercise = document.createElement("span"); exercise.className = "coach-exercise"; exercise.textContent = item.exercise;
+      copy.append(label, title, body, exercise); card.append(number, copy);
+      if (item.noteId) { const cue = document.createElement("span"); cue.className = "coach-card-cue"; cue.textContent = "Show in score ↑"; card.append(cue); }
+      group.append(card);
     }
-    card.className = `coach-card ${item.tone}`;
-    const number = document.createElement("span");
-    number.className = "coach-card-number";
-    number.textContent = String(index + 1).padStart(2, "0");
-    const copy = document.createElement("span");
-    copy.className = "coach-card-copy";
-    const kind = document.createElement("small");
-    kind.textContent = item.tone === "positive" ? "Keep" : "Next focus";
-    const title = document.createElement("strong");
-    title.textContent = item.title;
-    const body = document.createElement("span");
-    body.textContent = item.body;
-    copy.append(kind, title, body);
-    card.append(number, copy);
-    if (card instanceof HTMLButtonElement) {
-      const cue = document.createElement("span");
-      cue.className = "coach-card-cue";
-      cue.textContent = "Show in score ↑";
-      card.append(cue);
-    }
-    els.coachObservations.append(card);
-  });
+    els.coachObservations.append(group);
+  }
 }
 
 function setStatus(status, title, copy) {
@@ -1970,6 +2020,7 @@ function setStatus(status, title, copy) {
 }
 
 function resetControls() {
+  cancelScoreSelection();
   const range = currentPracticeRange();
   els.tempoSlider.value = "100";
   els.tempoOutput.textContent = "100%";
@@ -2047,7 +2098,7 @@ function resetToUpload() {
   cancelAnimationFrame(state.syncFrame);
   clearTimeout(state.overlayResizeTimer);
   state.score = null; state.selectedPartId = null; state.samples = []; state.rawSamples = []; state.acceptedSamples = []; state.visualTraceSamples = []; state.previousTakeTrace = []; state.takeCompleted = false; state.osmd = null; state.cursor = null; state.cursorTimeline = []; state.cursorIndex = 0; state.scoreGeometry = new Map(); state.measureGeometry = [];
-  state.sectionStartMeasure = null; state.sectionEndMeasure = null; state.startMeasure = null; state.rangeSelectionMode = false; state.rangeSelectionStart = null; state.startPickMode = false; state.pendingStartMeasure = null;
+  state.practiceDraft = null; $("#practiceEditor").hidden = true; state.sectionStartMeasure = null; state.sectionEndMeasure = null; state.startMeasure = null; state.rangeSelectionMode = false; state.rangeSelectionStart = null; state.startPickMode = false; state.pendingStartMeasure = null;
   state.activeTake = null;
   state.sessionOctaveShift = null;
   resetPitchDiagnostics();
@@ -2109,6 +2160,8 @@ function runPitchSelfTest() {
 }
 
 function wireEvents() {
+  $("#setupPanel").addEventListener("input", () => queueMicrotask(updateSetupSummary));
+  $("#setupPanel").addEventListener("click", () => queueMicrotask(updateSetupSummary));
   els.scoreInput.addEventListener("change", () => { const file = els.scoreInput.files?.[0]; if (file) loadScore(() => readScoreFile(file)); });
   els.repertoireSelect.addEventListener("change", () => {
     const entry = state.repertoire.find((candidate) => candidate.file === els.repertoireSelect.value);
@@ -2123,19 +2176,22 @@ function wireEvents() {
   els.listeningSetupButtons.forEach((button) => button.addEventListener("click", () => setListeningSetup(button.dataset.listeningSetup)));
   els.recheckMicrophoneButton.addEventListener("click", recheckMicrophone);
   els.countInButtons.forEach((button) => button.addEventListener("click", () => setCountInBars(button.dataset.countIn)));
-  els.sectionFrom.addEventListener("change", applySectionInputs);
-  els.sectionTo.addEventListener("change", applySectionInputs);
+  for (const input of [els.sectionFrom, els.sectionTo, els.startFromBar]) input.addEventListener("input", updateDraftFromInputs);
+  $("#editPracticeButton").addEventListener("click", () => openPracticeEditor());
+  $("#applySectionButton").addEventListener("click", applySectionInputs);
+  $("#cancelSectionButton").addEventListener("click", cancelScoreSelection);
+  wirePracticePointers();
   els.clearSectionButton.addEventListener("click", clearPracticeSection);
   els.selectBarsButton.addEventListener("click", toggleRangeSelection);
-  els.startFromBar.addEventListener("change", () => applyStartFromInput());
+
   els.chooseStartButton.addEventListener("click", toggleStartPick);
   els.startHereButton.addEventListener("click", () => {
-    if (state.pendingStartMeasure !== null) applyStartFromInput(state.pendingStartMeasure);
+    applySectionInputs();
   });
   els.cancelScoreSelectionButton.addEventListener("click", cancelScoreSelection);
   els.scoreContainer.addEventListener("click", (event) => {
     const region = event.target.closest?.(".score-measure-region");
-    if (region) selectScoreMeasure(region.dataset.measureNumber);
+    if (region && state.startPickMode) selectScoreMeasure(region.dataset.measureNumber);
   });
   els.scoreContainer.addEventListener("keydown", (event) => {
     if (!['Enter', ' '].includes(event.key)) return;
@@ -2223,7 +2279,7 @@ function wireEvents() {
   els.helpButton.addEventListener("click", () => els.helpDialog.showModal());
   els.pitchSelfTest.addEventListener("click", runPitchSelfTest);
   window.addEventListener("resize", scheduleScoreTraceRefresh);
-  window.addEventListener("beforeunload", () => audio.destroy());
+  window.addEventListener("beforeunload", () => { tutorial.destroy(); audio.destroy(); });
 }
 
 const tutorial = createTutorial();

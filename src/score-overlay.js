@@ -410,56 +410,65 @@ export function renderScoreTrace(scoreContainer, geometry, samples, { previousSa
   for (const segment of traceSegments(samples, geometry)) appendSegment(pages[segment.to.pageIndex], segment);
 }
 
+// Merge neighbouring bars into a single band per system; never shade the whole piece.
+export function practiceBands(geometry, start, end, wholePiece = false) {
+  if (wholePiece) return [];
+  const groups = new Map();
+  for (const r of geometry || []) {
+    const selected = r.measureNumber >= start && r.measureNumber <= end;
+    const key = r.system;
+    const group = groups.get(key) || [];
+    group.push({ ...r, selected }); groups.set(key, group);
+  }
+  const bands = [];
+  for (const group of groups.values()) {
+    const ordered = group.sort((a,b) => a.xStart - b.xStart);
+    let band = null;
+    for (const r of ordered) {
+      if (band && band.selected === r.selected && band.pageIndex === r.pageIndex && r.xStart <= band.xEnd + 2) {
+        band.xEnd = Math.max(band.xEnd, r.xEnd);
+        band.yStart = Math.min(band.yStart, r.yStart);
+        band.bottom = Math.max(band.bottom, r.yStart + r.height);
+      } else {
+        band = { ...r, bottom: r.yStart + r.height }; bands.push(band);
+      }
+    }
+  }
+  return bands.map(b => ({ ...b, height: b.bottom - b.yStart }));
+}
+
 export function renderMeasureSelection(scoreContainer, geometry, {
-  sectionStartMeasure,
-  sectionEndMeasure,
-  startMeasure,
+  sectionStartMeasure, sectionEndMeasure, startMeasure, wholePiece = false,
   interactionMode = null,
-  pendingMeasure = null,
 } = {}) {
   const pages = [...scoreContainer.querySelectorAll('svg[id^="osmdSvgPage"]')];
   pages.forEach((page) => page.querySelector(".score-range-layer")?.remove());
   pages.forEach((page, pageIndex) => {
-    const layer = svgElement("g", {
-      class: `score-range-layer${interactionMode ? " is-interactive" : ""}`,
-      "data-page-index": pageIndex,
-    });
+    const layer = svgElement("g", { class: `score-range-layer${interactionMode ? " is-interactive" : ""}`, "data-page-index": pageIndex });
     const traceLayer = page.querySelector(".score-trace-layer");
-    if (traceLayer) page.insertBefore(layer, traceLayer);
-    else page.append(layer);
+    if (traceLayer) page.insertBefore(layer, traceLayer); else page.append(layer);
   });
-
+  for (const band of practiceBands(geometry, sectionStartMeasure, sectionEndMeasure, wholePiece)) {
+    pages[band.pageIndex]?.querySelector(".score-range-layer")?.append(svgElement("rect", {
+      class: band.selected ? "score-section-highlight" : "score-section-dim",
+      x: band.xStart, y: band.yStart, width: band.xEnd - band.xStart, height: band.height,
+      rx: band.selected ? 6 : 0, "aria-hidden": "true",
+    }));
+  }
+  // Transparent hit regions become keyboard targets only during explicit selection.
   for (const region of geometry || []) {
     const layer = pages[region.pageIndex]?.querySelector(".score-range-layer");
     if (!layer) continue;
-    const selected = region.measureNumber >= Number(sectionStartMeasure)
-      && region.measureNumber <= Number(sectionEndMeasure);
-    const classes = ["score-measure-region"];
-    if (selected) classes.push("selected");
-    if (region.measureNumber === Number(startMeasure)) classes.push("start-measure");
-    if (region.measureNumber === Number(pendingMeasure)) classes.push("pending");
-    const rect = svgElement("rect", {
-      class: classes.join(" "),
-      "data-measure-number": region.measureNumber,
-      x: region.xStart,
-      y: region.yStart,
-      width: Math.max(12, region.xEnd - region.xStart),
-      height: region.height,
-      rx: 4,
-      tabindex: interactionMode ? 0 : -1,
-      role: interactionMode ? "button" : "presentation",
+    layer.append(svgElement("rect", {
+      class: "score-measure-region", "data-measure-number": region.measureNumber,
+      x: region.xStart, y: region.yStart, width: Math.max(12, region.xEnd - region.xStart), height: region.height,
+      tabindex: interactionMode ? 0 : -1, role: interactionMode ? "button" : "presentation",
       "aria-label": interactionMode ? `Bar ${region.measureNumber}` : "",
-    });
-    layer.append(rect);
-    if (region.measureNumber === Number(startMeasure)) {
-      layer.append(svgElement("line", {
-        class: "score-start-marker",
-        x1: region.xStart + 3,
-        y1: region.yStart + 2,
-        x2: region.xStart + 3,
-        y2: region.yStart + region.height - 2,
-      }));
-    }
+    }));
+    if (!wholePiece && region.measureNumber === Number(startMeasure)) layer.append(svgElement("line", {
+      class: "score-start-marker", x1: region.xStart + 3, y1: region.yStart + 2,
+      x2: region.xStart + 3, y2: region.yStart + region.height - 2,
+    }));
   }
 }
 
