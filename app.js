@@ -1,5 +1,5 @@
 import { draftFromRange, dragRange, validateDraft, measureAtPoint } from "./src/practice-selection.js?v=27";
-import { createTutorial } from "./src/tutorial.js?v=27";
+import { createTutorial } from "./src/tutorial.js?v=28";
 import { AudioEngine } from "./src/audio-engine.js?v=26";
 import { analysePerformance, performanceSummary } from "./src/analysis.js?v=27";
 import { buildCoachingFeedback } from "./src/coaching.js?v=27";
@@ -93,6 +93,7 @@ const state = {
   score: null,
   selectedPartId: null,
   mode: "listen",
+  microphoneCheckedThisOpen: false,
   scoreView: "vocal",
   enabledParts: new Set(),
   samples: [],
@@ -723,6 +724,7 @@ async function renderScore() {
   } finally {
     state.rendering = false;
     els.scoreContainer.removeAttribute("aria-busy");
+    tutorial.refreshOverview();
   }
 }
 
@@ -875,6 +877,7 @@ function updateMicrophoneCheckSetting() {
 
 function handleMicrophoneCalibration(calibration) {
   state.microphoneCalibration = calibration;
+  if (calibration?.signalGood) state.microphoneCheckedThisOpen = true;
   saveMicrophoneCalibration(calibration);
   updateMicrophoneCheckSetting();
 }
@@ -997,6 +1000,10 @@ async function hearStartingNote() {
     await audio.previewPitch(starting.midi);
     setTimeout(() => {
       if (audio.isPlaying || audio.isCountingIn || state.sessionOctaveShift !== null) return;
+      if (!MODE_CONFIG[state.mode].microphone || !audio.hasMicrophoneStream) {
+        els.octaveConfirmation.textContent = "Match this note comfortably. Choose Assisted for automatic octave confirmation.";
+        return;
+      }
       state.awaitingOctaveResponse = true;
       state.octaveSelector.reset();
       els.octaveConfirmation.textContent = "Now sing that note back";
@@ -2282,7 +2289,23 @@ function wireEvents() {
   window.addEventListener("beforeunload", () => { tutorial.destroy(); audio.destroy(); });
 }
 
-const tutorial = createTutorial();
+let microphoneReminderShown = false;
+function showMicrophoneReminder(reason) {
+  if (microphoneReminderShown || state.microphoneCheckedThisOpen || !state.score || state.microphonePreparing || audio.isPlaying || audio.isPaused || audio.isCountingIn) return;
+  microphoneReminderShown = true;
+  $("#microphoneReminderTitle").textContent = reason === "first-tour" ? "Ready for a microphone check?" : "Check your microphone for this session";
+  $("#microphoneReminderDialog").showModal();
+}
+const tutorial = createTutorial({
+  onStudioReady: showMicrophoneReminder,
+  onLayoutChange: () => requestAnimationFrame(() => { if (state.osmd && !state.rendering) void renderScore(); }),
+});
+$("#calibrateMicrophoneButton").addEventListener("click", () => {
+  $("#microphoneReminderDialog").close();
+  $("#setupPanel").open = true;
+  void recheckMicrophone();
+});
+$("#skipMicrophoneButton").addEventListener("click", () => $("#microphoneReminderDialog").close());
 $("#replayTutorialButton").addEventListener("click", () => {
   els.helpDialog.close();
   tutorial.replay();

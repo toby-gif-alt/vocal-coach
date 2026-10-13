@@ -15,11 +15,11 @@
     <meta name="twitter:image" content="https://toby-gif-alt.github.io/vocal-coach/og.png" />
     <title>Vocal Coach — Practise from the score</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%2317382f'/%3E%3Cpath d='M14 34c7 0 7-15 14-15s7 27 14 27 7-16 8-16' fill='none' stroke='%23d7ff72' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="./styles.css?v=27" />
+    <link rel="stylesheet" href="./styles.css?v=28" />
     <script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@2.1.2/build/opensheetmusicdisplay.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/tone@15.1.22/build/Tone.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" defer></script>
-    <script type="module" src="./app.js?v=27"></script>
+    <script type="module" src="./app.js?v=28"></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to the app</a>
@@ -114,11 +114,6 @@
                 <button type="button" data-count-in="2" role="radio" aria-checked="false">2 bars</button>
               </div>
             </div>
-            <div class="starting-note-setting">
-              <div><span>Starting note</span><strong id="startingNoteName">—</strong></div>
-              <button id="hearStartingNote" type="button">🔊 Hear starting note</button>
-              <p id="octaveConfirmation" role="status">Hear the note, then sing it back to confirm your octave.</p>
-            </div>
             <details class="octave-setting">
               <summary><span>Advanced / manual octave</span><output id="octaveOutput">Written</output></summary>
               <div class="option-switch" role="radiogroup" aria-label="Manual singing octave">
@@ -176,7 +171,12 @@
               <p id="sectionValidation" class="setting-message" role="status">Whole piece is selected.</p>
             </section>
 <section class="score-panel panel" aria-labelledby="scoreHeading">
-              <div class="score-panel-head"><div><p class="kicker">Following</p><h2 id="scoreHeading">Selected vocal line</h2></div><div class="score-head-meta"><button id="editPracticeButton" type="button">Practice section</button><span class="measure-pill">Measure <strong id="measureNumber">1</strong></span><div class="tolerance-legend" aria-label="Pitch trace colours"><span><i class="green"></i>±15¢</span><span><i class="yellow"></i>±30¢</span><span><i class="orange"></i>±45¢</span><span><i class="red"></i>45¢+</span></div></div></div>
+              <div class="score-panel-head"><div><p class="kicker">Following</p><h2 id="scoreHeading">Selected vocal line</h2></div><div class="score-head-meta">            <div class="starting-note-setting">
+              <div><span>Starting note</span><strong id="startingNoteName">—</strong></div>
+              <button id="hearStartingNote" type="button">🔊 Hear starting note</button>
+              <p id="octaveConfirmation" role="status">Hear the note, then sing it back to confirm your octave.</p>
+            </div>
+<button id="editPracticeButton" type="button">Practice section</button><span class="measure-pill">Measure <strong id="measureNumber">1</strong></span><div class="tolerance-legend" aria-label="Pitch trace colours"><span><i class="green"></i>±15¢</span><span><i class="yellow"></i>±30¢</span><span><i class="orange"></i>±45¢</span><span><i class="red"></i>45¢+</span></div></div></div>
               <div class="score-banner"><span></span><strong id="scoreBannerPart">Voice</strong> is the target · your accepted pitch draws directly across its notes <label class="previous-take-toggle" id="previousTakeControl" hidden><input id="showPreviousTake" type="checkbox" checked /> Previous take</label></div>
               <div class="score-selection-action" id="scoreSelectionAction" hidden role="status">
                 <span id="scoreSelectionCopy">Choose a measure.</span>
@@ -282,6 +282,12 @@
     </main>
 
     <dialog class="dialog" id="helpDialog"><form method="dialog"><button class="dialog-close" value="close" aria-label="Close help">×</button><p class="eyebrow"><span></span> Quick guide</p><h2>From MusicXML to useful feedback.</h2><ol><li><span>1</span><p><strong>Export MusicXML.</strong> In your notation software, export the full score as MusicXML or compressed MXL.</p></li><li><span>2</span><p><strong>Choose exactly what you sing.</strong> Vocal Coach never assumes a part named “Voice” exists.</p></li><li><span>3</span><p><strong>Choose how much help you need.</strong> Listen needs no microphone. Assisted adds a guide and pitch trace; Assessment removes the guide and gives three priorities and two strengths.</p></li><li><span>4</span><p><strong>Review the shape.</strong> Your accepted pitch stays on the written staff and your immediately previous take can remain as a quiet reference.</p></li></ol><p class="dialog-note">This prototype assesses fundamental pitch only. It does not yet grade rhythm, vibrato, breath, diction, or voice type.</p><button id="replayTutorialButton" type="button">Replay button tour</button><button class="continue-button" value="close">Got it</button></form></dialog>
+    <dialog id="microphoneReminderDialog" class="microphone-reminder" aria-labelledby="microphoneReminderTitle">
+      <h2 id="microphoneReminderTitle">Check your microphone</h2>
+      <p id="microphoneReminderCopy">A quick room-and-voice check is recommended each time you reopen Vocal Coach, especially if your room, microphone or distance has changed.</p>
+      <p>You can keep practising in Listen without a microphone.</p>
+      <div><button id="calibrateMicrophoneButton" type="button">Calibrate microphone</button><button id="skipMicrophoneButton" type="button">Continue without mic</button></div>
+    </dialog>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <noscript><p class="noscript">Vocal Coach needs JavaScript to read MusicXML and analyse pitch.</p></noscript>
   </body>
