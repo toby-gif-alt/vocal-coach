@@ -2,7 +2,7 @@ import { cp, mkdir, readdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { build } from 'esbuild';
 await rm('dist',{recursive:true,force:true});await mkdir('dist',{recursive:true});
-for(const file of ['index.html','app.js','styles.css','manifest.webmanifest','icons','src','vendor','samples','repertoire','og.png']) await cp(file,`dist/${file}`,{recursive:true});
+for(const file of ['index.html','app.js','styles.css','manifest.webmanifest','icons','src','vendor','samples','repertoire','og.png']) await cp(file,`dist/${file}`,{recursive:true,filter:source=>!source.split('/').some(segment=>segment.startsWith('.'))});
 async function walk(dir) { const files=[];for(const entry of await readdir(dir,{withFileTypes:true})) {const path=`${dir}/${entry.name}`;files.push(...(entry.isDirectory()?await walk(path):[path]));}return files; }
 const assets=[];
 for(const file of (await walk('dist')).sort()) {const bytes=await readFile(file);assets.push({path:file.slice(5),bytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')});}

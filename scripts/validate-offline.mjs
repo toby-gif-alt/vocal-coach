@@ -7,7 +7,7 @@ const base='https://toby-gif-alt.github.io/vocal-coach/manifest.webmanifest';
 for(const path of [manifest.start_url,manifest.scope,manifest.share_target.action,...manifest.file_handlers.map(f=>f.action)])assert.ok(new URL(path,base).pathname.startsWith('/vocal-coach/'));
 for(const icon of manifest.icons){const bytes=await readFile(`dist/${icon.src}`);const [size]=icon.sizes.split('x').map(Number);assert.equal(bytes.readUInt32BE(16),size);assert.equal(bytes.readUInt32BE(20),size);}
 const assets=JSON.parse(await readFile('dist/offline-assets.json'));
-for(const asset of assets.assets){const bytes=await readFile(`dist/${asset.path}`);assert.equal(bytes.length,asset.bytes);assert.equal(createHash('sha256').update(bytes).digest('hex'),asset.sha256);}
+for(const asset of assets.assets){assert.ok(!asset.path.split('/').some(segment=>segment.startsWith('.')),`Pages excludes hidden asset: ${asset.path}`);const bytes=await readFile(`dist/${asset.path}`);assert.equal(bytes.length,asset.bytes);assert.equal(createHash('sha256').update(bytes).digest('hex'),asset.sha256);}
 for(const essential of ['index.html','app.js','vendor/osmd.js','vendor/tone.js','vendor/jszip.js','vendor/pitchy.mjs','samples/vocal-guide/index.json'])assert.ok(assets.assets.some(a=>a.path===essential));
 assert.ok(assets.assets.some(a=>a.path.startsWith('samples/piano/salamander/')&&a.path.endsWith('.mp3')));
 assert.ok(assets.assets.some(a=>a.path.startsWith('repertoire/')));
