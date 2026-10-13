@@ -9,6 +9,7 @@ import {
   PLAYBACK_CONFIG,
   REVIEW_CONFIG,
   frequencyToMidi,
+  midiToFrequency,
 } from "./config.js?v=20";
 import {
   DEFAULT_GUIDE_VOICE,
@@ -20,7 +21,7 @@ import {
 import { deriveNoiseGate, RmsNoiseGate } from "./noise-gate.js?v=20";
 import { applyMicrophoneSensitivity, deriveMicrophoneCalibration } from "./microphone-calibration.js?v=20";
 import { SessionPerformanceRecorder } from "./performance-recorder.js?v=15";
-import { detectAutocorrelationPitch, StablePitchTracker } from "./pitch-tracker.js?v=20";
+import { detectAutocorrelationPitch, shouldCorroboratePitch, StablePitchTracker } from "./pitch-tracker.js?v=20";
 import { playbackWindow } from "./practice-range.js?v=18";
 import { classifyPlaybackPart, playbackRoutes } from "./playback-routing.js?v=24";
 import { SampledPianoInstrument, SampledPianoLibrary } from "./sampled-piano-instrument.js?v=24";
@@ -700,10 +701,13 @@ export class AudioEngine {
   }
 
   async startMicrophoneMonitoring(targetMidiAtQuarter = () => null) {
+    const generation = this.microphoneGeneration;
     await this.tone.start();
+    if(generation !== this.microphoneGeneration)throw Object.assign(new Error("Microphone monitoring cancelled."),{name:"AbortError"});
     this.targetMidiAtQuarter = targetMidiAtQuarter;
     const wasMonitoring = Boolean(this.pitchFrame);
     await this.startMicrophone();
+    if(generation !== this.microphoneGeneration)throw Object.assign(new Error("Microphone monitoring cancelled."),{name:"AbortError"});
     if (!wasMonitoring) this.pitchTracker.reset();
     this.startPitchSampling();
   }
@@ -729,6 +733,12 @@ export class AudioEngine {
     this.analyser.smoothingTimeConstant = 0;
     this.mediaSource = context.createMediaStreamSource(this.stream);
     this.mediaSource.connect(this.analyser);
+    this.lowAnalyser = context.createAnalyser();
+    this.lowAnalyser.fftSize = AUDIO_CONFIG.lowAnalyserSize;
+    this.lowAnalyser.smoothingTimeConstant = 0;
+    this.mediaSource.connect(this.lowAnalyser);
+    this.lowPitchDetector = PitchDetector.forFloat32Array(AUDIO_CONFIG.lowAnalyserSize);
+    this.lowInputFrame = new Float32Array(AUDIO_CONFIG.lowAnalyserSize);
     this.pitchDetector = PitchDetector.forFloat32Array(this.analyser.fftSize);
     this.inputFrame = new Float32Array(this.analyser.fftSize);
     this.lastPitchSampleAt = 0;
@@ -837,11 +847,19 @@ export class AudioEngine {
       const sampleRate = (this.tone.getContext().rawContext || this.tone.getContext()).sampleRate;
       // Pitchy still runs below the gate so debug mode can explain every input
       // frame. The gate remains authoritative for acceptance.
-      const [frequency, clarity] = this.pitchDetector.findPitch(this.inputFrame, sampleRate);
+      let [frequency, clarity] = this.pitchDetector.findPitch(this.inputFrame, sampleRate);
+      const targetMidi = this.targetMidiAtQuarter(this.currentQuarter);
+      // Keep normal-range latency unchanged; use a longer measured window for
+      // low fundamentals and the target-independent starting-note exploration.
+      const extendedWindow = this.lowAnalyser && (this.octaveSetupActive || frequency < 100 || !frequency || (Number.isFinite(targetMidi) && midiToFrequency(targetMidi) < 100));
+      if(extendedWindow) {
+        this.lowAnalyser.getFloatTimeDomainData(this.lowInputFrame);
+        [frequency, clarity] = this.lowPitchDetector.findPitch(this.lowInputFrame, sampleRate);
+      }
       const previousMidi = this.pitchTracker.recentHarmonicReference(capturedAt)?.midi;
       const rawMidi = frequency > 0 ? frequencyToMidi(frequency) : null;
-      const ambiguous = rawMidi !== null && previousMidi !== undefined && Math.abs(rawMidi - previousMidi) * 100 > 700;
-      const corroborating = ambiguous ? detectAutocorrelationPitch(this.inputFrame, sampleRate) : { frequency: null };
+      const ambiguous = shouldCorroboratePitch(rawMidi,previousMidi,targetMidi);
+      const corroborating = ambiguous ? detectAutocorrelationPitch(extendedWindow ? this.lowInputFrame : this.inputFrame, sampleRate) : { frequency: null };
       const scoreQuarter = this.currentQuarter;
       const rawFrame = {
         frequency,
@@ -903,6 +921,9 @@ export class AudioEngine {
     if (this.stream) this.stream.getTracks().forEach((track) => track.stop());
     this.stream = null;
     this.analyser = null;
+    this.lowAnalyser = null;
+    this.lowPitchDetector = null;
+    this.lowInputFrame = null;
     this.pitchDetector = null;
     this.inputFrame = null;
     this.pitchTracker.reset();

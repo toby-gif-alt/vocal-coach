@@ -16,7 +16,7 @@ export function createLibraryUI({onOpen,onRemoveCurrent,notify}) {
       const row=document.createElement('article');row.className='library-score';const heading=document.createElement('h3');heading.textContent=record.title;
       const meta=document.createElement('p');meta.textContent=[record.composer,record.filename,record.selectedPartName?`Singing: ${record.selectedPartName}`:'Choose vocal part when opening'].filter(Boolean).join(' · ');
       const actions=document.createElement('div');
-      for(const [action,label] of [['open','Open'],['rename','Rename'],['export','Export original'],['remove','Remove']]) {const b=document.createElement('button');b.type='button';b.textContent=label;b.dataset.action=action;b.dataset.scoreId=record.id;b.setAttribute('aria-label',`${label} ${record.title}`);actions.append(b);}
+      for(const [action,label] of [['open','Open'],['rename','Rename'],['export','Download to this device'],['remove','Remove']]) {const b=document.createElement('button');b.type='button';b.textContent=label;b.dataset.action=action;b.dataset.scoreId=record.id;b.setAttribute('aria-label',`${label} ${record.title}`);actions.append(b);}
       row.append(heading,meta,actions);list.append(row);
     }
     if(!list.children.length){const empty=document.createElement('p');empty.textContent=query?'No saved scores match this search.':'Import a score to save it here for next time.';list.append(empty);}

@@ -5,11 +5,12 @@ export const PITCH_THRESHOLDS = Object.freeze({
 });
 
 export const AUDIO_CONFIG = Object.freeze({
-  // 4096 samples gives Pitchy enough low-frequency context for A3 and lower
-  // while the sampling cadence below keeps interactive latency modest.
+  // Normal notes keep a 4096-sample window. Low fundamentals and octave setup
+  // use 8192 measured samples (about 186/171 ms at 44.1/48 kHz).
   analyserSize: 4096,
   minimumClarity: 0.78,
-  minimumFrequency: 65,
+  minimumFrequency: 40,
+  lowAnalyserSize: 8192,
   maximumFrequency: 1400,
   sampleIntervalMs: 46,
   ambientCalibrationDurationMs: 1000,
@@ -74,8 +75,6 @@ export const OCTAVE_SELECTION_CONFIG = Object.freeze({
   stableDurationMs: 550,
   maximumFrameGapMs: 150,
   candidateToleranceCents: 75,
-  responseDelayMs: 720,
-  responseWindowMs: 1500,
 });
 
 export const REVIEW_CONFIG = Object.freeze({

@@ -8,8 +8,15 @@ async function check() {const cache=await caches.open(CACHE);for(const [url,asse
 function download() {
   if(downloading)return downloading;
   downloading=(async()=>{const cache=await caches.open(CACHE);let done=0;const entries=[...allowed];
+    const previousCaches=await Promise.all((await caches.keys()).filter(key=>key.startsWith('vocal-coach-app-')&&key!==CACHE).map(key=>caches.open(key)));
     async function worker() {while(entries.length){const [url,asset]=entries.shift();let response=await cache.match(url);
-      if(!await verified(response,asset)){response=await fetch(url,{cache:'reload',credentials:'same-origin'});if(!await verified(response,asset))throw Error(`Could not verify ${asset.path}`);await cache.put(url,response);}
+      if(!await verified(response,asset)){
+        response=null;
+        // Reuse only bytes matching this build, never an incompatible old file.
+        for(const previous of previousCaches){const candidate=await previous.match(url);if(await verified(candidate,asset)){response=candidate;break;}}
+        if(!response){response=await fetch(url,{cache:'reload',credentials:'same-origin'});if(!await verified(response,asset))throw Error(`Could not verify ${asset.path}`);}
+        await cache.put(url,response);
+      }
       done++;await broadcast({type:'DOWNLOAD_PROGRESS',done,total:allowed.size});
     }}
     await Promise.all(Array.from({length:4},worker));

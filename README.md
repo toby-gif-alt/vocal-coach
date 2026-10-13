@@ -11,8 +11,8 @@ No account, backend, or upload service is required. Scores, calibration, pitch d
 3. View the selected part by itself or switch to the full score.
 4. Choose **Assisted** (guide + accompaniment + trace, without coaching judgement) or **Assessment** (accompaniment + trace + detailed coaching). The guide defaults to **Human voice**, with **Synthetic Ah** available from the same control panel.
 5. Practise the whole piece or enter/select a bar range directly on the score. **Start from** can begin later inside that section without assessing the deliberately skipped bars.
-6. Choose an Off/1-bar/2-bar musical count-in. Press **Hear starting note**, then sing it back during the explicit response window to confirm one of −24/−12/0/+12 semitones. The octave never changes automatically during count-in or performance, and manual controls remain under **Advanced**.
-7. Before the first microphone session, complete a saved room-and-voice **Microphone Check**: stay quiet for about one second, then sing a comfortable “Ah”, beginning normally and getting a little louder. Low/Normal/High remain available as advanced overrides.
+6. Choose an Off/1-bar/2-bar count-in in Settings. Open **Starting note**, hear it and sing for as long as you need. Choose one of four large octave cards (−24/−12/0/+12 semitones), then Continue to practice. Live pitch shades the octave area even when flat/sharp; a precise match suggests a card but never selects it. The target is locked during a take.
+7. Before the first microphone session, complete the saved room-and-voice **Microphone Check**, then continue directly into starting-note selection: stay quiet for about one second, then sing a comfortable “Ah”, beginning normally and getting a little louder. Low/Normal/High remain available as advanced overrides.
 8. In a microphone mode, use the large vertical tuner to find the first vocal entrance at or after the selected starting bar and keep tuning through the count-in; during later rests it prepares the next entrance without adding those samples to assessment results.
 9. Enable and balance each non-vocal MusicXML part independently. These controls remain live during the take, and the take stores its individual part mix for synchronized review.
 10. Start another take to retain the immediately previous trace as a thin grey reference. Assisted ends with a trace/listen-back review only; Assessment additionally provides adaptive **Your Vocal Coach** observations and detailed metrics.
@@ -33,7 +33,7 @@ The app deliberately keeps musical concerns separate:
 - `src/microphone-calibration.js` combines ambient, normal voice, and slightly louder voice distributions into saved acquisition/continuation gates, a clarity threshold, and tracker reacquisition setting. Sustained calibration clipping is rejected; there is no upper RMS gate for valid singing.
 - `src/performance-recorder.js` wraps MediaRecorder for session-only voice capture, pause/resume accounting, local object-URL playback, and future storage separation.
 - `src/pitch-tracker.js` keeps raw detector history, requires a short cluster of reliable frames to acquire a voice, continues a recently established related pitch at softer thresholds, keeps a separate 1.4-second reliable-fundamental memory for octave ambiguity, rejects isolated jumps, and classifies every frame for developer diagnostics.
-- `src/octave-selection.js` compares only an explicit hear-and-sing-back response with −24/−12/0/+12 candidates. It is not active during count-in, performance, rests, or review.
+- `src/starting-note.js` presents explicit octave cards and a target-independent measured pitch marker with broad octave-area highlighting. `src/octave-selection.js` supplies candidate calculations and sustained mismatch suggestions; suggestions never change a take.
 - `src/practice-range.js` validates real measure numbers, resolves whole-piece/section/start-from choices to one absolute quarter-note interval, and clips assessment notes and samples at its boundaries.
 - `src/review-playback.js` stores immutable take settings (including mode, measure/quarter boundaries, enabled accompaniment IDs, and per-part volumes), review-mix defaults, and the offset mapping from recorded-audio seconds back to absolute musical quarter notes for synchronized review.
 - `src/live-tuning.js` selects the starting/current/next target, keeps pre-performance and rest samples out of assessment, and provides a 170 ms visual-only dropout hold before the meter dims to **Listening…**.
@@ -70,7 +70,7 @@ python3 -m http.server 8080 --directory dist
 
 Run `npm run generate` after adding repertoire scores or vocal samples, then open `http://localhost:8080` and choose a repertoire score.
 
-Wait for **Offline ready** before disconnecting. HTTPS or localhost is required for installation and microphone access. No score or microphone data is uploaded.
+Offline assets prepare automatically. Keep the app open while connected the first time so its music and sounds can be saved automatically. HTTPS or localhost is required for installation and microphone access. No score or microphone data is uploaded.
 
 ## Checks
 
