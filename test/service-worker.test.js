@@ -6,7 +6,7 @@ async function worker(version,storage,files,options={}) {
   const source=await build({entryPoints:['src/service-worker.js'],bundle:true,format:'iife',platform:'browser',write:false,banner:{js:`const OFFLINE_BUILD=${JSON.stringify({version,assets})};`}});
   const handlers={},messages=[],clients=options.clients||[{url:scope,postMessage:m=>messages.push(m)}];let skipped=false;
   const self={registration:{scope},clients:{async matchAll(){return clients;},async claim(){}},addEventListener:(type,fn)=>handlers[type]=fn,async skipWaiting(){skipped=true;}};
-  vm.runInNewContext(source.outputFiles[0].text,{self,caches:storage,crypto,Response,Request,Headers,URL,TextEncoder,TextDecoder,Uint8Array,indexedDB:options.factory||new IDBFactory(),structuredClone,console,fetch:async url=>{const path=new URL(url).pathname.slice('/vocal-coach/'.length);if(options.bad===path)throw Error('Download failed');return new Response(files[path]||'bad');}});
+  vm.runInNewContext(source.outputFiles[0].text,{self,caches:storage,crypto,Response,Request,Headers,URL,TextEncoder,TextDecoder,Uint8Array,indexedDB:options.factory||new IDBFactory(),structuredClone,console,fetch:async url=>{const path=new URL(url).pathname.slice('/vocal-coach/'.length);options.fetches?.push(path);if(options.bad===path)throw Error('Download failed');return new Response(files[path]||'bad');}});
   async function event(type,data={}){let pending;handlers[type]({...data,waitUntil:p=>pending=p});if(pending)await pending;}
   return {event,handlers,messages,get skipped(){return skipped;}};
 }
@@ -53,4 +53,10 @@ test('incoming attachment reconstruction supports older File records and exact b
   const original=new File([new Uint8Array([80,75,0,255,1,128])],'teacher.mxl',{type:'application/vnd.recordare.musicxml'});
   const legacy=incomingScoreFile({file:original});assert.equal(legacy.name,original.name);assert.equal(legacy.type,original.type);
   return Promise.all([legacy.arrayBuffer(),original.arrayBuffer()]).then(([a,b])=>assert.deepEqual(a,b));
+});
+
+test('updates reuse unchanged verified sound bytes while fetching changed app files',async()=>{
+  const storage=cacheStorage(),before=await worker('before',storage,{'index.html':'old','sound.mp3':'sample'});await before.event('install');await before.event('activate');
+  const fetches=[],after=await worker('after',storage,{'index.html':'new','sound.mp3':'sample'},{fetches});await after.event('install');assert.deepEqual(fetches,['index.html']);await after.event('activate');
+  assert.equal(await(await(await storage.open('vocal-coach-app-after')).match(new URL('sound.mp3',scope))).text(),'sample');
 });

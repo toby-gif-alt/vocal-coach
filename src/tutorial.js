@@ -1,11 +1,12 @@
 const WELCOME_KEY = "vocal-coach:welcome:v2", STUDIO_KEY = "vocal-coach:studio-tour:v2";
 export const TOUR_STEPS = [
-  [".mode-switch", "Choose your mode", "Listen needs no mic. Assisted adds a guide and pitch trace. Assessment gives coaching without the guide."],
-  [".score-stage", "Sing from the score", "The cursor follows the music. With a mic, the tuner and coloured trace show how your pitch matches."],
-  ["#setupPanel", "Prepare your entrance", "Hear starting note sits beside the score. Open Session settings for count-in, octave, tempo and microphone checks."],
-  ["#mixerPanel", "Hear the parts you need", "Open Mixer to balance the accompaniment and vocal guide."],
-  ["#editPracticeButton", "Practise selected bars", "Double-click a bar, or use Practice section. Type a range or choose Select by dragging, then Apply."],
-  ["#transportDock", "Play, pause and review", "Use the bottom controls while singing. Finish & review ends a mic take; Assessment shows three priorities and two strengths."],
+  [".part-and-tutorial", "Your singing part", "This badge names your selected vocal line. Tutorial beside it replays this guide any time you are not performing."],
+  [".mode-switch", "Choose your mode", "Listen needs no microphone. Assisted adds the guide and pitch trace. Assessment gives coaching without the guide."],
+  ["#hearStartingNote", "Find a comfortable starting note", "Open Starting note, hear it, and sing. Large octave cards show your live pitch. Tap your preferred card and continue; your choice stays fixed during a take."],
+  ["#mixerPanel", "Balance your lesson", "Mixer adjusts accompaniment and vocal guide. Settings holds count-in, tempo, listening setup and microphone recheck."],
+  [".score-stage", "Follow the music", "The cursor follows your part. With a microphone, the live tuner and coloured trace show your pitch. You can scroll to explore the score; this tour never moves it for you."],
+  ["#editPracticeButton", "Practise selected bars", "Double-click a bar, or use Practice section. Enter a range or select by dragging, then Apply."],
+  ["#transportDock", "Play, pause and review", "The single transport stays available as you scroll. Finish & review ends a microphone take; Assessment shows three priorities and two strengths."],
 ];
 
 // State and timing are independent of the DOM, so first-use behaviour is testable.
@@ -48,15 +49,11 @@ export function createTutorial({ onStudioReady = () => {}, onLayoutChange = () =
     studio.style.setProperty("--tutorial-scale", tutorialOverviewScale(studio.offsetHeight, innerHeight, top, innerWidth < 900));
   }
   function beginOverview() {
-    const studio = document.querySelector("#studioView");
-    if (kind !== "studio" || !studio || studio.classList.contains("tutorial-overview")) return;
-    document.body.classList.add("tutorial-studio"); studio.classList.add("tutorial-overview");
-    // One overview at the start, then a fixed viewport for every Next/Back step.
-    window.scrollTo({ top: Math.max(0, studio.offsetTop - 12), behavior: "instant" });
-    fitOverview(); onLayoutChange();
+    // Highlight in place. Next/Back never scroll, resize or zoom the score.
+    if(kind === 'studio')document.body.classList.add('tutorial-studio');
   }
   function hide() {
-    target?.classList.remove("tutorial-target"); target = null; card.hidden = true;
+    target?.classList.remove("tutorial-target"); target = null; card.hidden = true; document.body.classList.remove("tutorial-studio");
     const studio = document.querySelector("#studioView");
     if (studio?.classList.contains("tutorial-overview")) {
       studio.classList.remove("tutorial-overview"); studio.style.removeProperty("--tutorial-scale");

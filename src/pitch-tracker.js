@@ -381,3 +381,9 @@ export class PitchDiagnosticSummary {
     };
   }
 }
+
+export function shouldCorroboratePitch(rawMidi,previousMidi,targetMidi) {
+  if(!Number.isFinite(rawMidi))return false;
+  return (Number.isFinite(previousMidi)&&Math.abs(rawMidi-previousMidi)>7)
+    ||(Number.isFinite(targetMidi)&&Math.abs(rawMidi-targetMidi)>11.4);
+}

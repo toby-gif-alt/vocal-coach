@@ -112,7 +112,8 @@ test("GitHub Pages entry point references only present local assets", async () =
   assert.doesNotMatch(html, /<option value="synthetic-(?:ooh|oh)"/);
   assert.doesNotMatch(html, /data-mode="practice"/);
   for (const bars of ["0", "1", "2"]) assert.match(html, new RegExp(`data-count-in="${bars}"`));
-  for (const shift of ["-24", "-12", "0", "12"]) assert.match(html, new RegExp(`data-octave="${shift}"`));
+  assert.match(html, /id="octaveCards"/);
+  assert.match(html, /id="changeOctaveButton"/);
   assert.match(html, /id="coachObservations"/);
   for (const id of ["recheckMicrophoneButton", "dockRestartButton", "dockPlayPauseButton", "dockStopButton", "followScoreButton", "performancePlayback", "performanceSeek", "performanceVolume", "reviewAccompanimentVolume", "reviewMelodyVolume", "tuningMeter", "tuningPhase", "expectedLabel", "gaugeNeedle"]) {
     assert.match(html, new RegExp(`id="${id}"`));

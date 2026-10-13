@@ -385,3 +385,198 @@ body.tutorial-studio { overflow: hidden; }
 
 .pwa-controls #installAppButton { background: var(--forest); color: white; border-color: var(--forest); min-height: 46px; padding: 11px 18px; font-size: 15px; font-weight: 700; }
 .pwa-controls #installAppButton:focus-visible { outline: 3px solid #b9cd7a; outline-offset: 3px; }
+/* A single music-first header and transport. */
+body.studio-active { padding-bottom: 24px; }
+.studio-titlebar { align-items:center; margin-bottom:14px; gap:18px; }
+.studio-titlebar h1 { font-size:clamp(26px,3.1vw,44px); line-height:1.12; margin:5px 0; }
+.studio-titlebar .eyebrow { display:none; }
+.part-and-tutorial { display:flex; align-items:center; gap:10px; flex-shrink:0; }
+.part-and-tutorial .selected-badge { padding:10px 14px; }
+#studioTutorialButton,.starting-note-control,#changeOctaveButton { min-height:44px; border:1px solid var(--line); border-radius:12px; background:var(--cream); color:var(--forest); padding:9px 14px; cursor:pointer; font-size:14px; font-weight:700; }
+.studio-layout { gap:10px; }
+.session-toolbar { display:flex; flex-direction:row; align-items:center; flex-wrap:wrap; gap:10px; padding:10px; border:1px solid var(--line); border-radius:16px; background:var(--cream); }
+.session-toolbar .mode-switch { flex:0 1 330px; margin:0; padding:3px; border-radius:12px; }
+.session-toolbar .mode-switch button { padding:8px 12px; min-height:44px; }
+.session-toolbar .mode-switch strong { font-size:13px; }
+.session-toolbar .mode-switch small { display:none; }
+.starting-note-control { display:flex; align-items:center; gap:7px; }
+.starting-note-control strong { font-size:17px; }
+.starting-note-control span { color:var(--ink-soft); font-size:12px; }
+.session-toolbar .mixer-panel,.session-toolbar .setup-panel { position:relative; flex:0 0 auto; width:auto; padding:0; background:transparent; border:0; }
+.session-toolbar details > summary { padding:12px 15px; min-height:44px; font-size:14px; border:1px solid var(--line); border-radius:12px; }
+.session-toolbar details > .mixer-grid,.session-toolbar details > .setup-grid { position:absolute; z-index:150; right:0; top:calc(100% + 8px); width:min(600px,calc(100vw - 40px)); max-height:65vh; overflow:auto; padding:20px; border:1px solid var(--line); border-radius:16px; background:var(--cream); box-shadow:var(--shadow); }
+.session-toolbar details > .setup-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; }
+.session-toolbar .status-card { margin:0 0 0 auto; padding:6px 8px; border:0; background:transparent; width:auto; min-width:0; box-shadow:none; }
+.session-toolbar .status-card strong { font-size:13px; }
+.session-toolbar .status-card small { display:none; }
+.session-toolbar .status-icon { font-size:15px; }
+.studio-playback { position:sticky; top:8px; z-index:110; display:flex; align-items:center; gap:10px; padding:6px; background:var(--paper); border-radius:14px; }
+#transportDock { position:relative; left:auto; bottom:auto; transform:none; width:auto; flex:1; min-height:56px; border-radius:14px; gap:10px; padding:6px 8px; box-shadow:0 5px 15px rgba(13,40,33,.1); grid-template-columns:auto 1fr auto; }
+#transportDock .dock-controls button { min-width:50px; font-size:13px; }
+#transportDock .dock-position strong { font-size:12px; }
+#transportDock .dock-position span { font-size:13px; }
+#transportDock .dock-position > small { font-size:11px; }
+#transportDock .follow-score-button { font-size:12px; }
+#transportDock .count-in-display { position:absolute; top:100%; left:0; width:100%; background:var(--forest); border-radius:12px; padding:10px; }
+.legacy-transport[hidden] { display:none !important; }
+.studio-playback .view-switch { flex-shrink:0; }
+.studio-playback .view-switch button { min-height:44px; font-size:12px; }
+#studioView .score-column > .score-panel { margin-top:0; }
+#offlineWarning { font-size:13px; max-width:320px; color:#80522d; }
+.offline-details { margin:16px 0; font-size:14px; }
+.offline-details button { min-height:44px; padding:8px 14px; }
+.starting-note-dialog { width:min(570px,calc(100vw - 24px)); max-height:calc(100dvh - 24px); overflow:auto; border:1px solid var(--line); border-radius:24px; padding:26px; background:var(--cream); color:var(--forest); }
+.starting-note-dialog::backdrop { background:rgba(13,40,33,.48); }
+.starting-note-dialog h2 { font-size:28px; margin:0 30px 10px 0; }
+.starting-note-dialog > p { font-size:15px; line-height:1.5; margin:12px 0; }
+.octave-close { float:right; min-height:44px; min-width:44px; border:0; background:transparent; font-size:28px; color:var(--forest); cursor:pointer; }
+.octave-hear,#continuePractice { min-height:46px; padding:10px 18px; background:var(--forest); color:white; border:0; border-radius:12px; font-size:15px; font-weight:700; cursor:pointer; }
+#continuePractice { width:100%; }
+#continuePractice:disabled { opacity:.5; cursor:default; }
+#octaveLiveLabel { min-height:24px; font-weight:700; }
+.octave-stack { position:relative; }
+#octaveCards { display:flex; flex-direction:column; gap:9px; }
+.octave-card { display:flex; align-items:center; background:#f1f4ec; border:2px solid transparent; border-radius:14px; min-height:86px; position:relative; }
+.octave-card.selected { border-color:var(--forest); background:#e3edcf; }
+.octave-card.near { box-shadow:0 0 0 2px #acc574; }
+.octave-card.suggested::after { content:'Suggested'; position:absolute; right:64px; top:8px; font-size:11px; color:var(--forest); pointer-events:none; }
+.octave-card-choice { flex:1; padding:12px 18px; min-height:82px; border:0; border-radius:12px; background:transparent; color:var(--forest); text-align:left; cursor:pointer; display:grid; grid-template-columns:78px 1fr; align-items:center; gap:3px 12px; }
+.octave-card-choice strong { grid-row:span 2; font-size:31px; }
+.octave-card-choice span { font-size:15px; font-weight:700; }
+.octave-card-choice small { font-size:11px; color:var(--ink-soft); }
+.octave-preview { width:46px; min-height:46px; margin-right:10px; border:1px solid #b7c7ae; border-radius:12px; background:var(--cream); color:var(--forest); font-size:23px; cursor:pointer; }
+#octavePitchMarker { position:absolute; left:-6px; right:-6px; height:2px; background:#ce6d36; pointer-events:none; transition:top 90ms linear; z-index:2; }
+#octavePitchMarker span { position:absolute; left:-5px; top:-4px; width:11px; height:11px; border-radius:50%; background:#ce6d36; }
+.tutorial-studio .tutorial-card { position:fixed; right:18px; bottom:18px; top:auto; width:min(340px,calc(100vw - 28px)); transform:none; z-index:180; }
+@media(max-width:899px) {
+  .studio-titlebar { align-items:flex-start; }
+  .studio-titlebar h1 { font-size:30px; }
+  .part-and-tutorial { flex-wrap:wrap; justify-content:flex-end; max-width:240px; }
+  .session-toolbar .mode-switch { flex:1 1 290px; max-width:none; }
+  .session-toolbar .status-card { margin-left:0; }
+  .studio-playback { flex-wrap:wrap; }
+  #transportDock { flex:1 1 100%; }
+  .studio-playback .view-switch { margin-left:auto; }
+}
+@media(max-width:599px) {
+  .studio-titlebar { flex-direction:column; gap:10px; }
+  .part-and-tutorial { max-width:none; justify-content:flex-start; width:100%; }
+  .studio-titlebar .selected-badge { margin:0; }
+  .session-toolbar { gap:6px; padding:7px; }
+  .session-toolbar .mode-switch { flex:1 1 100%; }
+  .session-toolbar .starting-note-control { flex:1 1 100%; justify-content:center; }
+  .session-toolbar details > .mixer-grid,.session-toolbar details > .setup-grid { position:fixed; inset:auto 12px 16px; width:auto; max-height:70dvh; grid-template-columns:1fr; }
+  #transportDock { grid-template-columns:1fr auto; }
+  #transportDock .dock-position { grid-row:2; grid-column:1/-1; }
+  #transportDock .dock-controls button span { display:none; }
+  #transportDock .follow-score-button { min-width:82px; }
+  #transportDock #finishButton { font-size:11px; min-width:82px; }
+  .starting-note-dialog { padding:18px; border-radius:18px; }
+  .starting-note-dialog h2 { font-size:25px; }
+  .octave-card-choice { grid-template-columns:65px 1fr; padding:10px; }
+  .octave-card-choice strong { font-size:28px; }
+  .octave-card-choice span { font-size:13px; }
+}
+@media(max-width:599px) {
+  .session-toolbar .starting-note-control { flex:0 1 auto; min-width:90px; padding:9px 10px; }
+  .starting-note-control .starting-note-label { display:none; }
+  .session-toolbar .status-card { padding:2px; font-size:12px; }
+  .session-toolbar .status-icon { display:none; }
+  #studioView .score-panel { padding:14px 12px; }
+  #studioView .score-panel-head { gap:8px; margin-bottom:10px; }
+  #studioView .score-panel-head .kicker { display:none; }
+  #studioView .score-panel-head h2 { font-size:17px; }
+  #studioView .tolerance-legend { display:none; }
+  #studioView .score-banner { font-size:0; margin:4px 0; padding:0; min-height:0; }
+  #studioView .score-banner > span,#studioView .score-banner > strong { display:none; }
+  #studioView .score-banner .previous-take-toggle { font-size:12px; }
+  #studioView .score-interaction-hint { display:none; }
+  .studio-playback { gap:4px; padding:4px; }
+}
+.octave-card.live-region { background:#f2e7cc; }
+.octave-card.live-region.selected { background:#e3edcf; }
+/* Lesson controls share the masthead; no extra toolbar card below it. */
+body.studio-active .topbar { position:sticky; top:0; z-index:160; gap:10px; min-height:68px; background:var(--paper); padding-block:8px; }
+body.studio-active .brand { flex-shrink:0; font-size:14px; gap:8px; }
+body.studio-active .brand-mark { width:34px; height:34px; border-radius:10px; }
+body.studio-active .topbar-actions { flex-shrink:0; gap:6px; }
+body.studio-active .local-pill { padding:8px; font-size:11px; }
+.studio-header-controls { flex:1; min-width:0; display:flex; align-items:center; justify-content:center; flex-wrap:wrap; gap:5px; }
+.studio-header-controls .session-toolbar,.studio-header-controls #transportDock,.studio-header-controls .dock-controls { display:contents; }
+.studio-header-controls .mode-switch { flex:0 1 225px; max-width:none; padding:2px; }
+.studio-header-controls .mode-switch button { padding:7px 9px; }
+.studio-header-controls .mode-switch strong { font-size:12px; }
+.studio-header-controls #newScoreButton,.studio-header-controls .dock-controls button,.studio-header-controls .follow-score-button { min-height:44px; min-width:40px; width:auto; margin:0; padding:6px 9px; border:1px solid var(--line); border-radius:10px; background:var(--cream); color:var(--forest); font-size:16px; font-weight:700; cursor:pointer; }
+.studio-header-controls #newScoreButton { font-size:15px; }
+.studio-header-controls #newScoreButton span { font-size:11px; }
+.studio-header-controls .dock-controls .dock-play { background:var(--forest); color:white; }
+.studio-header-controls #finishButton { font-size:11px; }
+.studio-header-controls .starting-note-control { min-height:44px; padding:7px 9px; font-size:12px; gap:5px; }
+.studio-header-controls .starting-note-label { display:none; }
+.studio-header-controls .starting-note-control strong { font-size:15px; }
+.studio-header-controls .starting-note-control span { font-size:11px; }
+.studio-header-controls .session-toolbar details > summary { padding:12px 9px; font-size:12px; }
+.studio-header-controls .dock-position { flex:0 0 auto; display:flex; width:auto; padding:0 3px; }
+.studio-header-controls .dock-position strong,.studio-header-controls .dock-position > small { display:none; }
+.studio-header-controls .dock-position span { color:var(--forest); font-size:11px; }
+.studio-header-controls .dock-position span small { color:var(--ink-soft); }
+.studio-header-controls .status-card { padding:0 3px; margin:0; }
+.studio-header-controls .status-card strong { font-size:11px; }
+.studio-header-controls .status-icon { display:none; }
+.studio-header-controls .count-in-display { position:absolute; top:100%; left:calc(50% - 110px); width:220px; padding:8px; border-radius:12px; background:var(--forest); color:white; box-shadow:var(--shadow); }
+body.studio-active .studio-view { padding:10px 0 24px; }
+.studio-titlebar { margin-bottom:8px; padding-bottom:0; }
+.studio-titlebar h1 { font-size:30px; margin:0; }
+.studio-titlebar > div:first-child > p:last-child { margin-top:5px; font-size:12px; }
+.studio-titlebar .selected-badge { padding:7px 11px; }
+#studioTutorialButton { font-size:12px; padding:8px 11px; }
+.score-head-meta .view-switch button { min-height:44px; padding:7px 10px; font-size:12px; }
+@media(max-width:1200px) {
+  body.studio-active .local-pill { display:none; }
+  body.studio-active .brand > span:last-child { display:none; }
+}
+@media(max-width:899px) {
+  body.studio-active .topbar { flex-wrap:wrap; padding-block:6px; min-height:50px; }
+  .studio-header-controls { order:3; flex:1 1 100%; justify-content:flex-start; }
+  body.studio-active .topbar-actions { margin-left:auto; }
+  .studio-header-controls .session-toolbar details > .mixer-grid,.studio-header-controls .session-toolbar details > .setup-grid { position:fixed; inset:auto 12px 16px; width:auto; max-height:65dvh; }
+}
+@media(max-width:599px) {
+  .studio-header-controls { gap:4px; }
+  .studio-header-controls .mode-switch { flex:1 1 220px; }
+  .studio-header-controls .starting-note-control { flex:0 0 auto; }
+  .studio-header-controls .dock-position { order:4; }
+  .studio-header-controls .status-card { order:4; }
+  .studio-titlebar { flex-direction:row; align-items:center; gap:8px; }
+  .studio-titlebar > div:first-child { min-width:0; }
+  .studio-titlebar h1 { font-size:24px; }
+  .studio-titlebar > div:first-child > p:last-child { font-size:10px; }
+  .part-and-tutorial { width:auto; flex-wrap:nowrap; flex-shrink:0; gap:5px; }
+  .part-and-tutorial .selected-badge { padding:7px; }
+  .part-and-tutorial .selected-badge small { font-size:9px; }
+  .part-and-tutorial .selected-badge strong { font-size:11px; }
+  #studioTutorialButton { padding:8px; font-size:11px; }
+}
+.sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+#studioView .score-panel { padding:16px; }
+#studioView .score-panel-head { gap:8px; margin-bottom:8px; }
+#studioView .score-panel-head .kicker { display:none; }
+#studioView .score-panel-head h2 { font-size:17px; }
+#studioView .score-banner { font-size:0; padding:0; margin:0; min-height:0; }
+#studioView .score-banner > span,#studioView .score-banner > strong { display:none; }
+#studioView .score-banner .previous-take-toggle { font-size:12px; margin-bottom:8px; }
+#studioView .score-interaction-hint { display:none; }
+@media(max-width:1399px) { body.studio-active .local-pill { display:none; } }
+.studio-titlebar { align-items:center; }
+.part-and-tutorial { max-width:none; flex-wrap:nowrap; }
+.part-and-tutorial .selected-badge { margin:0; }
+.studio-header-controls #transportDock .dock-controls button { min-width:44px; width:44px; padding:6px; }
+.studio-header-controls #transportDock #finishButton { width:auto; min-width:78px; }
+@media(max-width:599px) {
+  .studio-header-controls .mode-switch { order:1; flex:1 1 220px; max-width:240px; }
+  .studio-header-controls .starting-note-control { order:1; }
+  .studio-header-controls #mixerPanel,.studio-header-controls #setupPanel { order:2; }
+  .studio-header-controls .dock-position,.studio-header-controls .status-card { order:2; }
+}
+#installDeviceNote { font-size:13px; color:var(--ink-soft); max-width:260px; line-height:1.4; }
+#updateAppButton { min-height:44px; padding:9px 15px; margin:12px 0; border:1px solid var(--line); border-radius:10px; background:var(--cream); color:var(--forest); cursor:pointer; }

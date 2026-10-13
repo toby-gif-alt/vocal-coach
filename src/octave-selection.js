@@ -85,8 +85,8 @@ export class OctaveMismatchDetector {
       || !Number.isFinite(sungMidi) || !Number.isFinite(writtenMidi)
       || !Number.isFinite(corroboratingMidi) || Math.abs(corroboratingMidi - sungMidi) * 100 > 80
       || !Number.isFinite(sample.capturedAt)) { this.reset(); return null; }
-    const match = closestOctaveCandidate(sungMidi, writtenMidi + currentShift, [-12, 12]);
-    const shift = currentShift + match.shift;
+    const match = closestOctaveCandidate(sungMidi, writtenMidi, OCTAVE_SELECTION_CONFIG.shifts.filter(shift=>shift!==currentShift));
+    const shift = match.shift;
     if (Math.abs(match.cents) > 60 || !OCTAVE_SELECTION_CONFIG.shifts.includes(shift) || this.dismissed.has(shift)) { this.reset(); return null; }
     const now = sample.capturedAt;
     if (!this.candidate || this.candidate.shift !== shift || this.candidate.phase !== phase
@@ -99,6 +99,6 @@ export class OctaveMismatchDetector {
     const distinctNotes = [...c.notes.values()].filter(count => count >= 6).length;
     const enough = phase === 'preparation' ? c.supportMs >= 1600 : c.supportMs >= 1200 && distinctNotes >= 2;
     if (!enough || c.frames < 20) return null;
-    return { shift, relativeShift: match.shift, noteCount: distinctNotes };
+    return { shift, relativeShift: shift-currentShift, noteCount: distinctNotes };
   }
 }
