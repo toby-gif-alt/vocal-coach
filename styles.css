@@ -326,3 +326,26 @@ body:not(.microphone-mode) #finishButton, body:not(.microphone-mode) .monitor-pa
 .practice-range-actions button { font-size: 13px; min-height: 36px; }
 .practice-section-setting .setting-message { margin-bottom: 0; font-size: 12px; }
 .score-banner { background: transparent; border-bottom: 1px solid var(--line); border-radius: 0; padding-inline: 0; }
+/* A fixed guide beside a single overview, without per-step scrolling. */
+.tutorial-card { left: auto; right: 20px; top: 120px; bottom: auto; width: 340px; height: 260px; max-height: calc(100vh - 150px); display: flex; flex-direction: column; }
+.tutorial-card[hidden] { display: none; }
+.tutorial-card .tutorial-actions { margin-top: auto; }
+.tutorial-card.welcome-cue { top: auto; bottom: 100px; height: auto; }
+body.tutorial-studio { overflow: hidden; }
+.studio-view.tutorial-overview { width: calc(100% - 380px); margin-inline: 0; transform: scale(var(--tutorial-scale, 1)); transform-origin: top left; }
+.score-head-meta .starting-note-setting { margin: 0; padding: 0; border: 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.score-head-meta .starting-note-setting button { width: auto; margin: 0; min-height: 38px; padding: 8px 12px; font-size: 13px; }
+.score-head-meta .starting-note-setting > div { gap: 6px; font-size: 12px; }
+.score-head-meta #octaveConfirmation { flex-basis: 100%; margin: 0; max-width: 280px; font-size: 11px; }
+.microphone-reminder { width: min(460px,calc(100vw - 32px)); padding: 24px; border: 1px solid #c4d5bc; border-radius: 16px; color: var(--forest); background: #fffdf8; }
+.microphone-reminder::backdrop { background: #17382f45; }
+.microphone-reminder h2 { font-size: 24px; margin: 0 0 12px; }
+.microphone-reminder p { font-size: 15px; line-height: 1.5; }
+.microphone-reminder > div { display: flex; gap: 10px; flex-wrap: wrap; }
+.microphone-reminder button { min-height: 42px; padding: 10px 14px; border: 1px solid #bccbbd; border-radius: 8px; cursor: pointer; background: #fff; color: var(--forest); }
+#calibrateMicrophoneButton { background: var(--forest); color: #fff; }
+@media (max-width: 899px) {
+  .studio-view.tutorial-overview { width: 100%; }
+  .tutorial-card { top: auto; bottom: 100px; right: 16px; width: min(340px,calc(100vw - 32px)); height: 245px; }
+}
+@media (max-width: 899px) { .studio-view.tutorial-overview { margin-left: calc((100% - 100% * var(--tutorial-scale, 1)) / 2); } }

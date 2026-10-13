@@ -1,12 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createOnboarding } from "../src/tutorial.js";
+import { createOnboarding, tutorialOverviewScale } from "../src/tutorial.js";
 import { draftFromRange, dragRange, validateDraft, measureAtPoint } from "../src/practice-selection.js";
 import { practiceBands } from "../src/score-overlay.js";
 
-function onboarding(storage = new Map()) {
+function onboarding(storage = new Map(), onStudioReady = () => {}) {
   const shown=[], jobs=new Map(); let next=0;
-  const controller=createOnboarding({ storage:{getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value)}, schedule:(fn,delay)=>{jobs.set(++next,{fn,delay});return next;},unschedule:id=>jobs.delete(id),show:kind=>shown.push(kind),hide:()=>{} });
+  const controller=createOnboarding({ storage:{getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value)}, schedule:(fn,delay)=>{jobs.set(++next,{fn,delay});return next;},unschedule:id=>jobs.delete(id),show:kind=>shown.push(kind),hide:()=>{},onStudioReady });
   return {controller,shown,jobs,storage,fire(){const job=[...jobs.values()][0];jobs.clear();job?.fn();}};
 }
 test("welcome waits two seconds, interaction cancels it, and first visit is remembered", () => {
@@ -50,4 +50,25 @@ test("single-bar drags, invalid typed bars and storage errors are handled safely
   for (const draft of [{from:0,to:5,start:1},{from:1.5,to:5,start:2},{from:1,to:15,start:1}]) assert.equal(validateDraft(part,draft).valid,false);
   const shown=[];const controller=createOnboarding({storage:{getItem(){throw Error('blocked');},setItem(){throw Error('blocked');}},show:kind=>shown.push(kind),hide(){} });
   controller.view('studio');assert.deepEqual(shown,['studio']);controller.skip('studio');controller.destroy();
+});
+
+test("first studio tutorial ends with calibration suggestion; new app sessions remind again", () => {
+  const reasons=[]; const t=onboarding(new Map(),reason=>reasons.push(reason));
+  t.controller.view('studio'); assert.deepEqual(reasons,[]);
+  t.controller.skip('studio'); assert.deepEqual(reasons,['first-tour']);
+  t.controller.replay(); t.controller.skip('studio'); assert.deepEqual(reasons,['first-tour']);
+  const reopened=onboarding(t.storage,reason=>reasons.push(reason));
+  reopened.controller.view('studio'); assert.deepEqual(reasons,['first-tour','returning']);
+});
+test("microphone suggestion is suppressed during active playback", () => {
+  const reasons=[];const t=onboarding(new Map([['vocal-coach:studio-tour:v2','done']]),reason=>reasons.push(reason));
+  t.controller.active(true);t.controller.view('studio');assert.deepEqual(reasons,[]);
+});
+test("overview fits the screen without enlarging a short studio", () => {
+  assert.equal(tutorialOverviewScale(300,1000,12,false),1);
+  for (const compact of [true,false]) {
+    const scale=tutorialOverviewScale(1200,844,12,compact);
+    assert.ok(scale>0 && scale<1);
+    assert.ok(1200*scale<=844-12-(compact?350:95));
+  }
 });
