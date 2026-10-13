@@ -33,7 +33,7 @@ import {
   normaliseGuideVoice,
 } from "./src/guide-playback.js?v=22";
 import { measureAtQuarter, noteAtQuarter, readScoreFile, readScoreUrl, suggestVocalPart } from "./src/musicxml.js?v=22";
-import { AutomaticOctaveSelector } from "./src/octave-selection.js?v=20";
+import { AutomaticOctaveSelector, OctaveMismatchDetector } from "./src/octave-selection.js?v=29";
 import { detectAutocorrelationPitch, PitchDiagnosticSummary, StablePitchTracker } from "./src/pitch-tracker.js?v=20";
 import {
   assessmentRangeLabel,
@@ -120,6 +120,8 @@ const state = {
   octaveShift: DEFAULT_OCTAVE_SHIFT,
   sessionOctaveShift: null,
   octaveSelector: new AutomaticOctaveSelector(),
+  octaveMismatchDetector: new OctaveMismatchDetector(),
+  octaveSuggestion: null,
   awaitingOctaveResponse: false,
   octaveResponseTimer: null,
   guideVolume: PLAYBACK_CONFIG.defaultGuideVolume,
@@ -922,6 +924,7 @@ function setCountInBars(value) {
 
 function setOctaveShift(value, { confirmed = false } = {}) {
   if (state.sessionOctaveShift !== null || audio.isPlaying || audio.isPaused || audio.isCountingIn) return;
+  clearOctaveSuggestion();
   const nextShift = [-24, -12, 0, 12].includes(Number(value)) ? Number(value) : 0;
   const changed = nextShift !== state.octaveShift;
   if (nextShift !== state.octaveShift && state.samples.length) {
@@ -971,6 +974,8 @@ function unlockSessionOctave() {
   state.awaitingOctaveResponse = false;
   clearTimeout(state.octaveResponseTimer);
   state.octaveSelector.reset();
+  state.octaveMismatchDetector.reset();
+  renderOctaveSuggestion();
 }
 
 function maybeConfirmStartingOctave(sample, targetInfo, phase) {
@@ -1193,6 +1198,7 @@ function setMode(mode) {
   state.microphoneActivationToken += 1;
   const activationToken = state.microphoneActivationToken;
   state.mode = mode;
+  clearOctaveSuggestion();
   updateSetupSummary();
   els.modeButtons.forEach((button) => {
     const active = button.dataset.mode === mode;
@@ -1377,6 +1383,7 @@ function updateSetupSummary() {
   $("#setupSummary").textContent = `${MODE_CONFIG[state.mode].label} · ${state.countInBars ? state.countInBars + " bar count-in" : "no count-in"} · ${audio.tempoPercent}% tempo · ${els.octaveOutput.textContent}`;
 }
 function setPlaybackState(status) {
+  renderOctaveSuggestion();
   updateSetupSummary();
   tutorial.setActive(status === "playing" || status === "paused" || audio.isCountingIn);
   const playing = status === "playing";
@@ -1507,11 +1514,36 @@ function toggleScoreFollow() {
   }
 }
 
+function clearOctaveSuggestion() {
+  state.octaveSuggestion = null;
+  state.octaveMismatchDetector.reset();
+  $("#octaveSuggestion").hidden = true;
+}
+function renderOctaveSuggestion() {
+  const suggestion = state.octaveSuggestion;
+  $("#octaveSuggestion").hidden = !suggestion;
+  if (!suggestion) return;
+  const locked = audio.isPlaying || audio.isPaused || audio.isCountingIn || state.sessionOctaveShift !== null;
+  const direction = suggestion.relativeShift < 0 ? "lower" : "higher";
+  $("#octaveSuggestionCopy").textContent = `You seem to be singing an octave ${direction} than the current target. Switch the singing octave?${locked ? " Stop or finish this take to switch for the next one." : ""}`;
+  $("#acceptOctaveSuggestion").textContent = `Use ${suggestion.shift === 0 ? "written octave" : suggestion.shift === -24 ? "2 octaves lower" : suggestion.shift < 0 ? "octave lower" : "octave higher"}`;
+  $("#acceptOctaveSuggestion").disabled = locked;
+}
+function maybeSuggestSingingOctave(sample, targetInfo, phase) {
+  if (audio.isPaused || audio.isCountingIn || state.reviewPlaying) { state.octaveMismatchDetector.reset(); return; }
+  if (state.awaitingOctaveResponse || state.octaveSuggestion) return;
+  if (!targetInfo?.note || !['starting', 'current'].includes(targetInfo.kind)) { state.octaveMismatchDetector.reset(); return; }
+  const suggestion = state.octaveMismatchDetector.observe({ sample, writtenMidi: targetInfo.note.midi,
+    currentShift: effectiveOctaveShift(), noteId: targetInfo.note.id, phase });
+  if (suggestion) { state.octaveSuggestion = suggestion; renderOctaveSuggestion(); }
+}
+
 function handlePitchSample(sample) {
   if (!MODE_CONFIG[state.mode].microphone || !audio.hasMicrophoneStream) return;
   const phase = tuningPhase();
   const targetInfo = tuningTarget(sample.scoreQuarter, phase);
   maybeConfirmStartingOctave(sample, targetInfo, phase);
+  maybeSuggestSingingOctave(sample, targetInfo, phase);
   const currentTargetInfo = tuningTarget(sample.scoreQuarter, phase);
   const live = renderLiveTuning(sample, currentTargetInfo);
   if (!currentTargetInfo.note || !live) return;
@@ -2027,6 +2059,8 @@ function setStatus(status, title, copy) {
 }
 
 function resetControls() {
+  state.octaveMismatchDetector.clear();
+  clearOctaveSuggestion();
   cancelScoreSelection();
   const range = currentPracticeRange();
   els.tempoSlider.value = "100";
@@ -2206,6 +2240,17 @@ function wireEvents() {
     if (!region) return;
     event.preventDefault();
     selectScoreMeasure(region.dataset.measureNumber);
+  });
+  $("#acceptOctaveSuggestion").addEventListener("click", () => {
+    if (!state.octaveSuggestion || audio.isPlaying || audio.isPaused || audio.isCountingIn || state.sessionOctaveShift !== null) return;
+    const shift = state.octaveSuggestion.shift;
+    setOctaveShift(shift, { confirmed: true });
+    updateSetupSummary();
+    toast("Singing octave updated — the next take will use this target.");
+  });
+  $("#dismissOctaveSuggestion").addEventListener("click", () => {
+    if (state.octaveSuggestion) state.octaveMismatchDetector.dismiss(state.octaveSuggestion.shift);
+    clearOctaveSuggestion();
   });
   els.octaveButtons.forEach((button) => button.addEventListener("click", () => setOctaveShift(button.dataset.octave)));
   els.hearStartingNote.addEventListener("click", hearStartingNote);

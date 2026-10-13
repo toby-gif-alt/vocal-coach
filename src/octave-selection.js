@@ -68,3 +68,37 @@ export class AutomaticOctaveSelector {
     };
   }
 }
+
+// Suggestions use reliable, uncorrected detector evidence, not visual interpolation.
+// An octave harmonic or one missed note must not change the singing target.
+export class OctaveMismatchDetector {
+  constructor() { this.clear(); }
+  clear() { this.dismissed = new Set(); this.reset(); }
+  reset() { this.candidate = null; }
+  dismiss(shift) { this.dismissed.add(shift); this.reset(); }
+  observe({ sample, writtenMidi, currentShift = 0, noteId, phase }) {
+    const sungMidi = sample?.filteredMidi;
+    const corroboratingMidi = sample?.corroboratingFrequency > 0 ? frequencyToMidi(sample.corroboratingFrequency) : null;
+    if (!['preparation', 'performance'].includes(phase) || sample?.status !== 'accepted'
+      || sample.visualOnly || sample.octaveCorrection || sample.overloadActive
+      || !Number.isFinite(sample.clarity) || sample.clarity < 0.82
+      || !Number.isFinite(sungMidi) || !Number.isFinite(writtenMidi)
+      || !Number.isFinite(corroboratingMidi) || Math.abs(corroboratingMidi - sungMidi) * 100 > 80
+      || !Number.isFinite(sample.capturedAt)) { this.reset(); return null; }
+    const match = closestOctaveCandidate(sungMidi, writtenMidi + currentShift, [-12, 12]);
+    const shift = currentShift + match.shift;
+    if (Math.abs(match.cents) > 60 || !OCTAVE_SELECTION_CONFIG.shifts.includes(shift) || this.dismissed.has(shift)) { this.reset(); return null; }
+    const now = sample.capturedAt;
+    if (!this.candidate || this.candidate.shift !== shift || this.candidate.phase !== phase
+      || now <= this.candidate.lastAt || now - this.candidate.lastAt > 1200 || now - this.candidate.startedAt > 6000) {
+      this.candidate = { shift, phase, startedAt: now, lastAt: now, supportMs: 0, frames: 0, notes: new Map() };
+    }
+    const c = this.candidate;
+    c.supportMs += Math.min(100, Math.max(0, now - c.lastAt)); c.lastAt = now; c.frames++;
+    c.notes.set(noteId, (c.notes.get(noteId) || 0) + 1);
+    const distinctNotes = [...c.notes.values()].filter(count => count >= 6).length;
+    const enough = phase === 'preparation' ? c.supportMs >= 1600 : c.supportMs >= 1200 && distinctNotes >= 2;
+    if (!enough || c.frames < 20) return null;
+    return { shift, relativeShift: match.shift, noteCount: distinctNotes };
+  }
+}
