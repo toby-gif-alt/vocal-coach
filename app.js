@@ -1365,6 +1365,7 @@ async function restartTransport() {
 }
 
 function setTransportBusy(busy) {
+  renderOctaveSuggestion();
   if (!busy) tutorial.setActive(audio.isPlaying || audio.isPaused || audio.isCountingIn);
   els.playButton.disabled = busy || audio.isPlaying;
   els.pauseButton.disabled = busy || !audio.isPlaying;
