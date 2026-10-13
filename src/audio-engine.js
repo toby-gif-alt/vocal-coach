@@ -323,7 +323,10 @@ export class AudioEngine {
     for (const part of this.score.parts) {
       if (part.id !== vocalPartId) this.setPartEnabled(part.id, enabled.has(part.id));
     }
-    if (assessmentMode) await this.startMicrophone();
+    if (assessmentMode) {
+      try { await this.startMicrophone(); }
+      catch (error) { error.microphoneUnavailable = true; throw error; }
+    }
     const routes = playbackRoutes(this.score.parts, { vocalPartId, guideEnabled, enabledPartIds: enabled });
     await this.ensureRoutesReady(routes);
     if (guideEnabled && classifyPlaybackPart(this.score.parts.find((part) => part.id === vocalPartId)) === "vocal") {

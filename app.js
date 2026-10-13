@@ -1,4 +1,5 @@
-import { AudioEngine } from "./src/audio-engine.js?v=24";
+import { createTutorial } from "./src/tutorial.js?v=26";
+import { AudioEngine } from "./src/audio-engine.js?v=26";
 import { analysePerformance, performanceSummary } from "./src/analysis.js?v=14";
 import { buildCoachingFeedback } from "./src/coaching.js?v=14";
 import {
@@ -17,7 +18,7 @@ import {
   frequencyToMidi,
   midiToName,
   PITCH_THRESHOLDS,
-} from "./src/config.js?v=20";
+} from "./src/config.js?v=26";
 import {
   assessmentSampleEligible,
   LiveTuningFeedback,
@@ -90,7 +91,7 @@ const els = {
 const state = {
   score: null,
   selectedPartId: null,
-  mode: "assisted",
+  mode: "listen",
   scoreView: "vocal",
   enabledParts: new Set(),
   samples: [],
@@ -242,6 +243,7 @@ function showView(name) {
   els.studioView.hidden = name !== "studio";
   document.body.classList.toggle("studio-active", name === "studio");
   window.scrollTo({ top: 0, behavior: "smooth" });
+  tutorial.showView(name);
 }
 
 function toast(message) {
@@ -311,7 +313,7 @@ async function enterStudio() {
   state.partVoices = Object.fromEntries(state.score.parts
     .filter((part) => part.id !== vocalPart.id && classifyPlaybackPart(part) === "vocal")
     .map((part) => [part.id, DEFAULT_GUIDE_VOICE]));
-  state.mode = "assisted";
+  state.mode = "listen";
   state.scoreView = "vocal";
   state.samples = [];
   state.rawSamples = [];
@@ -808,7 +810,7 @@ function setListeningSetup(setup) {
   els.listeningSetupOutput.textContent = setup === "speakers" ? "Speakers" : "Headphones";
   const token = ++state.microphoneActivationToken;
   setTuningMeterInactive("Reconnecting…");
-  void activateMicrophonePreparation(token);
+  if (MODE_CONFIG[state.mode].microphone) void activateMicrophonePreparation(token);
 }
 
 function updateMicrophoneCheckSetting() {
@@ -1089,6 +1091,7 @@ function renderTuningDropout(sample) {
 }
 
 async function activateMicrophonePreparation(token) {
+  if (!MODE_CONFIG[state.mode].microphone) return;
   state.microphonePreparing = true;
   els.playButton.disabled = true;
   els.dockPlayPauseButton.disabled = true;
@@ -1110,7 +1113,9 @@ async function activateMicrophonePreparation(token) {
     if (error?.name === "MicrophoneCheckError") toast(error.message);
     else if (error?.name === "NotAllowedError") toast("Microphone permission was blocked. Allow microphone access to continue.");
     else toast(error.message || "The microphone could not start.");
-    setStatus("off", "Microphone unavailable", "Allow microphone access to use Assisted or Assessment mode.");
+    state.microphonePreparing = false;
+    setMode("listen");
+    toast("Microphone unavailable — Listen mode is ready. Press Play to practise without pitch feedback. You can retry Assisted or Assessment later.");
   } finally {
     if (token === state.microphoneActivationToken) {
       state.microphonePreparing = false;
@@ -1132,6 +1137,11 @@ function setMode(mode) {
     button.setAttribute("aria-checked", String(active));
   });
   const config = MODE_CONFIG[mode];
+  state.microphonePreparing = false;
+  els.playButton.disabled = false;
+  els.dockPlayPauseButton.disabled = false;
+  els.recheckMicrophoneButton.disabled = false;
+  if (!config.microphone) audio.stopMicrophone();
   els.headphoneNote.hidden = !config.microphone;
   document.body.classList.toggle("microphone-mode", config.microphone);
   els.transportState.textContent = `${config.label} ready`;
@@ -1145,7 +1155,12 @@ function setMode(mode) {
       ? "Your saved calibration will be used for pre-performance tuning."
       : "Your first microphone session starts with a short room-and-voice check.",
   );
-  void activateMicrophonePreparation(activationToken);
+  if (config.microphone) void activateMicrophonePreparation(activationToken);
+  else {
+    setTuningMeterInactive("Microphone off");
+    setStatus("idle", "Listen mode — no mic needed", "Press Play to hear the guide and accompaniment. Pitch feedback and recording need Assisted or Assessment.");
+    els.finishButton.disabled = true;
+  }
 }
 
 async function play() {
@@ -1208,6 +1223,11 @@ async function play() {
       return;
     }
     console.error(error);
+    if (error.microphoneUnavailable && mode.microphone && !audio.isPlaying && !audio.isPaused) {
+      setMode("listen");
+      toast("Microphone unavailable — switched to Listen. Press Play to continue without pitch feedback.");
+      return;
+    }
     if (error?.name === "MicrophoneCheckError") toast(error.message);
     else if (error?.name === "NotAllowedError") toast("Microphone permission was blocked. Allow access to continue.");
     else toast(error.message || "Playback could not start.");
@@ -1974,12 +1994,12 @@ function resetControls() {
   state.activeTake = null;
   state.sessionOctaveShift = null;
   resetPitchDiagnostics();
-  state.mode = "assisted";
+  state.mode = "listen";
   state.microphoneActivationToken += 1;
   state.microphonePreparing = false;
   document.body.classList.add("microphone-mode");
   setTuningMeterInactive("Listening…");
-  els.modeButtons.forEach((button) => { const active = button.dataset.mode === "assisted"; button.classList.toggle("active", active); button.setAttribute("aria-checked", String(active)); });
+  els.modeButtons.forEach((button) => { const active = button.dataset.mode === "listen"; button.classList.toggle("active", active); button.setAttribute("aria-checked", String(active)); });
   els.headphoneNote.hidden = false;
   els.resultsKicker.textContent = "Personalised assessment";
   $("#resultsHeading").textContent = "Your Vocal Coach";
@@ -2017,7 +2037,7 @@ function resetControls() {
   renderPracticeRangeControls();
   setSectionMessage(`Whole piece selected: bars ${range.firstMeasure}–${range.lastMeasure}.`);
   updatePosition(range.startQuarter);
-  void activateMicrophonePreparation(state.microphoneActivationToken);
+  setMode("listen");
 }
 
 function resetToUpload() {
@@ -2206,6 +2226,11 @@ function wireEvents() {
   window.addEventListener("beforeunload", () => audio.destroy());
 }
 
+const tutorial = createTutorial();
+$("#replayTutorialButton").addEventListener("click", () => {
+  els.helpDialog.close();
+  tutorial.replay();
+});
 wireEvents();
 void loadRepertoireIndex();
 if (TIMING_DEBUG_ENABLED) {

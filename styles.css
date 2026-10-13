@@ -198,3 +198,18 @@ main { width: min(1540px, calc(100% - 48px)); margin: auto; }
 }
 .transport-dock { transform: translateX(-50%); }
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
+
+/* A non-modal tour keeps score selection and every highlighted control usable. */
+.mode-switch { grid-template-columns: repeat(3, 1fr); }
+.tutorial-target { outline: 3px solid #699d25; outline-offset: 5px; }
+.tutorial-card { position: fixed; z-index: 1000; right: 20px; bottom: 100px; width: min(380px, calc(100vw - 32px)); max-height: 45vh; overflow-y: auto; padding: 22px; border: 1px solid #c4d5bc; border-radius: 18px; background: #fff; color: #17382f; box-shadow: 0 12px 50px #17382f30; font-size: 15px; }
+.tutorial-card[hidden] { display: none; }
+.tutorial-card.tutorial-at-top { bottom: auto; top: 80px; }
+.tutorial-card small { color: #53735c; }
+.tutorial-card h2 { margin: 8px 0; font-size: 22px; }
+.tutorial-card p { margin: 0 0 18px; line-height: 1.5; }
+.tutorial-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.tutorial-actions button, #replayTutorialButton { padding: 9px 12px; border: 1px solid #aebfaf; border-radius: 8px; background: #fff; color: #17382f; cursor: pointer; }
+.tutorial-actions [data-tour="next"] { background: #17382f; color: #fff; margin-left: auto; }
+.tutorial-actions button:disabled { opacity: .45; }
+@media (max-width: 600px) { .tutorial-card { right: 16px; bottom: 90px; padding: 16px; } }

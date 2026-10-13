@@ -98,6 +98,7 @@ export const DEFAULT_COUNT_IN_BARS = 1;
 export const DEFAULT_OCTAVE_SHIFT = 0;
 
 export const SESSION_MODES = Object.freeze({
+  listen: Object.freeze({ guide: true, microphone: false, label: "Listen" }),
   assisted: Object.freeze({ guide: true, microphone: true, label: "Assisted" }),
   assessment: Object.freeze({ guide: false, microphone: true, label: "Assessment" }),
 });
