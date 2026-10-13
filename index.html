@@ -13,13 +13,16 @@
     <meta name="twitter:title" content="Vocal Coach — Practise from the score" />
     <meta name="twitter:description" content="Upload MusicXML, choose your part, and see your pitch against every note." />
     <meta name="twitter:image" content="https://toby-gif-alt.github.io/vocal-coach/og.png" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
     <title>Vocal Coach — Practise from the score</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%2317382f'/%3E%3Cpath d='M14 34c7 0 7-15 14-15s7 27 14 27 7-16 8-16' fill='none' stroke='%23d7ff72' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="./styles.css?v=29" />
-    <script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@2.1.2/build/opensheetmusicdisplay.min.js" defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/tone@15.1.22/build/Tone.js" defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" defer></script>
-    <script type="module" src="./app.js?v=29"></script>
+    <link rel="stylesheet" href="./styles.css?v=30" />
+    <script src="./vendor/osmd.js" defer></script>
+    <script src="./vendor/tone.js" defer></script>
+    <script src="./vendor/jszip.js" defer></script>
+    <script type="module" src="./app.js?v=30"></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to the app</a>
@@ -43,17 +46,19 @@
           <p class="hero-lede">Choose a repertoire score or upload MusicXML, select the line you sing, and see how each note lands — while the accompaniment plays with you.</p>
           <div class="score-chooser">
             <label class="repertoire-field" for="repertoireSelect">
-              <span>Choose a score</span>
+              <span>Built-in Repertoire</span>
               <select id="repertoireSelect" disabled><option value="">Select from repertoire</option></select>
             </label>
             <p class="repertoire-status" id="repertoireStatus" role="status">Loading repertoire…</p>
             <span class="choice-divider">or</span>
             <div class="hero-actions">
-              <label class="upload-primary" for="scoreInput"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L8 8m4-4 4 4M5 14v5h14v-5" /></svg>Upload MusicXML</label>
+              <label class="upload-primary" for="scoreInput"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L8 8m4-4 4 4M5 14v5h14v-5" /></svg>Import Score</label>
               <input id="scoreInput" type="file" accept=".musicxml,.xml,.mxl,application/vnd.recordare.musicxml+xml,application/vnd.recordare.musicxml" />
             </div>
           </div>
-          <p class="file-note">MusicXML, XML, or MXL · Your files never leave this browser</p>
+          <p class="file-note">MusicXML, XML, or MXL · Imported scores are saved on this device</p>
+          <div class="pwa-controls"><span id="offlineStatus" role="status">Checking offline availability…</span><button id="downloadOfflineButton" type="button">Download for offline</button><button id="installAppButton" type="button" hidden>Install Vocal Coach</button><button id="updateAppButton" type="button" hidden>Apply update</button></div>
+          <p class="repertoire-manage"><details id="builtInManager"><summary>Manage built-in repertoire</summary><div id="builtinVisibilityList"></div></details><button id="restoreBuiltinsButton" type="button">Restore hidden built-ins</button></p>
           <div class="flow-list" aria-label="How it works">
             <div><span>01</span><p><strong>Bring a score</strong><small>Export MusicXML from MuseScore, Sibelius, Dorico, or Finale.</small></p></div>
             <div><span>02</span><p><strong>Choose your line</strong><small>We separate the vocal target from every accompaniment part.</small></p></div>
@@ -71,6 +76,11 @@
           </div>
           <div class="visual-footer"><span>Pitch stays raw</span><span>Analysis stays local</span></div>
         </div>
+        <section class="repertoire-library" aria-labelledby="myRepertoireHeading">
+          <div class="library-heading"><div><p class="eyebrow">Saved on this device</p><h2 id="myRepertoireHeading">My Repertoire</h2></div><label for="librarySearch">Find a score<input id="librarySearch" type="search" placeholder="Title, composer or filename" /></label></div>
+          <p id="libraryStatus" role="status">Opening saved repertoire…</p><div id="myRepertoireList"></div>
+          <details class="storage-settings"><summary>Storage &amp; backup settings</summary><p id="storageInfo"></p><button id="exportAllScoresButton" type="button">Export all scores for backup</button><p>Uninstalling or clearing browser/app data may erase saved scores. Your device may also remove browser storage when space is low. Keep copies of important scores. Backups contain original score files; unzip them before importing again.</p></details>
+        </section>
       </section>
 
       <section class="loading-view" id="loadingView" hidden aria-live="polite">
@@ -286,6 +296,14 @@
       </section>
     </main>
 
+    <dialog id="libraryActionDialog" class="microphone-reminder" aria-labelledby="libraryActionTitle"><form method="dialog"><h2 id="libraryActionTitle"></h2><p id="libraryActionCopy"></p><input id="libraryActionInput" aria-label="Display title" maxlength="200" hidden /><div><button id="libraryActionAccept" value="accept">Confirm</button><button id="libraryActionSecondary" value="secondary" hidden>Keep copy</button><button value="cancel">Cancel</button></div></form></dialog>
+    <dialog id="installInstructionsDialog" class="microphone-reminder" aria-labelledby="installInstructionsTitle"><form method="dialog"><h2 id="installInstructionsTitle">Install on iPhone or iPad</h2><p>Open Vocal Coach in Safari. Tap Share, then Add to Home Screen, then Add. If your browser offers Open as Web App, leave it enabled. Finish the offline download before practising without internet.</p><button>Got it</button></form></dialog>
+    <dialog id="calibrationDialog" class="calibration-dialog" aria-labelledby="calibrationTitle">
+      <h2 id="calibrationTitle">Let's check your microphone</h2><p id="calibrationCopy" aria-live="polite"></p>
+      <ul id="calibrationIntro"><li>Find a reasonably quiet place.</li><li>Position your device at a comfortable distance.</li><li>Use headphones where possible.</li><li>You can sing any comfortable note.</li></ul>
+      <progress id="calibrationProgress" aria-label="Microphone calibration progress" hidden></progress><meter id="calibrationLevel" min="0" max="1" value="0" aria-label="Live microphone input level" hidden></meter>
+      <div class="calibration-actions"><button id="startCalibrationButton" type="button">Start microphone check</button><button id="cancelCalibrationButton" type="button">Cancel / Use Listen mode</button><button id="finishCalibrationButton" type="button" hidden>Continue to Vocal Coach</button></div>
+    </dialog>
     <dialog class="dialog" id="helpDialog"><form method="dialog"><button class="dialog-close" value="close" aria-label="Close help">×</button><p class="eyebrow"><span></span> Quick guide</p><h2>From MusicXML to useful feedback.</h2><ol><li><span>1</span><p><strong>Export MusicXML.</strong> In your notation software, export the full score as MusicXML or compressed MXL.</p></li><li><span>2</span><p><strong>Choose exactly what you sing.</strong> Vocal Coach never assumes a part named “Voice” exists.</p></li><li><span>3</span><p><strong>Choose how much help you need.</strong> Listen needs no microphone. Assisted adds a guide and pitch trace; Assessment removes the guide and gives three priorities and two strengths.</p></li><li><span>4</span><p><strong>Review the shape.</strong> Your accepted pitch stays on the written staff and your immediately previous take can remain as a quiet reference.</p></li></ol><p class="dialog-note">This prototype assesses fundamental pitch only. It does not yet grade rhythm, vibrato, breath, diction, or voice type.</p><button id="replayTutorialButton" type="button">Replay button tour</button><button class="continue-button" value="close">Got it</button></form></dialog>
     <dialog id="microphoneReminderDialog" class="microphone-reminder" aria-labelledby="microphoneReminderTitle">
       <h2 id="microphoneReminderTitle">Check your microphone</h2>

@@ -1,0 +1,9 @@
+{
+  "name": "tone",
+  "version": "15.1.22",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Tonejs/Tone.js.git"
+  }
+}

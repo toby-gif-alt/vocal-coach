@@ -1,0 +1,9 @@
+{
+  "name": "pitchy",
+  "version": "4.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ianprime0509/pitchy.git"
+  }
+}

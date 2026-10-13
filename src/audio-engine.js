@@ -1,4 +1,4 @@
-import { PitchDetector } from "https://cdn.jsdelivr.net/npm/pitchy@4.1.0/+esm";
+import { PitchDetector } from "../vendor/pitchy.mjs";
 import {
   AUDIO_CONFIG,
   DEFAULT_LISTENING_SETUP,
@@ -714,9 +714,15 @@ export class AudioEngine {
       throw new Error("Microphone assessment needs a modern browser and an HTTPS connection.");
     }
     this.onMicrophoneState("requesting");
-    this.stream = await navigator.mediaDevices.getUserMedia({
-      audio: microphoneConstraintsForSetup(this.listeningSetup),
-    });
+    if (this.microphoneStreamPromise) return this.microphoneStreamPromise;
+    const generation = this.microphoneGeneration;
+    const acquisition = (async () => {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: microphoneConstraintsForSetup(this.listeningSetup) });
+      if (generation !== this.microphoneGeneration) {
+        stream.getTracks().forEach(track => track.stop());
+        throw Object.assign(new Error("Microphone request cancelled."), { name: "AbortError" });
+      }
+      this.stream = stream;
     const context = this.tone.getContext().rawContext || this.tone.getContext();
     this.analyser = context.createAnalyser();
     this.analyser.fftSize = AUDIO_CONFIG.analyserSize;
@@ -726,6 +732,11 @@ export class AudioEngine {
     this.pitchDetector = PitchDetector.forFloat32Array(this.analyser.fftSize);
     this.inputFrame = new Float32Array(this.analyser.fftSize);
     this.lastPitchSampleAt = 0;
+    })();
+    this.microphoneStreamPromise = acquisition;
+    try { await acquisition; }
+    finally { if (this.microphoneStreamPromise === acquisition) this.microphoneStreamPromise = null; }
+
   }
 
   collectMicrophoneCheckFrames(durationMs, includePitch) {
@@ -749,6 +760,7 @@ export class AudioEngine {
         }
         this.analyser.getFloatTimeDomainData(this.inputFrame);
         const amplitude = measureFrameAmplitude(this.inputFrame);
+        this.onMicrophoneState("checking-progress", { elapsedMs: Math.min(durationMs, now - startedAt), durationMs, rms: amplitude.rms });
         if (includePitch) {
           const sampleRate = (this.tone.getContext().rawContext || this.tone.getContext()).sampleRate;
           const [frequency, clarity] = this.pitchDetector.findPitch(this.inputFrame, sampleRate);
@@ -767,12 +779,17 @@ export class AudioEngine {
   }
 
   async runMicrophoneCheck() {
+    const generation = this.microphoneGeneration;
     this.onMicrophoneState("checking-room", { durationMs: AUDIO_CONFIG.ambientCalibrationDurationMs });
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    if (generation !== this.microphoneGeneration) return null;
     const ambientRmsValues = await this.collectMicrophoneCheckFrames(AUDIO_CONFIG.ambientCalibrationDurationMs, false);
     if (!ambientRmsValues) return null;
     this.onMicrophoneState("checking-voice", { durationMs: AUDIO_CONFIG.sungCalibrationDurationMs });
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    if (generation !== this.microphoneGeneration) return null;
     const sungFrames = await this.collectMicrophoneCheckFrames(AUDIO_CONFIG.sungCalibrationDurationMs, true);
-    if (!sungFrames) return null;
+    if (!sungFrames || generation !== this.microphoneGeneration) return null;
     const calibration = deriveMicrophoneCalibration({ ambientRmsValues, sungFrames });
     if (!calibration.signalGood) {
       this.onMicrophoneState("needs-adjustment", calibration);
@@ -785,11 +802,14 @@ export class AudioEngine {
   }
 
   async recheckMicrophone({ keepActive = false, targetMidiAtQuarter = this.targetMidiAtQuarter } = {}) {
+    const generation = this.microphoneGeneration;
     await this.tone.start();
+    if (generation !== this.microphoneGeneration) return null;
     this.pausePitchSampling();
-    this.clearMicrophoneCalibration();
     await this.ensureMicrophoneStream();
+    if (generation !== this.microphoneGeneration) return null;
     const calibration = await this.runMicrophoneCheck();
+    if (generation !== this.microphoneGeneration) return null;
     if (keepActive && calibration?.signalGood) {
       this.targetMidiAtQuarter = targetMidiAtQuarter;
       this.pitchTracker.reset();

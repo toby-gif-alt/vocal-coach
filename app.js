@@ -1,6 +1,9 @@
+import { createLibraryUI } from "./src/library-ui.js";
+import { setupPWA } from "./src/pwa.js";
+import { createCalibrationDialog } from "./src/calibration-dialog.js";
 import { draftFromRange, dragRange, validateDraft, measureAtPoint } from "./src/practice-selection.js?v=27";
 import { createTutorial } from "./src/tutorial.js?v=28";
-import { AudioEngine } from "./src/audio-engine.js?v=26";
+import { AudioEngine } from "./src/audio-engine.js?v=30";
 import { analysePerformance, performanceSummary } from "./src/analysis.js?v=27";
 import { buildCoachingFeedback } from "./src/coaching.js?v=27";
 import {
@@ -32,7 +35,7 @@ import {
   GUIDE_VOICE_STORAGE_KEY,
   normaliseGuideVoice,
 } from "./src/guide-playback.js?v=22";
-import { measureAtQuarter, noteAtQuarter, readScoreFile, readScoreUrl, suggestVocalPart } from "./src/musicxml.js?v=22";
+import { measureAtQuarter, noteAtQuarter, readScoreFile, readScoreUrl, suggestVocalPart } from "./src/musicxml.js?v=30";
 import { AutomaticOctaveSelector, OctaveMismatchDetector } from "./src/octave-selection.js?v=29";
 import { detectAutocorrelationPitch, PitchDiagnosticSummary, StablePitchTracker } from "./src/pitch-tracker.js?v=20";
 import {
@@ -91,6 +94,8 @@ const els = {
 
 const state = {
   score: null,
+  scoreContext: null,
+  savedPreferences: null,
   selectedPartId: null,
   mode: "listen",
   microphoneCheckedThisOpen: false,
@@ -174,8 +179,8 @@ async function loadRepertoireIndex() {
     const entries = await fetchManifest("./repertoire/index.json?v=25");
     state.repertoire = entries.filter((entry) => entry?.title && entry?.file);
     els.repertoireSelect.replaceChildren(new Option("Select from repertoire", ""));
-    for (const entry of state.repertoire) els.repertoireSelect.add(new Option(entry.title, entry.file));
-    els.repertoireSelect.disabled = state.repertoire.length === 0;
+    await renderBuiltInOptions();
+    els.repertoireSelect.disabled = els.repertoireSelect.options.length < 2;
     els.repertoireStatus.textContent = state.repertoire.length
       ? `${state.repertoire.length} ${state.repertoire.length === 1 ? "score" : "scores"} available`
       : "No built-in scores are available yet.";
@@ -258,20 +263,25 @@ function toast(message) {
   state.toastTimer = setTimeout(() => els.toast.classList.remove("show"), 3400);
 }
 
-async function loadScore(loader) {
+async function loadScore(loader, context = null) {
+  state.scoreContext = context;
+  state.savedPreferences = context?.record?.settings || context?.settings || null;
   showView("loading");
   els.loadingTitle.textContent = "Finding parts and phrases…";
   els.loadingMessage.textContent = "MusicXML keeps the voice and accompaniment as separate musical data.";
   try {
     state.score = await loader();
+    if (context?.record?.title) state.score.title = context.record.title;
     state.samples = [];
     state.rawSamples = [];
     state.acceptedSamples = [];
     state.visualTraceSamples = [];
     state.previousTakeTrace = [];
-    state.selectedPartId = suggestVocalPart(state.score.parts);
+    const savedPart = context?.record?.selectedPartId || context?.selectedPartId;
+    state.selectedPartId = state.score.parts.some(p => p.id === savedPart) ? savedPart : suggestVocalPart(state.score.parts);
     renderPartChoices();
     showView("parts");
+    if (context?.record?.selectedPartId && state.selectedPartId === context.record.selectedPartId) await enterStudio();
   } catch (error) {
     console.error(error);
     toast(error.message || "This score could not be opened.");
@@ -352,8 +362,60 @@ async function enterStudio() {
   els.scoreHeading.textContent = `${vocalPart.name} — vocal focus`;
   renderAccompaniment();
   resetControls();
+  restoreScorePreferences();
   showView("studio");
   await renderScore();
+  void persistScorePreferences();
+}
+
+function restoreScorePreferences() {
+  const prefs = state.savedPreferences;
+  if (!prefs) return;
+  state.preferredMode = MODE_CONFIG[prefs.mode] ? prefs.mode : "listen";
+  if (Number.isFinite(prefs.guideVolume)) { state.guideVolume = Math.max(0,Math.min(100,prefs.guideVolume)); els.guideVolume.value = state.guideVolume; updateVolume("guide",state.guideVolume); }
+  if (prefs.guideVoice) setGuideVoice(prefs.guideVoice);
+  if (Number.isFinite(prefs.countInBars)) setCountInBars(prefs.countInBars);
+  if (Number.isFinite(prefs.octaveShift)) setOctaveShift(prefs.octaveShift);
+  if (Number.isFinite(prefs.tempoPercent)) {audio.setTempo(Math.max(50,Math.min(150,prefs.tempoPercent)));els.tempoSlider.value=audio.tempoPercent;els.tempoOutput.textContent=`${audio.tempoPercent}%`;els.bpmLabel.textContent=`${Math.round(audio.bpm)} BPM`;}
+  if (validateSection(selectedPart(),prefs.sectionStartMeasure,prefs.sectionEndMeasure).valid) { state.sectionStartMeasure=prefs.sectionStartMeasure;state.sectionEndMeasure=prefs.sectionEndMeasure;state.startMeasure=prefs.startMeasure; }
+  for (const part of state.score.parts.filter(p=>p.id!==state.selectedPartId)) {
+    if (Number.isFinite(prefs.partVolumes?.[part.id])) {state.partVolumes[part.id]=Math.max(0,Math.min(100,prefs.partVolumes[part.id]));audio.setPartVolume(part.id,state.partVolumes[part.id]);}
+    if (prefs.partVoices?.[part.id]) {state.partVoices[part.id]=normaliseGuideVoice(prefs.partVoices[part.id]);audio.setPartVoice(part.id,state.partVoices[part.id]);}
+    if (Array.isArray(prefs.enabledParts)) {if(prefs.enabledParts.includes(part.id))state.enabledParts.add(part.id);else state.enabledParts.delete(part.id);audio.setPartEnabled(part.id,state.enabledParts.has(part.id));}
+  }
+  renderAccompaniment();renderPracticeRangeControls();updateSetupSummary();
+}
+function scorePreferences() {
+  return {mode:state.mode==='listen'&&state.preferredMode?state.preferredMode:state.mode,guideVolume:state.guideVolume,guideVoice:state.guideVoice,countInBars:state.countInBars,octaveShift:state.octaveShift,tempoPercent:audio.tempoPercent,
+    sectionStartMeasure:state.sectionStartMeasure,sectionEndMeasure:state.sectionEndMeasure,startMeasure:state.startMeasure,partVolumes:{...state.partVolumes},partVoices:{...state.partVoices},enabledParts:[...state.enabledParts]};
+}
+async function persistScorePreferences() {
+  if (!state.scoreContext || !state.score || !state.selectedPartId || els.studioView.hidden) return;
+  const context=state.scoreContext;
+  const patch={selectedPartId:state.selectedPartId,selectedPartName:selectedPart()?.name,settings:scorePreferences(),lastOpenedAt:new Date().toISOString()};
+  try {if(context.record) await library.store.update(context.record.id,patch);else if(context.builtin)await library.store.setting(`builtin:${context.builtin}`,patch);}
+  catch(error){console.warn('Could not save score settings',error);}
+}
+async function importAndOpen(file) {
+  showView("loading");
+  try {const imported=await library.importFile(file);if(imported)await loadScore(()=>imported.score,{record:imported.record});else showView("upload");}
+  catch(error){toast(error.message||"This score could not be imported.");showView("upload");}
+  finally {els.scoreInput.value="";}
+}
+async function openSavedScore(record) {
+  return loadScore(()=>readScoreFile(new File([record.bytes],record.filename,{type:record.bytes.type})),{record});
+}
+async function openBuiltIn(entry) {
+  const settings=await library.store.setting(`builtin:${entry.file}`).catch(()=>null);
+  return loadScore(()=>readScoreUrl(entry.file,entry.title),{builtin:entry.file,...settings});
+}
+async function renderBuiltInOptions() {
+  const hidden=await library.hidden().catch(()=>[]);
+  els.repertoireSelect.replaceChildren(new Option("Select from repertoire",""));
+  for(const entry of state.repertoire.filter(e=>!hidden.includes(e.file)))els.repertoireSelect.add(new Option(entry.title,entry.file));
+  els.repertoireSelect.disabled=els.repertoireSelect.options.length<2;
+  const manager=$("#builtinVisibilityList");manager.replaceChildren();
+  for(const entry of state.repertoire) {const row=document.createElement("div"),name=document.createElement("span"),button=document.createElement("button");name.textContent=entry.title;button.type="button";button.textContent=hidden.includes(entry.file)?"Restore":"Hide";button.addEventListener("click",async()=>{try{const next=hidden.includes(entry.file)?hidden.filter(file=>file!==entry.file):[...hidden,entry.file];await library.store.setting("hidden-builtins",next);await renderBuiltInOptions();}catch(error){toast(error.message);}});row.append(name,button);manager.append(row);}
 }
 
 function selectedPart() {
@@ -885,30 +947,10 @@ function handleMicrophoneCalibration(calibration) {
 }
 
 async function recheckMicrophone() {
-  if (audio.isPlaying || audio.isPaused || audio.isCountingIn) return;
-  state.microphoneCalibration = null;
-  clearSavedMicrophoneCalibration();
-  updateMicrophoneCheckSetting();
-  tutorial.setActive(true);
-  setTransportBusy(true);
-  els.recheckMicrophoneButton.disabled = true;
-  try {
-    const calibration = await audio.recheckMicrophone({
-      keepActive: MODE_CONFIG[state.mode].microphone,
-      targetMidiAtQuarter,
-    });
-    if (calibration?.signalGood) toast("Microphone ready — signal good.");
-    else toast(calibration?.overloaded
-      ? "Your microphone is overloading — move a little farther away and try again."
-      : "Move a little closer to your microphone and try again.");
-  } catch (error) {
-    console.error(error);
-    if (error?.name === "NotAllowedError") toast("Microphone permission was blocked.");
-    else toast(error.message || "The microphone check could not run.");
-  } finally {
-    els.recheckMicrophoneButton.disabled = false;
-    setTransportBusy(false);
-  }
+  if (audio.isPlaying || audio.isPaused || audio.isCountingIn) return false;
+  const ready = await calibrationDialog.open({ keepActive: MODE_CONFIG[state.mode].microphone });
+  if (ready && state.mode === "listen" && state.preferredMode && state.preferredMode !== "listen") setMode(state.preferredMode);
+  return ready;
 }
 
 function setCountInBars(value) {
@@ -1163,18 +1205,17 @@ async function activateMicrophonePreparation(token) {
   els.dockPlayPauseButton.disabled = true;
   els.recheckMicrophoneButton.disabled = true;
   try {
+    if (!state.microphoneCalibration) {
+      const ready = await recheckMicrophone();
+      if (!ready || token !== state.microphoneActivationToken) { if (token === state.microphoneActivationToken) setMode("listen"); return; }
+    }
     await audio.startMicrophoneMonitoring(targetMidiAtQuarter);
     if (token !== state.microphoneActivationToken || !MODE_CONFIG[state.mode].microphone) return;
     updatePosition(audio.currentQuarter);
     setStatus("idle", "Find your starting note", "The live tuner is active. These preparation samples are not assessed.");
   } catch (error) {
     if (token !== state.microphoneActivationToken) return;
-    if (error?.name === "AbortError" && MODE_CONFIG[state.mode].microphone) {
-      queueMicrotask(() => {
-        if (token === state.microphoneActivationToken) void activateMicrophonePreparation(token);
-      });
-      return;
-    }
+    if (error?.name === "AbortError") return;
     console.error(error);
     if (error?.name === "MicrophoneCheckError") toast(error.message);
     else if (error?.name === "NotAllowedError") toast("Microphone permission was blocked. Allow microphone access to continue.");
@@ -1198,6 +1239,7 @@ function setMode(mode) {
   state.microphoneActivationToken += 1;
   const activationToken = state.microphoneActivationToken;
   state.mode = mode;
+  state.preferredMode = mode;
   clearOctaveSuggestion();
   updateSetupSummary();
   els.modeButtons.forEach((button) => {
@@ -1668,6 +1710,7 @@ function handleCountIn(event) {
 }
 
 function handleMicrophoneState(status, details = {}) {
+  calibrationDialog.state(status, details);
   if (status === "requesting") setStatus("idle", "Microphone permission", "Allow access so assessment can listen locally.");
   if (status === "checking-room") {
     els.microphoneCheckStatus.textContent = "Checking room";
@@ -2134,6 +2177,11 @@ function resetControls() {
 }
 
 function resetToUpload() {
+  void persistScorePreferences();
+  state.scoreContext = null;
+  state.preferredMode = null;
+  state.savedPreferences = null;
+  void library.refresh();
   state.microphoneActivationToken += 1;
   state.microphonePreparing = false;
   audio.destroy();
@@ -2204,10 +2252,10 @@ function runPitchSelfTest() {
 function wireEvents() {
   $("#setupPanel").addEventListener("input", () => queueMicrotask(updateSetupSummary));
   $("#setupPanel").addEventListener("click", () => queueMicrotask(updateSetupSummary));
-  els.scoreInput.addEventListener("change", () => { const file = els.scoreInput.files?.[0]; if (file) loadScore(() => readScoreFile(file)); });
+  els.scoreInput.addEventListener("change", () => { const file = els.scoreInput.files?.[0]; if (file) void importAndOpen(file); });
   els.repertoireSelect.addEventListener("change", () => {
     const entry = state.repertoire.find((candidate) => candidate.file === els.repertoireSelect.value);
-    if (entry) loadScore(() => readScoreUrl(entry.file, entry.title));
+    if (entry) void openBuiltIn(entry);
   });
   els.partBackButton.addEventListener("click", resetToUpload);
   els.newScoreButton.addEventListener("click", resetToUpload);
@@ -2335,9 +2383,14 @@ function wireEvents() {
   window.addEventListener("beforeunload", () => { tutorial.destroy(); audio.destroy(); });
 }
 
+const calibrationDialog = createCalibrationDialog({
+  audio,
+  onBusy: busy => { tutorial.setActive(busy); setTransportBusy(busy); },
+  onCancel: () => { if (!audio.isPlaying && !audio.isPaused && !audio.isCountingIn) setMode("listen"); updateMicrophoneCheckSetting(); },
+});
 let microphoneReminderShown = false;
 function showMicrophoneReminder(reason) {
-  if (microphoneReminderShown || state.microphoneCheckedThisOpen || !state.score || state.microphonePreparing || audio.isPlaying || audio.isPaused || audio.isCountingIn) return;
+  if (calibrationDialog.active || microphoneReminderShown || state.microphoneCheckedThisOpen || !state.score || state.microphonePreparing || audio.isPlaying || audio.isPaused || audio.isCountingIn) return;
   microphoneReminderShown = true;
   $("#microphoneReminderTitle").textContent = reason === "first-tour" ? "Ready for a microphone check?" : "Check your microphone for this session";
   $("#microphoneReminderDialog").showModal();
@@ -2348,7 +2401,6 @@ const tutorial = createTutorial({
 });
 $("#calibrateMicrophoneButton").addEventListener("click", () => {
   $("#microphoneReminderDialog").close();
-  $("#setupPanel").open = true;
   void recheckMicrophone();
 });
 $("#skipMicrophoneButton").addEventListener("click", () => $("#microphoneReminderDialog").close());
@@ -2356,8 +2408,22 @@ $("#replayTutorialButton").addEventListener("click", () => {
   els.helpDialog.close();
   tutorial.replay();
 });
+const library = createLibraryUI({ onOpen: openSavedScore, notify: toast,
+  onRemoveCurrent: async id => { if (state.scoreContext?.record?.id === id) resetToUpload(); },
+});
+setupPWA({ canUpdate: () => !audio.isPlaying && !audio.isPaused && !audio.isCountingIn && !state.reviewPlaying && !calibrationDialog.active });
+let preferenceSaveTimer;
+document.addEventListener("input", event => { if(event.target.closest?.("#studioView")){clearTimeout(preferenceSaveTimer);preferenceSaveTimer=setTimeout(()=>void persistScorePreferences(),150);} });
+document.addEventListener("click", event => { if(event.target.closest?.("#studioView"))queueMicrotask(()=>void persistScorePreferences()); });
+window.addEventListener("pagehide",()=>void persistScorePreferences());
+window.addEventListener("repertoirevisibilitychange",()=>void renderBuiltInOptions());
 wireEvents();
 void loadRepertoireIndex();
+async function receiveIncomingFiles() {
+  try {for(const item of await library.store.incoming()) {await importAndOpen(item.file);await library.store.consumeIncoming(item.id);}}catch(error){toast(error.message||"Use Import Score to open the shared file.");}
+}
+if(new URL(location.href).searchParams.has("shared")) void receiveIncomingFiles();
+if("launchQueue" in window) window.launchQueue.setConsumer(async launch => {for(const handle of launch.files||[])try{await importAndOpen(await handle.getFile());}catch(error){toast(error.message);}});
 if (TIMING_DEBUG_ENABLED) {
   console.info("Vocal Coach timing debug: transport quarter | OSMD timestamp | measure | expected note");
   Object.defineProperty(window, "__vocalCoachTiming", {
