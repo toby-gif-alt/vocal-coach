@@ -4,7 +4,7 @@ function message(worker,type) {return new Promise((resolve,reject)=>{if(!worker)
 });}
 export function setupPWA({canUpdate=()=>true,onStatus=()=>{}}={}) {
   const status=document.querySelector('#offlineStatus'),download=document.querySelector('#downloadOfflineButton'),update=document.querySelector('#updateAppButton'),install=document.querySelector('#installAppButton');
-  let registration,installPrompt,downloadActive=false;
+  let registration,downloadActive=false;
   const watched=new WeakSet();
   function display(text) {status.textContent=text;onStatus(text);}
   function watch(reg) {registration=reg;const pending=reg.installing;
@@ -36,15 +36,39 @@ export function setupPWA({canUpdate=()=>true,onStatus=()=>{}}={}) {
     try {update.dataset.applying='true';const result=await message(registration?.waiting,'UPDATE');if(result.error){update.dataset.applying='false';display(result.error);}}
     catch(error){update.dataset.applying='false';display(error.message);}
   });
-  const standalone=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
-  const ios=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
-  if(ios&&!standalone()){install.hidden=false;install.textContent='Install on iPhone / iPad';}
-  window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;if(!standalone()){install.hidden=false;install.textContent='Install Vocal Coach';}});
-  window.addEventListener('appinstalled',()=>{install.hidden=true;installPrompt=null;});
-  install.addEventListener('click',async()=>{if(installPrompt){await installPrompt.prompt();const result=await installPrompt.userChoice;installPrompt=null;install.hidden=true;if(result.outcome!=='accepted')display('You can install later from your browser menu.');}
-    else if(ios&&!standalone())document.querySelector('#installInstructionsDialog').showModal();
-  });
+  setupInstallation({install,dialog:document.querySelector('#installInstructionsDialog')});
   window.addEventListener('online',()=>{void verify();void registration?.update().catch(()=>{});});
   window.addEventListener('offline',()=>void verify());
   void register();return {verify};
+}
+
+export function installationInstructions(nav=navigator) {
+  const ua=nav.userAgent||'',ios=/iPad|iPhone|iPod/.test(ua)||(nav.platform==='MacIntel'&&nav.maxTouchPoints>1);
+  if(ios)return 'On iPhone or iPad, open Vocal Coach in Safari. Tap Share → Add to Home Screen → Add. Keep Open as Web App enabled if offered.';
+  if(/Android/.test(ua))return 'On Android, open the browser menu and choose Install app or Add to Home screen if offered. If unavailable, open Vocal Coach in Chrome and try its install menu.';
+  if(/Edg\//.test(ua))return 'In Microsoft Edge, open the menu → Apps → Install this site as an app. If already installed, use Open in app.';
+  if(/Chrome\//.test(ua))return 'In Chrome, use the install icon in the address bar or menu → Cast, save and share → Install page as app. If already installed, use Open in app.';
+  if(/Safari\//.test(ua)&&/Mac/.test(ua))return 'In Safari on macOS Sonoma or later, choose File → Add to Dock, or Share → Add to Dock. Older Safari versions can use Vocal Coach in a browser tab.';
+  return 'This browser may not support installing web apps. Check its menu for Install app. On desktop, try Chrome or Edge; on iPhone or iPad, use Safari. You can also keep practising in this browser.';
+}
+export function setupInstallation({install,dialog}) {
+  const mode=matchMedia('(display-mode: standalone)');let installed=false,prompt=null;
+  const standalone=()=>mode.matches||navigator.standalone===true;
+  const refresh=()=>{install.hidden=installed||standalone();install.textContent='Install Vocal Coach';};
+  function instructions(prefix='') {
+    dialog.querySelector('#installInstructionsTitle').textContent='Install Vocal Coach';
+    dialog.querySelector('#installInstructionsCopy').textContent=prefix+installationInstructions();
+    dialog.showModal();
+  }
+  refresh();mode.addEventListener?.('change',refresh);
+  window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();prompt=event;refresh();});
+  window.addEventListener('appinstalled',()=>{installed=true;prompt=null;refresh();});
+  install.addEventListener('click',async()=>{
+    if(installed||standalone())return;
+    if(!prompt){instructions();return;}
+    const current=prompt;prompt=null;install.disabled=true;
+    try {await current.prompt();const result=await current.userChoice;if(result.outcome==='accepted')installed=true;else instructions('You can install later. ');}
+    catch {instructions('The automatic install prompt is unavailable. ');}
+    finally {install.disabled=false;refresh();}
+  });
 }

@@ -57,7 +57,7 @@
             </div>
           </div>
           <p class="file-note">MusicXML, XML, or MXL · Imported scores are saved on this device</p>
-          <div class="pwa-controls"><span id="offlineStatus" role="status">Checking offline availability…</span><button id="downloadOfflineButton" type="button">Download for offline</button><button id="installAppButton" type="button" hidden>Install Vocal Coach</button><button id="updateAppButton" type="button" hidden>Apply update</button></div>
+          <div class="pwa-controls"><span id="offlineStatus" role="status">Checking offline availability…</span><button id="downloadOfflineButton" type="button">Download for offline</button><button id="installAppButton" type="button">Install Vocal Coach</button><button id="updateAppButton" type="button" hidden>Apply update</button></div>
           <p class="repertoire-manage"><details id="builtInManager"><summary>Manage built-in repertoire</summary><div id="builtinVisibilityList"></div></details><button id="restoreBuiltinsButton" type="button">Restore hidden built-ins</button></p>
           <div class="flow-list" aria-label="How it works">
             <div><span>01</span><p><strong>Bring a score</strong><small>Export MusicXML from MuseScore, Sibelius, Dorico, or Finale.</small></p></div>
@@ -297,7 +297,7 @@
     </main>
 
     <dialog id="libraryActionDialog" class="microphone-reminder" aria-labelledby="libraryActionTitle"><form method="dialog"><h2 id="libraryActionTitle"></h2><p id="libraryActionCopy"></p><input id="libraryActionInput" aria-label="Display title" maxlength="200" hidden /><div><button id="libraryActionAccept" value="accept">Confirm</button><button id="libraryActionSecondary" value="secondary" hidden>Keep copy</button><button value="cancel">Cancel</button></div></form></dialog>
-    <dialog id="installInstructionsDialog" class="microphone-reminder" aria-labelledby="installInstructionsTitle"><form method="dialog"><h2 id="installInstructionsTitle">Install on iPhone or iPad</h2><p>Open Vocal Coach in Safari. Tap Share, then Add to Home Screen, then Add. If your browser offers Open as Web App, leave it enabled. Finish the offline download before practising without internet.</p><button>Got it</button></form></dialog>
+    <dialog id="installInstructionsDialog" class="microphone-reminder" aria-labelledby="installInstructionsTitle"><form method="dialog"><h2 id="installInstructionsTitle">Install Vocal Coach</h2><p id="installInstructionsCopy">Open Vocal Coach in Safari. Tap Share, then Add to Home Screen, then Add. If your browser offers Open as Web App, leave it enabled. Finish the offline download before practising without internet.</p><button>Got it</button></form></dialog>
     <dialog id="calibrationDialog" class="calibration-dialog" aria-labelledby="calibrationTitle">
       <h2 id="calibrationTitle">Let's check your microphone</h2><p id="calibrationCopy" aria-live="polite"></p>
       <ul id="calibrationIntro"><li>Find a reasonably quiet place.</li><li>Position your device at a comfortable distance.</li><li>Use headphones where possible.</li><li>You can sing any comfortable note.</li></ul>

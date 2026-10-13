@@ -36,7 +36,7 @@ self.addEventListener('message',event=>{
 async function acceptShared(request) {
   try {const form=await request.formData();const files=form.getAll('score');if(!files.length||files.length>10)throw Error('Share up to ten MusicXML files.');
     for(const file of files)if(!file.name||! /\.(xml|musicxml|mxl)$/i.test(file.name)||file.size>20*1024*1024)throw Error('Share MusicXML/XML/MXL files under 20 MB.');
-    const db=await openLibrary();await new Promise((resolve,reject)=>{const tx=db.transaction('incoming','readwrite');for(const file of files)tx.objectStore('incoming').add({id:crypto.randomUUID(),file});tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});db.close();
+    const db=await openLibrary();await new Promise((resolve,reject)=>{const tx=db.transaction('incoming','readwrite');for(const file of files)tx.objectStore('incoming').add({id:crypto.randomUUID(),filename:file.name,mimeType:file.type,file});tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});db.close();
     return Response.redirect(new URL('./?shared=1',SCOPE),303);
   } catch(error){return new Response(`The score could not be received: ${error.message}. Open Vocal Coach and use Import Score.`,{status:400,headers:{'Content-Type':'text/plain'}});}
 }
