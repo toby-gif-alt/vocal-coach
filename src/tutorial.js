@@ -1,91 +1,85 @@
-const KEY = "vocal-coach:tutorial:v1";
-export const TOUR_STEPS = {
-  upload: [
-    [".score-chooser", "Welcome to Vocal Coach", "Choose a repertoire score, or use Upload MusicXML for your own XML or MXL file. No microphone is needed to explore or listen."],
-    ["#helpButton", "Help whenever you need it", "This button opens the guide. Replay button tour lets you return to these tips at any time."],
-  ],
-  parts: [
-    ["#partOptions", "Choose your vocal line", "Select the part you sing. The other parts become your accompaniment."],
-    ["#continueButton", "Enter the studio", "Use this as my vocal part opens your score. Choose another file takes you back."],
-  ],
-  studio: [
-    [".mode-switch", "Choose your session", "Listen plays the guide and accompaniment without a mic. Assisted adds live pitch feedback. Assessment removes the guide and adds coaching. If mic setup fails, we switch to Listen."],
-    [".accompaniment-block", "Shape the accompaniment", "Mute all switches the backing parts together. Each part has its own on/off switch, voice choice and volume slider."],
-    [".volume-block", "Vocal guide", "Vocal Guide adjusts the melody volume. Guide voice chooses Human voice or Synthetic Ah. The guide is silent during Assessment."],
-    [".compact-setting", "Count yourself in", "Off starts immediately; 1 bar or 2 bars gives you a beat countdown before the music."],
-    [".practice-section-setting", "Practise a few bars", "From bar and To bar set a section. Select bars lets you choose on the score; Clear returns to the whole piece."],
-    [".start-from-setting", "Choose where to begin", "Set the starting bar or use Choose on score, then Start here. Cancel dismisses a score selection."],
-    [".starting-note-setting", "Hear your starting note", "Hear starting note plays the first note in your section. With a working mic, sing it back to confirm your octave."],
-    [".octave-setting", "Manual octave", "Choose Written, Octave lower, 2 octaves lower or Octave higher to place the guide in your singing range."],
-    [".microphone-check-setting", "Check or retry your microphone", "Recheck microphone tests room noise and your voice. You can keep practising in Listen if the mic is blocked, missing or too quiet."],
-    [".sensitivity-block", "Microphone sensitivity", "Low suits a stronger signal; Normal uses calibration; High suits quiet singing. These controls affect microphone sessions."],
-    [".listening-setup-block", "Headphones or speakers", "Headphones gives the cleanest pitch feedback. Speakers enables echo control. Listen mode works with either."],
-    [".tempo-field", "Set your pace", "Move Tempo toward Slower or Faster before starting a take."],
-    [".transport-buttons", "Play, Pause and Stop", "Play starts the count-in and music. Pause holds your place. Stop returns to the selected start."],
-    [".view-switch", "Choose a score view", "Vocal focus shows your line; Full score includes the other parts."],
-    [".score-stage", "Follow the notes", "The cursor follows playback. With a mic, the tuner shows your pitch and a coloured trace appears over the notes. Listen mode shows playback without inventing pitch results."],
-    ["#finishButton", "Finish and review", "In a microphone session, Finish & review opens coaching and captured performance playback. Review has Restart, Play, Pause, a seek slider, layer switches and volume sliders. Previous take can show your last trace. Listen has no recording or assessment."],
-    ["#transportDock", "Controls stay with you", "The bottom bar has Restart, Play/Pause and Stop. Follow score toggles automatic scrolling as the music moves."],
-    ["#newScoreButton", "Ready to practise", "New score returns to score selection. Help can replay this tour. Start with Listen, then choose a microphone mode when you want feedback."],
-  ],
-};
+const WELCOME_KEY = "vocal-coach:welcome:v2", STUDIO_KEY = "vocal-coach:studio-tour:v2";
+export const TOUR_STEPS = [
+  [".mode-switch", "Choose your mode", "Listen needs no mic. Assisted adds a guide and pitch trace. Assessment gives coaching without the guide."],
+  [".score-stage", "Sing from the score", "The cursor follows the music. With a mic, the tuner and coloured trace show how your pitch matches."],
+  ["#setupPanel", "Prepare your entrance", "Open Session settings for count-in, starting note, octave, tempo and microphone checks."],
+  ["#mixerPanel", "Hear the parts you need", "Open Mixer to balance the accompaniment and vocal guide."],
+  ["#editPracticeButton", "Practise selected bars", "Double-click a bar, or use Practice section. Type a range or choose Select by dragging, then Apply."],
+  ["#transportDock", "Play, pause and review", "Use the bottom controls while singing. Finish & review ends a mic take; Assessment shows three priorities and two strengths."],
+];
+
+// State and timing are independent of the DOM, so first-use behaviour is testable.
+export function createOnboarding({ storage, schedule = setTimeout, unschedule = clearTimeout, show, hide }) {
+  const read = key => { try { return storage?.getItem(key) === "done"; } catch { return false; } };
+  const save = key => { try { storage?.setItem(key, "done"); } catch { /* Storage is optional. */ } };
+  let welcomeDone = read(WELCOME_KEY), studioDone = read(STUDIO_KEY), view = "upload", timer = null, active = false;
+  const cancelTimer = () => { if (timer !== null) unschedule(timer); timer = null; };
+  return {
+    view(name) {
+      cancelTimer(); hide(); view = name;
+      if (active) return;
+      if (name === "upload" && !welcomeDone) timer = schedule(() => { timer = null; if (view === "upload" && !active && !welcomeDone) show("welcome"); }, 2000);
+      if (name === "studio" && !studioDone) show("studio");
+    },
+    interact() { if (view === "upload") { cancelTimer(); welcomeDone = true; save(WELCOME_KEY); hide(); } },
+    skip(kind) { cancelTimer(); hide(); if (kind === "welcome") { welcomeDone = true; save(WELCOME_KEY); } else { studioDone = true; save(STUDIO_KEY); } },
+    active(value) { active = value; if (value) { cancelTimer(); hide(); } },
+    replay() { if (active) return false; cancelTimer(); show(view === "studio" ? "studio" : "welcome"); return true; },
+    destroy() { cancelTimer(); hide(); },
+  };
+}
 
 export function createTutorial() {
-  let enabled = true;
-  try { enabled = localStorage.getItem(KEY) !== "done"; } catch { /* Works without storage. */ }
-  let view = "upload", index = 0, target = null, returnFocus = null;
-  const card = document.createElement("section");
-  card.className = "tutorial-card";
-  card.hidden = true;
-  card.setAttribute("role", "dialog");
-  card.setAttribute("aria-labelledby", "tutorialTitle");
-  card.innerHTML = '<small id="tutorialProgress"></small><h2 id="tutorialTitle"></h2><p id="tutorialCopy"></p><div class="tutorial-actions"><button type="button" data-tour="skip">Skip tutorial</button><button type="button" data-tour="back">Back</button><button type="button" data-tour="next">Next →</button></div>';
+  let kind = "welcome", index = 0, target = null;
+  const card = document.createElement("section"); card.className = "tutorial-card"; card.hidden = true;
+  card.setAttribute("role", "dialog"); card.setAttribute("aria-labelledby", "tutorialTitle");
+  card.innerHTML = '<small id="tutorialProgress"></small><h2 id="tutorialTitle"></h2><p id="tutorialCopy" aria-live="polite"></p><div class="tutorial-actions"><button type="button" data-tour="skip">Skip</button><button type="button" data-tour="back">Back</button><button type="button" data-tour="next">Next →</button></div>';
   document.body.append(card);
-  const find = (selector) => card.querySelector(selector);
-  function clearTarget() { target?.classList.remove("tutorial-target"); target = null; }
-  function close() {
-    enabled = false;
-    try { localStorage.setItem(KEY, "done"); } catch { /* Optional persistence. */ }
-    clearTarget(); card.hidden = true;
-    if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
-  }
-  function render(focus = true) {
-    clearTarget();
-    const steps = TOUR_STEPS[view];
-    if (!enabled || !steps) { card.hidden = true; return; }
-    const [selector, title, copy] = steps[index];
-    target = document.querySelector(selector);
-    if (target) {
-      const details = target.closest("details");
-      if (details) details.open = true;
-      target.classList.add("tutorial-target");
-      target.scrollIntoView({ block: "center", behavior: "instant" });
+  const find = selector => card.querySelector(selector);
+  function hide() { target?.classList.remove("tutorial-target"); target = null; card.hidden = true; }
+  function render() {
+    target?.classList.remove("tutorial-target");
+    const [selector, title, copy] = kind === "welcome" ? [".score-chooser", "Welcome to Vocal Coach!", "Select repertoire from here or upload your own to get started."] : TOUR_STEPS[index];
+    target = document.querySelector(selector); target?.classList.add("tutorial-target");
+    if (kind === "studio" && target) {
+      const rect = target.getBoundingClientRect();
+      if (rect.top < 0 || rect.bottom > innerHeight - 90) target.scrollIntoView({block:"center", behavior:"instant"});
     }
     card.hidden = false;
-    find("#tutorialProgress").textContent = `${view === "studio" ? "Studio" : view === "parts" ? "Your part" : "Getting started"} · ${index + 1} of ${steps.length}`;
-    find("#tutorialTitle").textContent = title;
-    find("#tutorialCopy").textContent = copy;
-    find('[data-tour="back"]').disabled = index === 0;
-    find('[data-tour="next"]').textContent = index === steps.length - 1 ? (view === "studio" ? "Finish tour" : (view === "upload" ? "Choose my score →" : "Choose my part →")) : "Next →";
+    find("#tutorialTitle").textContent = title; find("#tutorialCopy").textContent = copy;
+    find("#tutorialProgress").textContent = kind === "welcome" ? "Start with a score" : `${index + 1} of ${TOUR_STEPS.length}`;
+    find('[data-tour="back"]').hidden = kind === "welcome"; find('[data-tour="back"]').disabled = index === 0;
+    find('[data-tour="next"]').hidden = kind === "welcome";
+    find('[data-tour="next"]').textContent = index === TOUR_STEPS.length - 1 ? "Done" : "Next →";
+    // Keep the cue near its target, choosing the side with room. Never auto-scroll a singer.
     const rect = target?.getBoundingClientRect();
-    card.classList.toggle("tutorial-at-top", Boolean(rect && rect.top > innerHeight / 2));
-    if (focus) find('[data-tour="next"]').focus({ preventScroll: true });
+    const width = Math.min(340, innerWidth - 32);
+    const left = rect ? Math.max(16, Math.min(innerWidth - width - 16, rect.right - width)) : 16;
+    const height = card.offsetHeight;
+    const below = rect && rect.bottom + height + 100 < innerHeight;
+    const top = rect ? (below ? rect.bottom + 12 : Math.max(12, rect.top - height - 12)) : 16;
+    card.style.left = `${left}px`; card.style.right = "auto"; card.style.bottom = "auto";
+    card.style.top = `${Math.min(Math.max(12, top), innerHeight - height - 85)}px`;
+    card.classList.toggle("welcome-cue", kind === "welcome");
   }
-  card.addEventListener("click", (event) => {
+  let storage; try { storage = localStorage; } catch { /* Restricted browsing. */ }
+  const controller = createOnboarding({ storage, show(value) { kind = value; index = 0; render(); }, hide });
+  card.addEventListener("click", event => {
     const action = event.target.dataset.tour;
-    if (action === "skip") close();
+    if (action === "skip") controller.skip(kind);
     if (action === "back") { index = Math.max(0, index - 1); render(); }
-    if (action === "next") {
-      if (index < TOUR_STEPS[view].length - 1) { index++; render(); }
-      else if (view === "studio") close();
-      else { clearTarget(); card.hidden = true; (document.querySelector(view === "upload" ? "#repertoireSelect" : "#continueButton"))?.focus(); }
-    }
+    if (action === "next") { if (index === TOUR_STEPS.length - 1) controller.skip(kind); else { index++; render(); } }
   });
-  document.addEventListener("keydown", (event) => {
-    if (!card.hidden && event.key === "Escape") { event.preventDefault(); close(); }
-  });
-  return {
-    showView(name) { view = name; index = 0; if (enabled) { returnFocus = document.activeElement; render(); } },
-    replay() { enabled = true; index = 0; returnFocus = document.activeElement; render(); },
-  };
+  const interact = () => controller.interact();
+  document.addEventListener("pointerdown", interact, { passive: true });
+  document.addEventListener("keydown", interact);
+  document.addEventListener("change", interact);
+  document.addEventListener("wheel", interact, { passive: true });
+  document.addEventListener("touchmove", interact, { passive: true });
+  const keys = event => { if (!card.hidden && event.key === "Escape") controller.skip(kind); };
+  document.addEventListener("keydown", keys);
+  const reposition = () => { if (!card.hidden) render(); };
+  window.addEventListener("resize", reposition); window.addEventListener("scroll", reposition, { passive: true });
+  return { showView: name => controller.view(name), setActive: value => controller.active(value), replay: () => controller.replay(),
+    destroy() { controller.destroy(); document.removeEventListener("pointerdown", interact); document.removeEventListener("keydown", interact); document.removeEventListener("change", interact); document.removeEventListener("wheel", interact); document.removeEventListener("touchmove", interact); document.removeEventListener("keydown", keys); window.removeEventListener("resize", reposition); window.removeEventListener("scroll", reposition); card.remove(); } };
 }

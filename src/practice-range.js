@@ -65,7 +65,7 @@ export function resolvePracticeRange(part, {
   const sectionValidation = sectionStartMeasure === null || sectionEndMeasure === null
     ? null
     : validateSection(part, sectionStartMeasure, sectionEndMeasure);
-  const wholePiece = !sectionValidation?.valid;
+  const wholePiece = !sectionValidation?.valid || (sectionValidation.startMeasure === firstMeasure && sectionValidation.endMeasure === lastMeasure);
   const resolvedSectionStart = wholePiece ? firstMeasure : sectionValidation.startMeasure;
   const resolvedSectionEnd = wholePiece ? lastMeasure : sectionValidation.endMeasure;
   const startCandidate = Number(startMeasure);

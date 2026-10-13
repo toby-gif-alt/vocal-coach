@@ -167,3 +167,10 @@ export function colourForCents(cents) {
   if (error <= PITCH_THRESHOLDS.orange) return "#ee8b3b";
   return "#df5f55";
 }
+
+// Conservative coaching gates: pitch estimates are not phonation boundaries.
+export const COACHING_CONFIG = Object.freeze({
+  minimumDuration: 0.55, minimumSamples: 8, minimumCoverage: 65,
+  minimumWindowSamples: 3, minimumClarity: 0.68, minimumBiasFraction: 0.75, pitchBias: 25, minimumLeapSemitones: 4,
+  minimumSustainDuration: 1.0, offsetChange: 25,
+});
