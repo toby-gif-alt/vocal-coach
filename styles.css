@@ -349,3 +349,8 @@ body.tutorial-studio { overflow: hidden; }
   .tutorial-card { top: auto; bottom: 100px; right: 16px; width: min(340px,calc(100vw - 32px)); height: 245px; }
 }
 @media (max-width: 899px) { .studio-view.tutorial-overview { margin-left: calc((100% - 100% * var(--tutorial-scale, 1)) / 2); } }
+.octave-suggestion { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 10px 0; padding: 12px; border-radius: 9px; background: #edf6e8; font-size: 14px; }
+.octave-suggestion[hidden] { display: none; }
+.octave-suggestion span { flex: 1; min-width: 220px; }
+.octave-suggestion button { padding: 8px 12px; min-height: 38px; border: 1px solid #acbfab; border-radius: 7px; background: white; color: var(--forest); cursor: pointer; }
+.octave-suggestion button:disabled { opacity: .5; cursor: default; }
