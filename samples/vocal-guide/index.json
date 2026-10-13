@@ -1,5 +1,173 @@
 [
   {
+    "file": "./samples/vocal-guide/female/D3.mp3",
+    "note": "D3",
+    "rootMidi": 50,
+    "bank": "female"
+  },
+  {
+    "file": "./samples/vocal-guide/female/Ds3.mp3",
+    "note": "D#3",
+    "rootMidi": 51,
+    "bank": "female"
+  },
+  {
+    "file": "./samples/vocal-guide/female/E3.mp3",
+    "note": "E3",
+    "rootMidi": 52,
+    "bank": "female"
+  },
+  {
+    "file": "./samples/vocal-guide/female/F3.mp3",
+    "note": "F3",
+    "rootMidi": 53,
+    "bank": "female"
+  },
+  {
+    "file": "./samples/vocal-guide/female/Fs3.mp3",
+    "note": "F#3",
+    "rootMidi": 54,
+    "bank": "female"
+  },
+  {
+    "file": "./samples/vocal-guide/female/G3.mp3",
+    "note": "G3",
+    "rootMidi": 55,
+    "bank": "female"
+  },
+  {
+    "file": "./samples/vocal-guide/female/Gs3.mp3",
+    "note": "G#3",
+    "rootMidi": 56,
+    "bank": "female"
+  },
+  {
+    "file": "./samples/vocal-guide/female/A3.mp3",
+    "note": "A3",
+    "rootMidi": 57,
+    "bank": "female"
+  },
+  {
+    "file": "./samples/vocal-guide/female/As3.mp3",
+    "note": "A#3",
+    "rootMidi": 58,
+    "bank": "female"
+  },
+  {
+    "file": "./samples/vocal-guide/female/B3.mp3",
+    "note": "B3",
+    "rootMidi": 59,
+    "bank": "female"
+  },
+  {
+    "file": "./samples/vocal-guide/female/C4.mp3",
+    "note": "C4",
+    "rootMidi": 60,
+    "bank": "female"
+  },
+  {
+    "file": "./samples/vocal-guide/female/Cs4.mp3",
+    "note": "C#4",
+    "rootMidi": 61,
+    "bank": "female"
+  },
+  {
+    "file": "./samples/vocal-guide/female/D4.mp3",
+    "note": "D4",
+    "rootMidi": 62,
+    "bank": "female"
+  },
+  {
+    "file": "./samples/vocal-guide/female/Ds4.mp3",
+    "note": "D#4",
+    "rootMidi": 63,
+    "bank": "female"
+  },
+  {
+    "file": "./samples/vocal-guide/female/E4.mp3",
+    "note": "E4",
+    "rootMidi": 64,
+    "bank": "female"
+  },
+  {
+    "file": "./samples/vocal-guide/female/F4.mp3",
+    "note": "F4",
+    "rootMidi": 65,
+    "bank": "female"
+  },
+  {
+    "file": "./samples/vocal-guide/female/Fs4.mp3",
+    "note": "F#4",
+    "rootMidi": 66,
+    "bank": "female"
+  },
+  {
+    "file": "./samples/vocal-guide/female/G4.mp3",
+    "note": "G4",
+    "rootMidi": 67,
+    "bank": "female"
+  },
+  {
+    "file": "./samples/vocal-guide/female/Gs4.mp3",
+    "note": "G#4",
+    "rootMidi": 68,
+    "bank": "female"
+  },
+  {
+    "file": "./samples/vocal-guide/female/A4.mp3",
+    "note": "A4",
+    "rootMidi": 69,
+    "bank": "female"
+  },
+  {
+    "file": "./samples/vocal-guide/female/As4.mp3",
+    "note": "A#4",
+    "rootMidi": 70,
+    "bank": "female"
+  },
+  {
+    "file": "./samples/vocal-guide/female/B4.mp3",
+    "note": "B4",
+    "rootMidi": 71,
+    "bank": "female"
+  },
+  {
+    "file": "./samples/vocal-guide/female/C5.mp3",
+    "note": "C5",
+    "rootMidi": 72,
+    "bank": "female"
+  },
+  {
+    "file": "./samples/vocal-guide/female/Cs5.mp3",
+    "note": "C#5",
+    "rootMidi": 73,
+    "bank": "female"
+  },
+  {
+    "file": "./samples/vocal-guide/female/D5.mp3",
+    "note": "D5",
+    "rootMidi": 74,
+    "bank": "female"
+  },
+  {
+    "file": "./samples/vocal-guide/female/Ds5.mp3",
+    "note": "D#5",
+    "rootMidi": 75,
+    "bank": "female"
+  },
+  {
+    "file": "./samples/vocal-guide/female/E5.mp3",
+    "note": "E5",
+    "rootMidi": 76,
+    "bank": "female"
+  },
+  {
+    "file": "./samples/vocal-guide/female/F5.mp3",
+    "note": "F5",
+    "rootMidi": 77,
+    "bank": "female"
+  },
+  {
     "file": "./samples/vocal-guide/male/C2.mp3",
     "note": "C2",
     "rootMidi": 36,

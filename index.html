@@ -15,11 +15,11 @@
     <meta name="twitter:image" content="https://toby-gif-alt.github.io/vocal-coach/og.png" />
     <title>Vocal Coach — Practise from the score</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%2317382f'/%3E%3Cpath d='M14 34c7 0 7-15 14-15s7 27 14 27 7-16 8-16' fill='none' stroke='%23d7ff72' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="./styles.css?v=25" />
+    <link rel="stylesheet" href="./styles.css?v=26" />
     <script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@2.1.2/build/opensheetmusicdisplay.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/tone@15.1.22/build/Tone.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" defer></script>
-    <script type="module" src="./app.js?v=25"></script>
+    <script type="module" src="./app.js?v=26"></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to the app</a>
@@ -98,7 +98,8 @@
           <aside class="control-panel panel" aria-label="Practice controls">
             <div class="panel-heading"><span>01</span><div><p class="kicker">Session setup</p><h2>Choose a mode</h2></div></div>
             <div class="mode-switch" role="radiogroup" aria-label="Session mode">
-              <button type="button" class="active" data-mode="assisted" role="radio" aria-checked="true"><strong>Assisted</strong><small>Guide + trace</small></button>
+              <button type="button" class="active" data-mode="listen" role="radio" aria-checked="true"><strong>Listen</strong><small>No mic needed</small></button>
+              <button type="button" data-mode="assisted" role="radio" aria-checked="false"><strong>Assisted</strong><small>Guide + trace</small></button>
               <button type="button" data-mode="assessment" role="radio" aria-checked="false"><strong>Assessment</strong><small>Detailed coaching</small></button>
             </div>
             <div class="accompaniment-block"><div class="setting-label"><span>Accompaniment</span><button id="toggleAllParts" type="button">Mute all</button></div><div class="accompaniment-list" id="accompanimentList"></div></div>
@@ -285,7 +286,7 @@
       </section>
     </main>
 
-    <dialog class="dialog" id="helpDialog"><form method="dialog"><button class="dialog-close" value="close" aria-label="Close help">×</button><p class="eyebrow"><span></span> Prototype guide</p><h2>From MusicXML to useful feedback.</h2><ol><li><span>1</span><p><strong>Export MusicXML.</strong> In your notation software, export the full score as MusicXML or compressed MXL.</p></li><li><span>2</span><p><strong>Choose exactly what you sing.</strong> Vocal Coach never assumes a part named “Voice” exists.</p></li><li><span>3</span><p><strong>Choose how much help you need.</strong> Assisted keeps the guide and visual trace without judgement; Assessment removes the guide and adds detailed coaching.</p></li><li><span>4</span><p><strong>Review the shape.</strong> Your accepted pitch stays on the written staff and your immediately previous take can remain as a quiet reference.</p></li></ol><p class="dialog-note">This prototype assesses fundamental pitch only. It does not yet grade rhythm, vibrato, breath, diction, or voice type.</p><button class="continue-button" value="close">Got it</button></form></dialog>
+    <dialog class="dialog" id="helpDialog"><form method="dialog"><button class="dialog-close" value="close" aria-label="Close help">×</button><p class="eyebrow"><span></span> Prototype guide</p><h2>From MusicXML to useful feedback.</h2><ol><li><span>1</span><p><strong>Export MusicXML.</strong> In your notation software, export the full score as MusicXML or compressed MXL.</p></li><li><span>2</span><p><strong>Choose exactly what you sing.</strong> Vocal Coach never assumes a part named “Voice” exists.</p></li><li><span>3</span><p><strong>Choose how much help you need.</strong> Assisted keeps the guide and visual trace without judgement; Assessment removes the guide and adds detailed coaching.</p></li><li><span>4</span><p><strong>Review the shape.</strong> Your accepted pitch stays on the written staff and your immediately previous take can remain as a quiet reference.</p></li></ol><p class="dialog-note">This prototype assesses fundamental pitch only. It does not yet grade rhythm, vibrato, breath, diction, or voice type.</p><button id="replayTutorialButton" type="button">Replay button tour</button><button class="continue-button" value="close">Got it</button></form></dialog>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <noscript><p class="noscript">Vocal Coach needs JavaScript to read MusicXML and analyse pitch.</p></noscript>
   </body>
