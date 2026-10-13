@@ -107,7 +107,7 @@ test("GitHub Pages entry point references only present local assets", async () =
   assert.match(html, /id="guideVoiceStatus"/);
   assert.match(html, /id="repertoireSelect"/);
   assert.match(html, />Select from repertoire</);
-  assert.match(html, />Upload MusicXML</);
+  assert.match(html, />Import Score</);
   assert.doesNotMatch(html, /id="sampleButton"/);
   assert.doesNotMatch(html, /<option value="synthetic-(?:ooh|oh)"/);
   assert.doesNotMatch(html, /data-mode="practice"/);

@@ -1,3 +1,4 @@
+import { validateScoreFile, validateXMLText, validateZipDirectory, inflateBounded } from "./file-safety.js";
 import { midiToFrequency, midiToName } from "./config.js?v=14";
 import {
   applyMeasureTimingEvent,
@@ -31,6 +32,7 @@ function numberOf(parent, name, fallback = 0) {
 }
 
 function parseXml(text) {
+  validateXMLText(text);
   const documentNode = new DOMParser().parseFromString(text, "application/xml");
   const parserError = documentNode.querySelector("parsererror");
   if (parserError) throw new Error("This file is not valid MusicXML.");
@@ -47,21 +49,24 @@ function parseXml(text) {
 async function unzipMxl(source) {
   if (!window.JSZip) throw new Error("Compressed MusicXML support did not load. Try an uncompressed .musicxml file.");
   const encoded = source?.arrayBuffer ? await source.arrayBuffer() : source;
+  validateZipDirectory(encoded);
   const zip = await window.JSZip.loadAsync(encoded);
   let scorePath = null;
   const container = zip.file("META-INF/container.xml");
   if (container) {
-    const containerXml = parseContainer(await container.async("string"));
+    const containerXml = parseContainer(await inflateBounded(container,64*1024));
     scorePath = descendants(containerXml, "rootfile")[0]?.getAttribute("full-path") || null;
   }
   if (!scorePath) {
     scorePath = Object.keys(zip.files).find((path) => !zip.files[path].dir && /\.(musicxml|xml)$/i.test(path) && !/META-INF/i.test(path));
   }
   if (!scorePath || !zip.file(scorePath)) throw new Error("No MusicXML score was found inside this MXL file.");
-  return zip.file(scorePath).async("string");
+  if (/^[/\\]|(?:^|[/\\])\.\.(?:[/\\]|$)/.test(scorePath)) throw new Error("The MXL score path is invalid.");
+  return inflateBounded(zip.file(scorePath));
 }
 
 function parseContainer(text) {
+  validateXMLText(text);
   const documentNode = new DOMParser().parseFromString(text, "application/xml");
   if (documentNode.querySelector("parsererror")) throw new Error("The MXL container is invalid.");
   return documentNode;
@@ -75,7 +80,7 @@ export function isCompressedScoreSource(name, contentType = "") {
 }
 
 export async function readScoreFile(file) {
-  if (!file) throw new Error("Choose a MusicXML file first.");
+  validateScoreFile(file);
   const isCompressed = isCompressedScoreSource(file.name, file.type);
   const xmlText = isCompressed ? await unzipMxl(file) : await file.text();
   return parseMusicXml(xmlText, file.name.replace(/\.(musicxml|xml|mxl)$/i, ""));
@@ -108,6 +113,7 @@ export function parseMusicXml(xmlText, fallbackName = "Untitled score") {
   let originalTempo = findInitialTempo(root) || 120;
   const initialTimeSignature = findInitialTimeSignature(root);
   const partElements = directChildren(root, "part");
+  if (!partElements.length || descendants(root,"note").length > 100000) throw new Error("The score has no parts or contains too many notes.");
   const parts = partElements.map((partElement, index) => {
     const id = partElement.getAttribute("id") || `P${index + 1}`;
     const meta = partMeta.get(id) || { id, name: `Part ${index + 1}`, abbreviation: "", order: index };

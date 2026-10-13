@@ -1,0 +1,13 @@
+{
+  "id": "./", "name": "Vocal Coach", "short_name": "Vocal Coach",
+  "description": "Your score, your voice. Private singing practice, online or offline.",
+  "start_url": "./", "scope": "./", "display": "standalone",
+  "theme_color": "#17382f", "background_color": "#f7f6ee",
+  "icons": [
+    {"src":"icons/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any"},
+    {"src":"icons/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any"},
+    {"src":"icons/maskable-512.png","sizes":"512x512","type":"image/png","purpose":"maskable"}
+  ],
+  "share_target": {"action":"./share-score","method":"POST","enctype":"multipart/form-data","params":{"files":[{"name":"score","accept":[".xml",".musicxml",".mxl","application/vnd.recordare.musicxml+xml","application/vnd.recordare.musicxml","text/xml","application/xml"]}]}},
+  "file_handlers": [{"action":"./","accept":{"application/vnd.recordare.musicxml+xml":[".musicxml",".xml"],"application/vnd.recordare.musicxml":[".mxl"]}}]
+}

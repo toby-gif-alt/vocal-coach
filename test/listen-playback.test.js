@@ -6,7 +6,7 @@ import { test } from "node:test";
 // with a transport double, without requiring a browser audio device.
 const url = new URL("../src/audio-engine.js", import.meta.url);
 const source = (await readFile(url, "utf8"))
-  .replace('"https://cdn.jsdelivr.net/npm/pitchy@4.1.0/+esm"', '"data:text/javascript,export const PitchDetector = {}"')
+  .replace('"../vendor/pitchy.mjs"', '"data:text/javascript,export const PitchDetector = {}"')
   .replace(/from "(\.\/[^\"]+)"/g, (_, relative) => `from "${new URL(relative.split("?")[0], url).href}"`);
 const { AudioEngine } = await import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`);
 

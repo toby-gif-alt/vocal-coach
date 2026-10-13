@@ -1,10 +1,10 @@
 # Vocal Coach
 
-Vocal Coach is a static, browser-based prototype for practising a vocal part directly from a MusicXML score. It separates the selected vocal line from accompaniment data, renders conventional staff notation, synthesizes score playback, follows the score with a cursor, and compares stabilised microphone pitch samples with the expected sounding note.
+Vocal Coach is a static, installable offline application for practising a vocal part directly from a MusicXML score. It separates the selected vocal line from accompaniment data, renders conventional staff notation, synthesizes score playback, follows the score with a cursor, and compares stabilised microphone pitch samples with the expected sounding note.
 
-No account, backend, or upload service is required. Scores, calibration, pitch data, and captured assessment audio remain on the user's device. A small Node build step generates static repertoire and vocal-sample manifests for deployment.
+No account, backend, or upload service is required. Scores, calibration, pitch data, and captured assessment audio remain on the user's device. The build packages local libraries, repertoire and sample banks, and creates a verified offline cache inventory. See [Offline installation, repertoire and calibration](docs/offline-pwa.md).
 
-## Prototype flow
+## Practice flow
 
 1. Choose a built-in repertoire score, or upload `.musicxml`, `.xml`, or compressed `.mxl`.
 2. Review every detected score part and select **I am singing this part**.
@@ -38,7 +38,7 @@ The app deliberately keeps musical concerns separate:
 - `src/review-playback.js` stores immutable take settings (including mode, measure/quarter boundaries, enabled accompaniment IDs, and per-part volumes), review-mix defaults, and the offset mapping from recorded-audio seconds back to absolute musical quarter notes for synchronized review.
 - `src/live-tuning.js` selects the starting/current/next target, keeps pre-performance and rest samples out of assessment, and provides a 170 ms visual-only dropout hold before the meter dims to **Listening…**.
 - `src/analysis.js` groups usable samples by target note and derives onset, settling, sustained centre, green-zone percentage, stability, voiced coverage, fragmentation, and directional drift measurements. It also produces a five-dimension performance level used only to tune coaching.
-- `src/coaching.js` ranks performance-specific strengths and next priorities, balances them for the singer's current level, and produces approximately ten observations tied to actual notes and measures.
+- `src/coaching.js` ranks performance-specific strengths and next priorities, balances them for the singer's current level, and produces three priorities and two strengths tied to actual notes and measures.
 - `src/visual-trace.js` builds a visual-only 240 ms hold/interpolation layer around compatible reliable neighbours. Those synthetic visual points never enter scoring and never fill a long silence.
 - `src/score-overlay.js` maps parsed target-note timestamps to OSMD graphical staff entries and systems, then draws the visual trace and, optionally, the immediately previous take in thin grey behind it.
 - `src/config.js` contains pitch thresholds and audio-analysis settings so today’s placeholder tolerances can be replaced without changing the assessment code.
@@ -48,7 +48,7 @@ The app deliberately keeps musical concerns separate:
 
 ## Libraries
 
-Dependencies are pinned and loaded from jsDelivr so this repository can remain build-free:
+Dependencies are pinned in `package-lock.json` and vendored locally by `npm run vendor`; deployed pages never load them from a CDN. Package notices are retained in `vendor/licenses/`:
 
 - [OpenSheetMusicDisplay 2.1.2](https://github.com/opensheetmusicdisplay/opensheetmusicdisplay) — MusicXML parsing and staff notation rendering
 - [Tone.js 15.1.22](https://github.com/Tonejs/Tone.js) — Web Audio synthesis, scheduling, and transport
@@ -62,16 +62,19 @@ The app itself uses ordinary HTML, CSS, and ES modules.
 Microphone access and ES modules require the files to be served over HTTP rather than opened directly from disk.
 
 ```sh
-python3 -m http.server 8080
+npm ci
+npm run build
+npm run offline:check
+python3 -m http.server 8080 --directory dist
 ```
 
 Run `npm run generate` after adding repertoire scores or vocal samples, then open `http://localhost:8080` and choose a repertoire score.
 
-An internet connection is currently required to load the four pinned browser libraries. No score or microphone data is sent to those services.
+Wait for **Offline ready** before disconnecting. HTTPS or localhost is required for installation and microphone access. No score or microphone data is uploaded.
 
 ## Checks
 
-The dependency-free Node test suite covers generated harmonic A3/C4/A4/C5 tones, strict acquisition and forgiving continuation, quiet/normal/loud/clipped calibration profiles, frame amplitude/overload classification, headphone/speaker constraints, visual-only continuity, octave response candidates, immutable per-part take mixes, MediaRecorder pause accounting, section boundaries, review offsets, coaching, Tone/OSMD time conversion, pickup and multi-staff MusicXML timing, and GitHub Pages asset paths. Run the full syntax and regression check with Node 20 or newer:
+The Node test suite covers generated harmonic A3/C4/A4/C5 tones, strict acquisition and forgiving continuation, quiet/normal/loud/clipped calibration profiles, frame amplitude/overload classification, headphone/speaker constraints, visual-only continuity, octave response candidates, immutable per-part take mixes, MediaRecorder pause accounting, section boundaries, review offsets, coaching, Tone/OSMD time conversion, pickup and multi-staff MusicXML timing, and GitHub Pages asset paths. Run the full syntax and regression check with Node 20 or newer:
 
 ```sh
 npm run generate
