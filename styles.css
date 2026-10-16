@@ -580,3 +580,11 @@ body.studio-active .studio-view { padding:10px 0 24px; }
 }
 #installDeviceNote { font-size:13px; color:var(--ink-soft); max-width:260px; line-height:1.4; }
 #updateAppButton { min-height:44px; padding:9px 15px; margin:12px 0; border:1px solid var(--line); border-radius:10px; background:var(--cream); color:var(--forest); cursor:pointer; }
+
+.repeat-practice { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; font-size: .8rem; white-space: nowrap; }
+.repeat-practice input { accent-color: var(--forest); width: 18px; height: 18px; }
+
+/* Practice selection uses plain score hit targets, without coloured boxes. */
+.score-range-layer .score-measure-region,
+.score-range-layer.is-interactive .score-measure-region:hover { fill: transparent; stroke: none; }
+.score-range-layer.is-interactive .score-measure-region:focus-visible { fill: transparent; stroke: var(--forest); stroke-dasharray: 3 3; }

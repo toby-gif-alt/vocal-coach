@@ -172,34 +172,26 @@
 
             </section>
                         <section class="practice-section-setting panel" id="practiceEditor" hidden aria-labelledby="practiceSectionLabel">
-              <div class="setting-label"><span id="practiceSectionLabel">Practice section</span><output id="practiceRangeStatus">Whole piece</output></div>
+              <div class="setting-label"><span id="practiceSectionLabel">Select bars to practice</span><output id="practiceRangeStatus">Whole piece</output></div>
               <div class="practice-range-fields">
                 <label for="sectionFrom">From bar <input id="sectionFrom" type="number" inputmode="numeric" step="1" /></label>
                 <span aria-hidden="true">to</span>
                 <label for="sectionTo">To bar <input id="sectionTo" type="number" inputmode="numeric" step="1" /></label>
-<label for="startFromBar"><span>Start from</span><span>Bar <input id="startFromBar" type="number" inputmode="numeric" step="1" /></span></label>
+
               </div>
-              <div class="practice-range-actions"><button id="applySectionButton" type="button">Apply</button><button id="cancelSectionButton" type="button">Cancel</button>
-                <button id="selectBarsButton" type="button" aria-pressed="false">Select by dragging</button>
-                <button id="chooseStartButton" type="button" aria-pressed="false">Choose start on score</button><button id="clearSectionButton" type="button">Whole piece / Clear section</button>
-              </div>
-              <p id="sectionValidation" class="setting-message" role="status">Whole piece is selected.</p>
+              <p id="sectionValidation" class="setting-message" role="status">Enter bar numbers, or click and drag across the score. Your selection is used straight away.</p>
+              <div class="practice-range-actions"><button id="cancelSectionButton" type="button">Cancel</button></div>
             </section>
 <section class="score-panel panel" aria-labelledby="scoreHeading">
               <div class="score-panel-head"><div><p class="kicker">Following</p><h2 id="scoreHeading">Selected vocal line</h2></div><div class="score-head-meta"><div class="view-switch" role="group" aria-label="Score view"><button type="button" class="active" data-view="vocal">Vocal focus</button><button type="button" data-view="full">Full score</button></div><span id="octaveConfirmation" hidden role="status"></span>
-<button id="editPracticeButton" type="button">Practice section</button><span class="measure-pill">Measure <strong id="measureNumber">1</strong></span><div class="tolerance-legend" aria-label="Pitch trace colours"><span><i class="green"></i>±15¢</span><span><i class="yellow"></i>±30¢</span><span><i class="orange"></i>±45¢</span><span><i class="red"></i>45¢+</span></div></div></div>
+<label class="repeat-practice"><input id="repeatPractice" type="checkbox" /> Repeat</label><button id="editPracticeButton" type="button">Select bars to practice</button><span class="measure-pill">Measure <strong id="measureNumber">1</strong></span><div class="tolerance-legend" aria-label="Pitch trace colours"><span><i class="green"></i>±15¢</span><span><i class="yellow"></i>±30¢</span><span><i class="orange"></i>±45¢</span><span><i class="red"></i>45¢+</span></div></div></div>
               <div id="octaveSuggestion" class="octave-suggestion" hidden role="status" aria-live="polite">
                 <span id="octaveSuggestionCopy"></span>
                 <button id="acceptOctaveSuggestion" type="button">Change singing octave</button>
                 <button id="dismissOctaveSuggestion" type="button">Keep current octave</button>
               </div>
               <div class="score-banner"><span></span><strong id="scoreBannerPart">Voice</strong> is the target · your accepted pitch draws directly across its notes <label class="previous-take-toggle" id="previousTakeControl" hidden><input id="showPreviousTake" type="checkbox" checked /> Previous take</label></div>
-              <div class="score-selection-action" id="scoreSelectionAction" hidden role="status">
-                <span id="scoreSelectionCopy">Choose a measure.</span>
-                <button id="startHereButton" type="button" hidden>Start here</button>
-                <button id="cancelScoreSelectionButton" type="button">Cancel</button>
-              </div>
-              <p class="score-interaction-hint">Double-click a bar to practise a section · or use Practice section above.</p><div class="score-stage">
+              <p class="score-interaction-hint">Click the score to play from there · select bars to practice a section.</p><div class="score-stage">
                 <div class="score-viewport"><div id="scoreContainer" class="score-container" aria-label="Rendered sheet music"></div></div>
                 <aside class="tuning-meter is-listening" id="tuningMeter" role="meter" aria-label="Live tuning: listening" aria-valuemin="-50" aria-valuemax="50">
                   <div class="tuning-readout">
