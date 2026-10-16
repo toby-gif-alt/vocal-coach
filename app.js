@@ -3,7 +3,7 @@ import { incomingScoreFile } from "./src/repertoire-store.js";
 import { createLibraryUI } from "./src/library-ui.js";
 import { setupPWA } from "./src/pwa.js";
 import { createCalibrationDialog } from "./src/calibration-dialog.js";
-import { draftFromRange, dragRange, validateDraft, measureAtPoint } from "./src/practice-selection.js?v=27";
+import { draftFromRange, dragRange, validateDraft, measureAtPoint, scorePositionAtPoint } from "./src/practice-selection.js?v=27";
 import { createTutorial } from "./src/tutorial.js?v=28";
 import { AudioEngine } from "./src/audio-engine.js?v=30";
 import { analysePerformance, performanceSummary } from "./src/analysis.js?v=27";
@@ -75,7 +75,7 @@ const els = {
   modeButtons: [...document.querySelectorAll("[data-mode]")], accompanimentList: $("#accompanimentList"), toggleAllParts: $("#toggleAllParts"),
   guideVolume: $("#guideVolume"), guideVolumeOutput: $("#guideVolumeOutput"), guideVoice: $("#guideVoice"), guideVoiceStatus: $("#guideVoiceStatus"),
   countInButtons: [...document.querySelectorAll("[data-count-in]")], countInOutput: $("#countInOutput"), countInDisplay: $("#countInDisplay"), countInBar: $("#countInBar"), countInBeats: $("#countInBeats"),
-  sectionFrom: $("#sectionFrom"), sectionTo: $("#sectionTo"), practiceRangeStatus: $("#practiceRangeStatus"), sectionValidation: $("#sectionValidation"), selectBarsButton: $("#selectBarsButton"), clearSectionButton: $("#clearSectionButton"), startFromBar: $("#startFromBar"), chooseStartButton: $("#chooseStartButton"), scoreSelectionAction: $("#scoreSelectionAction"), scoreSelectionCopy: $("#scoreSelectionCopy"), startHereButton: $("#startHereButton"), cancelScoreSelectionButton: $("#cancelScoreSelectionButton"),
+  sectionFrom: $("#sectionFrom"), sectionTo: $("#sectionTo"), practiceRangeStatus: $("#practiceRangeStatus"), sectionValidation: $("#sectionValidation"),
   octaveButtons: [...document.querySelectorAll("[data-octave]")], octaveOutput: $("#octaveOutput"), octaveHint: $("#octaveHint"), startingNoteName: $("#startingNoteName"), hearStartingNote: $("#hearStartingNote"), octaveConfirmation: $("#octaveConfirmation"), headphoneNote: $("#headphoneNote"),
   listeningSetupButtons: [...document.querySelectorAll("[data-listening-setup]")], listeningSetupOutput: $("#listeningSetupOutput"),
   sensitivityButtons: [...document.querySelectorAll("[data-sensitivity]")], sensitivityOutput: $("#sensitivityOutput"),
@@ -155,6 +155,9 @@ const state = {
   sectionEndMeasure: null,
   startMeasure: null,
   practiceDraft: null,
+  playbackStartQuarter: null,
+  scoreSeeking: false,
+  playbackGeneration: 0,
   rangeSelectionMode: false,
   rangeSelectionStart: null,
   startPickMode: false,
@@ -342,6 +345,8 @@ async function enterStudio() {
   state.sectionStartMeasure = null;
   state.sectionEndMeasure = null;
   state.startMeasure = firstMeasure;
+  state.playbackStartQuarter = null;
+  $("#repeatPractice").checked = false;
   state.rangeSelectionMode = false;
   state.rangeSelectionStart = null;
   state.startPickMode = false;
@@ -428,12 +433,15 @@ function selectedPart() {
 }
 
 function currentPracticeRange() {
-  return resolvePracticeRange(selectedPart(), {
+  const range = resolvePracticeRange(selectedPart(), {
     sectionStartMeasure: state.sectionStartMeasure,
     sectionEndMeasure: state.sectionEndMeasure,
     startMeasure: state.startMeasure,
     fallbackTimeSignature: state.score?.initialTimeSignature,
   });
+  const quarter = state.playbackStartQuarter;
+  if (Number.isFinite(quarter) && quarter >= range.startQuarter && quarter < range.endQuarter) range.startQuarter = quarter;
+  return range;
 }
 
 function startingNoteForRange(range = currentPracticeRange()) {
@@ -475,38 +483,15 @@ function renderPracticeRangeControls() {
     input.min = String(limits.firstMeasure);
     input.max = String(limits.lastMeasure);
   }
-  els.startFromBar.min = String(range.sectionStartMeasure);
-  els.startFromBar.max = String(range.sectionEndMeasure);
   if (!state.practiceDraft) {
     els.sectionFrom.value = String(range.sectionStartMeasure);
     els.sectionTo.value = String(range.sectionEndMeasure);
-    els.startFromBar.value = String(range.startMeasure);
   }
-  els.startFromBar.min = els.sectionFrom.value;
-  els.startFromBar.max = els.sectionTo.value;
-  els.practiceRangeStatus.textContent = state.practiceDraft
-    ? `Preview: bars ${state.practiceDraft.from}–${state.practiceDraft.to}`
-    : range.wholePiece ? "Whole piece" : `Selected: bars ${range.sectionStartMeasure}–${range.sectionEndMeasure}`;
-  els.selectBarsButton.classList.toggle("active", state.rangeSelectionMode);
-  els.selectBarsButton.setAttribute("aria-pressed", String(state.rangeSelectionMode));
-  els.chooseStartButton.classList.toggle("active", state.startPickMode);
-  els.chooseStartButton.setAttribute("aria-pressed", String(state.startPickMode));
+  els.practiceRangeStatus.textContent = range.wholePiece ? "Whole piece" : `Selected: bars ${range.sectionStartMeasure}–${range.sectionEndMeasure}`;
   els.dockRange.textContent = range.wholePiece
     ? `Bar ${range.startMeasure} · whole piece`
     : `Bar ${range.startMeasure} · section ${range.sectionStartMeasure}–${range.sectionEndMeasure}`;
 
-  const choosing = state.rangeSelectionMode || state.startPickMode;
-  els.scoreSelectionAction.hidden = !choosing;
-  els.startHereButton.hidden = !state.startPickMode || state.pendingStartMeasure === null;
-  if (state.rangeSelectionMode) {
-    els.scoreSelectionCopy.textContent = state.rangeSelectionStart === null
-      ? "Select the first bar of the practice section."
-      : `Bar ${state.rangeSelectionStart} is the start. Now select the last bar.`;
-  } else if (state.startPickMode) {
-    els.scoreSelectionCopy.textContent = state.pendingStartMeasure === null
-      ? "Select a bar in the score, then confirm Start here."
-      : `Bar ${state.pendingStartMeasure} selected.`;
-  }
   renderPracticeRangeOverlay();
 }
 
@@ -571,6 +556,7 @@ function clearTakeForRangeChange() {
 }
 
 function moveToPracticeStart({ clearTake = true } = {}) {
+  state.playbackStartQuarter = null;
   const range = currentPracticeRange();
   if (clearTake) clearTakeForRangeChange();
   audio.stop({ reset: true, resetQuarter: range.startQuarter, microphone: false });
@@ -582,14 +568,14 @@ function moveToPracticeStart({ clearTake = true } = {}) {
 }
 
 function practiceLocked() { return audio.isPlaying || audio.isPaused || audio.isCountingIn || state.rendering; }
-function openPracticeEditor(measure = null) {
+function openPracticeEditor() {
   if (practiceLocked()) return;
-  state.practiceDraft = draftFromRange(currentPracticeRange(), measure);
-  state.rangeSelectionMode = false; state.rangeSelectionStart = null;
-  state.startPickMode = false; state.pendingStartMeasure = null;
+  state.practiceDraft = draftFromRange(currentPracticeRange());
+  state.rangeSelectionMode = true; state.rangeSelectionStart = null;
+  state.startPickMode = false;
   $("#practiceEditor").hidden = false;
+  els.scoreContainer.classList.add("is-selecting");
   updateDraftFields();
-  setSectionMessage("Edit bars or select by dragging. Apply saves; Cancel keeps your current section.");
   $("#practiceEditor").scrollIntoView({ block: "nearest" });
   els.sectionFrom.focus({ preventScroll: true });
 }
@@ -597,21 +583,25 @@ function updateDraftFields() {
   const draft = state.practiceDraft;
   if (!draft) return;
   els.sectionFrom.value = String(draft.from); els.sectionTo.value = String(draft.to);
-  els.startFromBar.value = String(draft.start);
-  renderPracticeRangeControls();
+  commitPracticeSelection();
 }
-function updateDraftFromInputs(event) {
-  if (!state.practiceDraft || practiceLocked()) return;
-  state.practiceDraft = { from: els.sectionFrom.value, to: els.sectionTo.value, start: els.startFromBar.value };
-  if (event?.target === els.sectionFrom || event?.target === els.sectionTo) {
-    const section = validateSection(selectedPart(), state.practiceDraft.from, state.practiceDraft.to);
-    if (section.valid && (Number(state.practiceDraft.start) < section.startMeasure || Number(state.practiceDraft.start) > section.endMeasure)) {
-      state.practiceDraft.start = section.startMeasure; els.startFromBar.value = String(section.startMeasure);
-    }
-  }
+function commitPracticeSelection() {
+  if (practiceLocked() || !state.practiceDraft) return;
   const validation = validateDraft(selectedPart(), state.practiceDraft);
-  setSectionMessage(validation.valid ? "Preview only — press Apply to practise these bars." : validation.message, !validation.valid);
-  renderPracticeRangeControls();
+  if (!validation.valid) {
+    setSectionMessage(validation.message, true);
+    return;
+  }
+  state.sectionStartMeasure = validation.startMeasure;
+  state.sectionEndMeasure = validation.endMeasure;
+  state.startMeasure = validation.startMeasure;
+  moveToPracticeStart({ clearTake: false });
+  setSectionMessage(`Bars ${validation.startMeasure}–${validation.endMeasure} selected. Enter bar numbers, or click and drag across the score to change them.`);
+}
+function updateDraftFromInputs() {
+  if (!state.practiceDraft || practiceLocked()) return;
+  state.practiceDraft = { from: els.sectionFrom.value, to: els.sectionTo.value, start: els.sectionFrom.value };
+  commitPracticeSelection();
 }
 function cancelScoreSelection() {
   state.practiceDraft = null; state.rangeSelectionMode = false; state.rangeSelectionStart = null;
@@ -620,43 +610,22 @@ function cancelScoreSelection() {
   $("#practiceEditor").hidden = true;
   renderPracticeRangeControls();
 }
-function applySectionInputs() {
-  if (practiceLocked() || !state.practiceDraft) return;
-  updateDraftFromInputs();
-  const validation = validateDraft(selectedPart(), state.practiceDraft);
-  if (!validation.valid) { setSectionMessage(validation.message, true); return; }
-  state.sectionStartMeasure = validation.startMeasure; state.sectionEndMeasure = validation.endMeasure;
-  state.startMeasure = validation.startMeasurePosition;
-  cancelScoreSelection(); moveToPracticeStart();
-}
 function clearPracticeSection() {
   if (practiceLocked()) return;
+  $("#repeatPractice").checked = false;
   state.sectionStartMeasure = null; state.sectionEndMeasure = null;
   state.startMeasure = practiceLimits(selectedPart()).firstMeasure;
-  cancelScoreSelection(); moveToPracticeStart();
-}
-function toggleRangeSelection() {
-  if (practiceLocked()) return;
-  if (!state.practiceDraft) openPracticeEditor();
-  state.rangeSelectionMode = !state.rangeSelectionMode; state.rangeSelectionStart = null;
-  state.startPickMode = false;
-  els.scoreContainer.classList.toggle("is-selecting", state.rangeSelectionMode);
-  setSectionMessage(state.rangeSelectionMode ? "Drag across bars, or use Tab and Enter to choose the first and last bar. Escape cancels." : "Adjust bar numbers, then Apply.");
-  renderPracticeRangeControls();
-}
-function toggleStartPick() {
-  if (practiceLocked()) return;
-  if (!state.practiceDraft) openPracticeEditor();
-  state.startPickMode = !state.startPickMode; state.rangeSelectionMode = false;
-  els.scoreContainer.classList.remove("is-selecting"); renderPracticeRangeControls();
-  setSectionMessage("Choose a start bar within the draft section, then Apply.");
+  cancelScoreSelection(); moveToPracticeStart({ clearTake: false });
 }
 function selectScoreMeasure(measure) {
   if (practiceLocked() || !state.practiceDraft) return;
-  if (state.startPickMode) { state.practiceDraft.start = Number(measure); updateDraftFields(); return; }
-  if (!state.rangeSelectionMode) return;
-  if (state.rangeSelectionStart === null) state.rangeSelectionStart = Number(measure);
-  else { state.practiceDraft = dragRange(state.practiceDraft, state.rangeSelectionStart, Number(measure)); state.rangeSelectionStart = null; }
+  if (state.rangeSelectionStart === null) {
+    state.rangeSelectionStart = Number(measure);
+    state.practiceDraft = dragRange(state.practiceDraft, Number(measure), Number(measure));
+  } else {
+    state.practiceDraft = dragRange(state.practiceDraft, state.rangeSelectionStart, Number(measure));
+    state.rangeSelectionStart = null;
+  }
   updateDraftFields();
 }
 function scoreMeasureAt(event) {
@@ -688,9 +657,36 @@ function wirePracticePointers() {
     }
     requestAnimationFrame(scrollDrag);
   }
-  els.scoreContainer.addEventListener("dblclick", event => {
-    const measure = scoreMeasureAt(event);
-    if (measure !== null) openPracticeEditor(measure);
+  els.scoreContainer.addEventListener("click", async event => {
+    if (state.rangeSelectionMode) return;
+    if (state.startPickMode) {
+      const measure = scoreMeasureAt(event);
+      if (measure !== null) selectScoreMeasure(measure);
+      return;
+    }
+    if (state.practiceDraft || state.rendering || state.microphonePreparing || state.scoreSeeking
+      || state.finishingAssessment || startingNoteDialog.active || calibrationDialog.active) return;
+    let position = null;
+    for (const [pageIndex,page] of [...els.scoreContainer.querySelectorAll('svg[id^="osmdSvgPage"]')].entries()) {
+      const matrix = page.getScreenCTM(); if (!matrix) continue;
+      const point = new DOMPoint(event.clientX,event.clientY).matrixTransform(matrix.inverse());
+      position = scorePositionAtPoint(state.measureGeometry,state.scoreGeometry,pageIndex,point.x,point.y);
+      if (position) break;
+    }
+    if (!position) return;
+    state.scoreSeeking = true;
+    try {
+      if (audio.isPlaying || audio.isPaused || audio.isCountingIn) await stop();
+      const range = currentPracticeRange();
+      if (position.measure < range.sectionStartMeasure || position.measure > range.sectionEndMeasure) {
+        state.sectionStartMeasure = null; state.sectionEndMeasure = null;
+      }
+      state.startMeasure = position.measure;
+      state.playbackStartQuarter = position.quarter;
+      setCursorToQuarter(position.quarter); updatePosition(position.quarter);
+      renderPracticeRangeControls();
+      await play({ skipCountIn: true });
+    } finally { state.scoreSeeking = false; }
   });
   els.scoreContainer.addEventListener("pointerdown", event => {
     if (!state.rangeSelectionMode || practiceLocked() || !event.isPrimary || event.button !== 0) return;
@@ -720,7 +716,7 @@ function wirePracticePointers() {
   document.addEventListener("keydown", event => {
     if (event.key === "Escape" && state.practiceDraft) {
       if (drag) { const id = drag.id; drag = null; if (els.scoreContainer.hasPointerCapture(id)) els.scoreContainer.releasePointerCapture(id); }
-      cancelScoreSelection(); $("#editPracticeButton").focus();
+      clearPracticeSection(); $("#editPracticeButton").focus();
     }
   });
 }
@@ -872,7 +868,7 @@ function syncCursor(quarter) {
   const targetIndex = cursorIndexAtTimestamp(state.cursorTimeline, targetOsmdTimestamp, state.cursorIndex);
   let steps = 0;
   try {
-    while (state.cursorIndex < targetIndex && steps < 120) {
+    while (state.cursorIndex < targetIndex && steps < state.cursorTimeline.length) {
       state.cursor.next();
       state.cursorIndex += 1;
       state.cursorQuarter = osmdTimestampToQuarters(cursorTimestamp());
@@ -1228,7 +1224,7 @@ function setMode(mode) {
   }
 }
 
-async function play() {
+async function play({ skipCountIn = false } = {}) {
   if(startingNoteDialog.active||calibrationDialog.active)return;
   if (!state.score || state.rendering || state.microphonePreparing) return;
   cancelScoreSelection();
@@ -1278,7 +1274,7 @@ async function play() {
       guideEnabled: mode.guide,
       enabledPartIds: [...state.enabledParts],
       assessmentMode: mode.microphone,
-      countInBars: state.countInBars,
+      countInBars: skipCountIn ? 0 : state.countInBars,
       targetMidiAtQuarter: targetMidiAtQuarter,
       startQuarter: range.startQuarter,
       endQuarter: range.endQuarter,
@@ -1316,7 +1312,8 @@ function pause() {
   setStatus("idle", "Paused", "Your place in the score is saved.");
 }
 
-async function stop({ keepSamples = true, completeAssessment = true } = {}) {
+async function stop({ keepSamples = true, completeAssessment = true, automatic = false } = {}) {
+  if (!automatic) state.playbackGeneration += 1;
   if (completeAssessment && MODE_CONFIG[state.mode].microphone && (audio.hasActivePerformanceRecording || state.samples.length)) {
     await finishAssessment();
     return;
@@ -1421,8 +1418,7 @@ function setSetupControlsDisabled(disabled) {
   els.guideVoice.disabled = disabled;
   els.accompanimentList.querySelectorAll("input, select").forEach((control) => { control.disabled = disabled; });
   $("#editPracticeButton").disabled = disabled;
-  $("#applySectionButton").disabled = disabled;
-  for (const control of [els.sectionFrom, els.sectionTo, els.selectBarsButton, els.clearSectionButton, els.startFromBar, els.chooseStartButton]) {
+  for (const control of [els.sectionFrom, els.sectionTo, $("#cancelSectionButton")]) {
     control.disabled = disabled;
   }
 }
@@ -1701,9 +1697,18 @@ function handleRecordingState(status) {
   if (status === "recording") state.recordingAvailable = true;
 }
 
-function handlePlaybackEnd() {
-  if (MODE_CONFIG[state.mode].microphone) void finishAssessment();
-  else stop();
+async function handlePlaybackEnd() {
+  const repeat = $("#repeatPractice").checked;
+  const generation = state.playbackGeneration;
+  if (MODE_CONFIG[state.mode].microphone) await finishAssessment();
+  else await stop({ automatic: true });
+  if (repeat && generation === state.playbackGeneration && $("#repeatPractice").checked) {
+    state.playbackStartQuarter = null;
+    state.startMeasure = currentPracticeRange().sectionStartMeasure;
+    const range = currentPracticeRange();
+    setCursorToQuarter(range.startQuarter); updatePosition(range.startQuarter);
+    await play({ skipCountIn: true });
+  }
 }
 
 async function finishAssessment() {
@@ -1757,7 +1762,7 @@ async function finishAssessment() {
       els.assessmentScope.textContent = `Assisted: ${assessmentRangeLabel(takeRange)}`;
       els.coachIntro.textContent = "Take complete — review your vocal line above or listen back below.";
       els.resultsPanel.hidden = false;
-      els.resultsPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (!$("#repeatPractice").checked) els.resultsPanel.scrollIntoView({ behavior: "smooth", block: "start" });
       setStatus("good", "Take complete", "Review your vocal line above or listen back below.");
       return;
     }
@@ -1797,7 +1802,7 @@ async function finishAssessment() {
     const results = analysePerformance(soundingTimeline, assessedSamples, takeRange.bpm || audio.bpm);
     renderResults(results, takeRange);
     els.resultsPanel.hidden = false;
-    els.resultsPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (!$("#repeatPractice").checked) els.resultsPanel.scrollIntoView({ behavior: "smooth", block: "start" });
     setStatus("good", "Assessment complete", "Review your pitch shape and hear your captured voice below.");
     if (!recording && !state.recordingAvailable) toast("Pitch results are ready. Audio recording is not supported in this browser.");
   } finally {
@@ -2237,23 +2242,10 @@ function wireEvents() {
   els.listeningSetupButtons.forEach((button) => button.addEventListener("click", () => setListeningSetup(button.dataset.listeningSetup)));
   els.recheckMicrophoneButton.addEventListener("click", recheckMicrophone);
   els.countInButtons.forEach((button) => button.addEventListener("click", () => setCountInBars(button.dataset.countIn)));
-  for (const input of [els.sectionFrom, els.sectionTo, els.startFromBar]) input.addEventListener("input", updateDraftFromInputs);
+  for (const input of [els.sectionFrom, els.sectionTo]) input.addEventListener("input", updateDraftFromInputs);
   $("#editPracticeButton").addEventListener("click", () => openPracticeEditor());
-  $("#applySectionButton").addEventListener("click", applySectionInputs);
-  $("#cancelSectionButton").addEventListener("click", cancelScoreSelection);
+  $("#cancelSectionButton").addEventListener("click", clearPracticeSection);
   wirePracticePointers();
-  els.clearSectionButton.addEventListener("click", clearPracticeSection);
-  els.selectBarsButton.addEventListener("click", toggleRangeSelection);
-
-  els.chooseStartButton.addEventListener("click", toggleStartPick);
-  els.startHereButton.addEventListener("click", () => {
-    applySectionInputs();
-  });
-  els.cancelScoreSelectionButton.addEventListener("click", cancelScoreSelection);
-  els.scoreContainer.addEventListener("click", (event) => {
-    const region = event.target.closest?.(".score-measure-region");
-    if (region && state.startPickMode) selectScoreMeasure(region.dataset.measureNumber);
-  });
   els.scoreContainer.addEventListener("keydown", (event) => {
     if (!['Enter', ' '].includes(event.key)) return;
     const region = event.target.closest?.(".score-measure-region");

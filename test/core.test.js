@@ -118,11 +118,11 @@ test("GitHub Pages entry point references only present local assets", async () =
   for (const id of ["recheckMicrophoneButton", "dockRestartButton", "dockPlayPauseButton", "dockStopButton", "followScoreButton", "performancePlayback", "performanceSeek", "performanceVolume", "reviewAccompanimentVolume", "reviewMelodyVolume", "tuningMeter", "tuningPhase", "expectedLabel", "gaugeNeedle"]) {
     assert.match(html, new RegExp(`id="${id}"`));
   }
-  for (const id of ["sectionFrom", "sectionTo", "selectBarsButton", "clearSectionButton", "startFromBar", "chooseStartButton", "startHereButton", "assessmentScope", "dockRange"]) {
+  for (const id of ["sectionFrom", "sectionTo", "cancelSectionButton", "assessmentScope", "dockRange"]) {
     assert.match(html, new RegExp(`id="${id}"`));
   }
-  assert.match(html, /Select by dragging/);
-  assert.match(html, /Whole piece \/ Clear section/);
+  assert.match(html, /Enter bar numbers, or click and drag across the score/);
+  for (const id of ["applySectionButton", "selectBarsButton", "chooseStartButton", "startFromBar", "clearSectionButton"]) assert.doesNotMatch(html, new RegExp(`id="${id}"`));
   for (const label of ["Sharp", "+50c", "+30c", "+15c", "0 / centre", "−15c", "−30c", "−50c", "Flat"]) assert.match(html, new RegExp(label.replace("+", "\\+")));
   assert.doesNotMatch(html, /class="cent-gauge"/);
   assert.match(html, />Hear my performance</);

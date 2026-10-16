@@ -448,13 +448,6 @@ export function renderMeasureSelection(scoreContainer, geometry, {
     const traceLayer = page.querySelector(".score-trace-layer");
     if (traceLayer) page.insertBefore(layer, traceLayer); else page.append(layer);
   });
-  for (const band of practiceBands(geometry, sectionStartMeasure, sectionEndMeasure, wholePiece)) {
-    pages[band.pageIndex]?.querySelector(".score-range-layer")?.append(svgElement("rect", {
-      class: band.selected ? "score-section-highlight" : "score-section-dim",
-      x: band.xStart, y: band.yStart, width: band.xEnd - band.xStart, height: band.height,
-      rx: band.selected ? 6 : 0, "aria-hidden": "true",
-    }));
-  }
   // Transparent hit regions become keyboard targets only during explicit selection.
   for (const region of geometry || []) {
     const layer = pages[region.pageIndex]?.querySelector(".score-range-layer");
@@ -465,10 +458,7 @@ export function renderMeasureSelection(scoreContainer, geometry, {
       tabindex: interactionMode ? 0 : -1, role: interactionMode ? "button" : "presentation",
       "aria-label": interactionMode ? `Bar ${region.measureNumber}` : "",
     }));
-    if (!wholePiece && region.measureNumber === Number(startMeasure)) layer.append(svgElement("line", {
-      class: "score-start-marker", x1: region.xStart + 3, y1: region.yStart + 2,
-      x2: region.xStart + 3, y2: region.yStart + region.height - 2,
-    }));
+
   }
 }
 
