@@ -685,7 +685,8 @@ function wirePracticePointers() {
       state.playbackStartQuarter = position.quarter;
       setCursorToQuarter(position.quarter); updatePosition(position.quarter);
       renderPracticeRangeControls();
-      await play({ skipCountIn: true });
+      setPlaybackState("stopped");
+      setStatus("idle", "Ready to play", "Press Play to start from the green line.");
     } finally { state.scoreSeeking = false; }
   });
   els.scoreContainer.addEventListener("pointerdown", event => {
@@ -1014,7 +1015,15 @@ async function openStartingNote(options={}) {
   state.startingSetupShown = true;
   return startingNoteDialog.open({listen:MODE_CONFIG[state.mode].microphone,chosen:state.startingOctaveChosen,suggested:state.octaveSuggestion?.shift,...options});
 }
-async function hearStartingNote() { return openStartingNote(); }
+async function hearStartingNote() {
+  if (audio.isPlaying || audio.isPaused || audio.isCountingIn || state.reviewPlaying || state.microphonePreparing) return;
+  const starting = startingNoteForRange();
+  if (!starting) { toast("There is no starting note in this section."); return; }
+  els.hearStartingNote.disabled = true;
+  try { await audio.previewPitch(starting.midi + effectiveOctaveShift()); }
+  catch (error) { toast(error.message || "The starting note could not play. Try again."); }
+  finally { els.hearStartingNote.disabled = audio.isPlaying || audio.isPaused || audio.isCountingIn; }
+}
 
 function updateVolume(kind, value) {
   const percent = Math.max(0, Math.min(100, Number(value) || 0));
@@ -1075,8 +1084,8 @@ function updateOctaveHint(note) {
     : octaveShift < 0 ? "Sing octave lower" : octaveShift > 0 ? "Sing octave higher" : "Sing written pitch";
   els.octaveHint.textContent = note ? `${direction} — sounding target ${soundingTargetName(note)}` : `${direction} — sounding target rests`;
   const starting = startingNoteForRange();
-  els.hearStartingNote.setAttribute("aria-label",starting?`Starting note ${pitchName(starting.midi+octaveShift)}. Change singing octave`:"Change starting note");
-  els.hearStartingNote.title="Starting note / singing octave";
+  els.hearStartingNote.setAttribute("aria-label",starting?`Hear starting note ${pitchName(starting.midi+octaveShift)}`:"Hear starting note");
+  els.hearStartingNote.title="Hear the starting note at your chosen singing octave";
   els.startingNoteName.textContent = starting
     ? pitchName(starting.midi + octaveShift)
     : "—";

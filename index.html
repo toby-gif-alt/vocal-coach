@@ -46,7 +46,7 @@
               <button type="button" data-mode="assisted" role="radio" aria-checked="false"><strong>Assisted</strong><small>Guide + trace</small></button>
               <button type="button" data-mode="assessment" role="radio" aria-checked="false"><strong>Assessment</strong><small>Detailed coaching</small></button>
             </div>
-<button class="starting-note-control" id="hearStartingNote" type="button"><span class="starting-note-label">Starting note</span> <strong id="startingNoteName">—</strong><span>Change</span></button><details id="mixerPanel" class="mixer-panel"><summary>Mixer</summary><div class="mixer-grid">            <div class="accompaniment-block"><div class="setting-label"><span>Accompaniment</span><button id="toggleAllParts" type="button">Mute all</button></div><div class="accompaniment-list" id="accompanimentList"></div></div>
+<button class="starting-note-control" id="hearStartingNote" type="button"><span class="starting-note-label">♫ Hear starting note</span> <strong id="startingNoteName">—</strong></button><button id="changeOctaveButton" type="button">Change octave</button><details id="mixerPanel" class="mixer-panel"><summary>Mixer</summary><div class="mixer-grid">            <div class="accompaniment-block"><div class="setting-label"><span>Accompaniment</span><button id="toggleAllParts" type="button">Mute all</button></div><div class="accompaniment-list" id="accompanimentList"></div></div>
             <div class="volume-block">
               <label class="volume-field" for="guideVolume"><span><strong>Vocal Guide</strong><output id="guideVolumeOutput">92%</output></span><input id="guideVolume" type="range" min="0" max="100" value="92" step="2" /></label>
               <label class="guide-voice-field" for="guideVoice"><span>Guide voice</span><select id="guideVoice"><option value="human" selected>Human voice</option><option value="synthetic-ah">Synthetic Ah</option></select></label>
@@ -62,7 +62,7 @@
             </div>
             <details class="octave-setting">
               <summary><span>Advanced / manual octave</span><output id="octaveOutput">Written</output></summary>
-              <button id="changeOctaveButton" type="button">Change singing octave</button>
+
               <p id="octaveHint">Written pitch — use Hear starting note to confirm.</p>
             </details>
             <div class="microphone-check-setting">
@@ -191,7 +191,7 @@
                 <button id="dismissOctaveSuggestion" type="button">Keep current octave</button>
               </div>
               <div class="score-banner"><span></span><strong id="scoreBannerPart">Voice</strong> is the target · your accepted pitch draws directly across its notes <label class="previous-take-toggle" id="previousTakeControl" hidden><input id="showPreviousTake" type="checkbox" checked /> Previous take</label></div>
-              <p class="score-interaction-hint">Click the score to play from there · select bars to practice a section.</p><div class="score-stage">
+              <p class="score-interaction-hint">Click the score to move the green line, then press Play · select bars to practice a section.</p><div class="score-stage">
                 <div class="score-viewport"><div id="scoreContainer" class="score-container" aria-label="Rendered sheet music"></div></div>
                 <aside class="tuning-meter is-listening" id="tuningMeter" role="meter" aria-label="Live tuning: listening" aria-valuemin="-50" aria-valuemax="50">
                   <div class="tuning-readout">

@@ -588,3 +588,7 @@ body.studio-active .studio-view { padding:10px 0 24px; }
 .score-range-layer .score-measure-region,
 .score-range-layer.is-interactive .score-measure-region:hover { fill: transparent; stroke: none; }
 .score-range-layer.is-interactive .score-measure-region:focus-visible { fill: transparent; stroke: var(--forest); stroke-dasharray: 3 3; }
+
+/* Keep the note preview named and visible at every screen size. */
+.studio-header-controls .starting-note-control .starting-note-label { display: inline; color: var(--forest); font-size: 12px; }
+.studio-header-controls #changeOctaveButton { min-height: 44px; padding: 7px 9px; font-size: 12px; }

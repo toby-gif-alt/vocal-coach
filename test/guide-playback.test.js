@@ -90,6 +90,6 @@ test("octave-card previews are isolated from unchanged written guide routing", a
   const selector = await readFile(new URL("../src/starting-note.js", import.meta.url), "utf8");
   assert.match(selector, /audio\.previewPitch\(midi\)/);
   assert.match(selector, /play\(starting\.midi\+getShift\(\)/);
-  assert.doesNotMatch(source, /audio\.previewPitch\(starting\.midi\s*\+\s*effectiveOctaveShift\(\)\)/);
+  assert.match(source, /audio\.previewPitch\(starting\.midi\s*\+\s*effectiveOctaveShift\(\)\)/);
   assert.match(source, /Human voice unavailable — using Synthetic Ah\./);
 });
