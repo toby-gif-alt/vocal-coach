@@ -331,8 +331,6 @@ body:not(.microphone-mode) #finishButton, body:not(.microphone-mode) .monitor-pa
 .tutorial-card[hidden] { display: none; }
 .tutorial-card .tutorial-actions { margin-top: auto; }
 .tutorial-card.welcome-cue { top: auto; bottom: 100px; height: auto; }
-body.tutorial-studio { overflow: hidden; }
-.studio-view.tutorial-overview { width: calc(100% - 380px); margin-inline: 0; transform: scale(var(--tutorial-scale, 1)); transform-origin: top left; }
 .score-head-meta .starting-note-setting { margin: 0; padding: 0; border: 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .score-head-meta .starting-note-setting button { width: auto; margin: 0; min-height: 38px; padding: 8px 12px; font-size: 13px; }
 .score-head-meta .starting-note-setting > div { gap: 6px; font-size: 12px; }
@@ -345,10 +343,8 @@ body.tutorial-studio { overflow: hidden; }
 .microphone-reminder button { min-height: 42px; padding: 10px 14px; border: 1px solid #bccbbd; border-radius: 8px; cursor: pointer; background: #fff; color: var(--forest); }
 #calibrateMicrophoneButton { background: var(--forest); color: #fff; }
 @media (max-width: 899px) {
-  .studio-view.tutorial-overview { width: 100%; }
   .tutorial-card { top: auto; bottom: 100px; right: 16px; width: min(340px,calc(100vw - 32px)); height: 245px; }
 }
-@media (max-width: 899px) { .studio-view.tutorial-overview { margin-left: calc((100% - 100% * var(--tutorial-scale, 1)) / 2); } }
 .octave-suggestion { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 10px 0; padding: 12px; border-radius: 9px; background: #edf6e8; font-size: 14px; }
 .octave-suggestion[hidden] { display: none; }
 .octave-suggestion span { flex: 1; min-width: 220px; }
@@ -668,7 +664,6 @@ input:focus-visible,select:focus-visible,button:focus-visible,summary:focus-visi
 .floating-review .performance-seek { margin:8px 0; }
 .floating-review .performance-mixer { display:grid; grid-template-columns:1fr; gap:6px; }
 .review-volumes summary { font-size:12px; cursor:pointer; padding:6px 0; }
-body:has(.floating-review:not([hidden])) .score-column { padding-bottom:240px; }
 @media(max-width:900px) {
   .studio-view { padding:10px 14px 30px; }
   .studio-header-controls #setupPanel .setup-grid,.studio-header-controls #mixerPanel .mixer-grid { position:fixed; top:66px; left:12px; right:12px; width:auto; }
@@ -787,10 +782,125 @@ body:not(.studio-active) .studio-header-controls > .view-switch,body:not(.studio
 .coaching-step-controls #feedbackContinueButton { margin:0 0 0 auto; background:var(--forest); color:white; }
 #feedbackAudioSlot .floating-review { position:static; width:auto; max-height:none; margin:10px 0 0; border:0; border-top:1px solid var(--line); border-radius:0; padding:10px 0 0; box-shadow:none; }
 #feedbackAudioSlot .floating-review .performance-playback-head h3 { font-size:17px; }
-body:has(.feedback-dialog[open]) .score-column { padding-bottom:450px; }
 @media(max-width:600px) {
  .feedback-dialog[open] { right:8px; bottom:8px; width:calc(100vw - 16px); max-height:57dvh; padding:14px; }
  .feedback-dialog .coach-card-copy strong { font-size:16px; }
  .feedback-dialog .coach-card-copy > span { font-size:13px; }
 }
 .score-note-focus.coaching-current { fill:#efc45b33; stroke:#b27c21; stroke-width:1.5; }
+
+/* Studio interaction repair: readable panels and a score/review workspace. */
+.studio-header-controls #newScoreButton { display:flex; justify-content:center; align-items:center; gap:8px; font-size:16px; font-weight:800; min-height:46px; }
+#newScoreButton svg { width:22px; height:22px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; flex-shrink:0; }
+.studio-header-controls #setupPanel .setup-grid,
+.studio-header-controls #mixerPanel .mixer-grid { position:fixed; width:min(640px,calc(100vw - 16px)); display:flex; flex-direction:column; gap:22px; padding:22px; overflow:auto; overscroll-behavior:contain; z-index:160; }
+.studio-header-controls #setupPanel .setup-grid { width:min(520px,calc(100vw - 16px)); }
+.setup-grid .settings-section { display:grid; gap:16px; min-width:0; }
+.setup-grid h3 { margin:0; font-size:18px; }
+.setup-grid .microphone-check-setting { padding:0; border:0; background:transparent; }
+.setup-grid .setting-label { font-size:14px; gap:12px; }
+.setup-grid p { font-size:13px; line-height:1.5; margin:6px 0; }
+.setup-grid .settings-advanced { border-top:1px solid var(--line); padding-top:16px; }
+.setup-grid .settings-advanced > summary { font-size:15px; font-weight:750; cursor:pointer; padding:8px 0; }
+.settings-advanced > *:not(summary) { margin-top:14px; }
+.setup-grid .sensitivity-switch { grid-template-columns:repeat(3,minmax(0,1fr)); }
+.setup-grid .listening-setup-switch { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.settings-advanced > button { display:block; min-height:44px; padding:10px 14px; margin-top:10px; }
+.studio-header-controls #mixerPanel .mixer-grid .accompaniment-block { padding:0; border:0; }
+.mixer-grid .setting-label { font-size:16px; }
+.mixer-grid .accompaniment-list { gap:12px; }
+.mixer-grid .part-mixer-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(180px,1fr); gap:12px 18px; padding:16px; align-items:center; }
+.mixer-grid .part-toggle { grid-column:1 / -1; font-size:16px; font-weight:750; min-height:32px; gap:10px; }
+.mixer-grid .part-toggle span { white-space:normal; overflow:visible; overflow-wrap:anywhere; }
+.mixer-grid .part-toggle input { width:20px; height:20px; flex-shrink:0; }
+.mixer-grid .part-sound { grid-column:1; grid-row:auto; display:grid; justify-content:stretch; gap:6px; font-size:13px; min-width:0; }
+.mixer-grid .part-sound select { min-width:0; width:100%; min-height:42px; font-size:14px; padding:8px; }
+.mixer-grid .part-sound-static strong { font-size:14px; }
+.mixer-grid .part-volume { grid-column:2; grid-row:2; width:100%; min-width:0; height:30px; margin:0; }
+.mixer-grid .part-volume-output { grid-column:2; grid-row:3; font-size:13px; text-align:right; }
+.mixer-grid .volume-block { border-top:1px solid var(--line); padding-top:18px; display:grid; gap:16px; }
+.mixer-grid .volume-field { margin:0; }
+.mixer-grid .volume-field strong,.mixer-grid .guide-voice-field { font-size:15px; }
+.studio-header-controls .tempo-panel > .tempo-field { position:fixed; z-index:160; width:min(340px,calc(100vw - 16px)); }
+.score-column > .status-card { margin:0 0 10px; padding:8px 12px; }
+.score-column > .status-card p { margin:0; }.score-column > .status-card small { font-size:12px; }
+.score-container.is-selecting { touch-action:none; user-select:none; -webkit-user-select:none; }
+body:has(.floating-review:not([hidden])) .score-column,body:has(.feedback-dialog[open]) .score-column { padding-bottom:0; }
+.studio-layout.has-review { display:grid; grid-template-columns:minmax(0,1fr) 390px; gap:16px; align-items:start; }
+.review-companion { min-width:0; position:sticky; top:90px; max-height:calc(100dvh - 110px); overflow:auto; overscroll-behavior:contain; border:1px solid var(--line); border-radius:18px; background:var(--cream); }
+.review-companion .feedback-dialog[open],.review-companion .floating-review { display:block; position:relative; inset:auto; width:auto; max-height:none; margin:0; padding:18px; box-shadow:none; border:0; border-radius:0; overflow:visible; }
+.review-companion [hidden] { display:none; }
+.review-companion .results-head h2 { font-size:22px; }
+.studio-layout.has-review .score-column { min-width:0; }
+.studio-layout.has-review .score-stage { grid-template-columns:minmax(0,1fr); }
+.studio-layout.has-review .tuning-meter { display:none; }
+.studio-layout.has-review .score-viewport { max-height:calc(100dvh - 300px); min-height:220px; overflow:auto; scroll-padding:20px; }
+.studio-layout.has-review .score-container { max-height:none; overflow:visible; min-height:220px; }
+.tutorial-studio .tutorial-card,.tutorial-card { position:fixed; inset:auto; width:min(320px,calc(100vw - 16px)); height:auto; max-height:calc(100dvh - 16px); overflow:auto; padding:16px; z-index:180; font-size:14px; transform:none; }
+.tutorial-card h2 { font-size:20px; margin:6px 0; }.tutorial-card p { line-height:1.5; }
+.tutorial-target { outline:3px solid #8b6a14 !important; outline-offset:4px; border-radius:8px; }
+@media(max-width:1000px) {
+ .studio-layout.has-review { grid-template-columns:minmax(0,1fr); grid-template-rows:minmax(200px,1fr) minmax(220px,.8fr); height:calc(100dvh - 210px); min-height:440px; gap:10px; }
+ .studio-layout.has-review .score-column { overflow:auto; height:100%; scroll-padding:12px; }
+ .studio-layout.has-review .score-viewport { max-height:none; overflow:visible; }
+ .studio-layout.has-review .score-panel { margin:0; }
+ .studio-layout.has-review .score-container { min-height:160px; }
+ .review-companion { position:relative; top:auto; max-height:none; height:100%; }
+ .studio-layout.has-review .score-column > .status-card { display:none; }
+}
+@media(max-width:600px) {
+ .mixer-grid .part-mixer-row { grid-template-columns:minmax(0,1fr) 48px; padding:12px; gap:10px; }
+ .mixer-grid .part-sound { grid-column:1 / -1; grid-row:2; }
+ .mixer-grid .part-volume { grid-column:1; grid-row:3; }
+ .mixer-grid .part-volume-output { grid-column:2; grid-row:3; }
+ .studio-header-controls #setupPanel .setup-grid,.studio-header-controls #mixerPanel .mixer-grid { padding:16px; }
+ .studio-layout.has-review { height:calc(100dvh - 230px); min-height:410px; grid-template-rows:minmax(170px,1fr) minmax(210px,1fr); }
+ .studio-layout.has-review .score-panel-head { margin-bottom:8px; }
+ .review-companion .feedback-dialog[open],.review-companion .floating-review { padding:14px; }
+ .studio-header-controls #newScoreButton { font-size:15px; gap:6px; }
+}
+.studio-header-controls #setupPanel .setup-grid { width:min(620px,calc(100vw - 16px)); }
+.setup-grid .microphone-check-setting { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:4px 20px; align-items:center; }
+.setup-grid .microphone-check-setting .setting-label { grid-column:1; }
+.setup-grid .microphone-check-setting p { grid-column:1; }
+.setup-grid .microphone-check-setting button { grid-column:2; grid-row:1 / 3; min-height:44px; }
+.setup-grid .listening-setup-block,.setup-grid .compact-setting { display:grid; grid-template-columns:150px minmax(0,1fr); gap:8px 18px; align-items:center; }
+.setup-grid .listening-setup-block p { grid-column:2; }
+.mixer-grid .part-level { grid-column:2; grid-row:2; display:grid; grid-template-columns:minmax(0,1fr) 44px; align-items:center; gap:6px 8px; font-size:13px; }
+.mixer-grid .part-level > span { grid-column:1; }
+.mixer-grid .part-level .part-volume { grid-column:1; grid-row:2; }
+.mixer-grid .part-level .part-volume-output { grid-column:2; grid-row:2; }
+@media(max-width:600px) {
+ .setup-grid .microphone-check-setting,.setup-grid .listening-setup-block,.setup-grid .compact-setting { grid-template-columns:minmax(0,1fr); }
+ .setup-grid .microphone-check-setting button,.setup-grid .listening-setup-block p { grid-column:1; grid-row:auto; }
+ .mixer-grid .part-level { grid-column:1 / -1; grid-row:3; }
+}
+.setup-grid #listeningSetupOutput,.setup-grid #countInOutput { display:none; }
+.setup-grid .compact-setting { width:100%; max-width:none; padding:0; border:0; }
+.setup-grid .option-switch,.setup-grid .listening-setup-switch { width:100%; }
+.setup-grid .option-switch button,.setup-grid .listening-setup-switch button { min-height:44px; font-size:14px; padding:8px 12px; }
+.setup-grid .option-switch button small,.setup-grid .listening-setup-switch button small { font-size:11px; }
+.setup-grid .setting-label { line-height:1.4; }
+
+.studio-header-controls #newScoreButton span { font-size:inherit; }
+.studio-header-controls #setupPanel .setup-grid,.studio-header-controls #mixerPanel .mixer-grid { align-items:stretch; }
+/* Everyday settings use three compact rows; explanations stay in Advanced. */
+.studio-header-controls #setupPanel .setup-grid { gap:0; padding:8px 22px; }
+.setup-grid .settings-section { gap:0; }
+.setup-grid .microphone-check-setting { display:grid; grid-template-columns:minmax(0,1fr) auto; padding:18px 0; border-bottom:1px solid var(--line); }
+.setup-grid .microphone-check-setting .setting-label { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.setup-grid .microphone-check-setting button { grid-column:2; grid-row:1; font-size:14px; padding:8px 16px; margin:0; }
+.setup-grid .listening-setup-block,.setup-grid .compact-setting { padding:18px 0; border-bottom:1px solid var(--line); }
+.setup-grid .listening-setup-block .setting-label,.setup-grid .compact-setting .setting-label { font-size:15px; }
+.setup-grid .settings-advanced { border:0; padding:10px 0; }
+.setup-grid .settings-advanced > summary { padding:10px 0; }
+.setup-grid .microphone-check-setting output { font-size:13px; font-weight:650; padding:4px 10px; border-radius:20px; background:#e8f1e8; }
+.setup-grid .microphone-check-setting .setting-label > span { font-size:15px; }
+.setup-grid .headphone-note { display:none; }
+@media(max-width:600px) {
+ .studio-header-controls #setupPanel .setup-grid { padding:6px 16px; }
+ .setup-grid .microphone-check-setting { grid-template-columns:minmax(0,1fr) auto; gap:12px; }
+ .setup-grid .microphone-check-setting .setting-label { align-items:flex-start; flex-direction:column; gap:6px; }
+ .setup-grid .microphone-check-setting button { grid-row:1; grid-column:2; }
+ .setup-grid .listening-setup-block,.setup-grid .compact-setting { padding:14px 0; gap:10px; }
+}

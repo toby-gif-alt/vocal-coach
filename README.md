@@ -11,11 +11,11 @@ No account, backend, or upload service is required. Scores, calibration, pitch d
 3. View the selected part by itself or switch to the full score.
 4. Choose **Assisted** (guide + accompaniment + trace, without coaching judgement) or **Assessment** (accompaniment + trace + detailed coaching). The guide defaults to **Human voice**, with **Synthetic Ah** available from the same control panel.
 5. Practise the whole piece or enter/select a bar range directly on the score. Click the notation to position the green playhead, then press Play. Outside bars dim; Cancel clears the section.
-6. Choose an Off/1-bar/2-bar count-in in Settings. Use **Hear starting note**: the first press for this score/part in the app session opens octave confirmation; later presses preview the chosen pitch. Choose one of four large octave cards (−24/−12/0/+12 semitones), then Continue to practice. Live pitch shades the octave area even when flat/sharp; a precise match suggests a card but never selects it. The target is locked during a take.
+6. Choose an Off/1-bar/2-bar count-in in Settings. Use **Hear starting note**: Listen previews immediately without microphone access or octave selection. In Assisted/Assessment, the first press for this score/part opens octave confirmation after any required microphone check; later presses preview the chosen pitch. Choose one of four large octave cards (−24/−12/0/+12 semitones), then Continue to practice. Live pitch shades the octave area even when flat/sharp; a precise match suggests a card but never selects it. The target is locked during a take.
 7. Before the first microphone session, complete the saved room-and-voice **Microphone Check**, then continue directly into starting-note selection: stay quiet for about one second, then sing a comfortable “Ah”, beginning normally and getting a little louder. Low/Normal/High remain available as advanced overrides.
 8. In a microphone mode, use the large vertical tuner to find the first vocal entrance at or after the selected starting bar and keep tuning through the count-in; during later rests it prepares the next entrance without adding those samples to assessment results.
 9. Enable and balance each non-vocal MusicXML part independently. The mix stays locked during the take and is stored for synchronized review.
-10. Start another take to retain the immediately previous trace as a thin grey reference. Assisted opens a floating listen-back player. Assessment opens **Your Vocal Coach** one finding at a time in score order, highlighting each note and offering playback of its bar with voice, accompaniment and melody levels. Back/Next leads to full-take playback with Start, Stop and Restart. Listen back beside Play reopens it without starting audio.
+10. Start another take to retain the immediately previous trace as a thin grey reference. Assisted opens a docked listen-back companion beside the score, or below it on small screens. Assessment opens **Your Vocal Coach** one finding at a time in score order, highlighting each note and offering playback of its bar with voice, accompaniment and melody levels. Back/Next leads to full-take playback with Start, Stop and Restart. Listen back beside Play reopens it without starting audio.
 
 A small two-part MusicXML score is included so the complete flow can be tried immediately.
 
@@ -45,6 +45,8 @@ The app deliberately keeps musical concerns separate:
 - `app.js` coordinates the views, OpenSheetMusicDisplay renderer/cursor, controls, pitch monitor, score overlay, coaching cards, and detailed results.
 
 `rawSamples`, `acceptedSamples`, and `visualTraceSamples` are deliberately separate. Only accepted samples become assessment data. Preparation, count-in, octave response, and during-rest tuning can drive the live meter but are never added to results. The tracker uses the target only as supporting evidence in an octave ambiguity and never snaps a performance to the expected note. This preserves genuine wrong notes, scoops, slides, and small movements.
+
+Each newly opened score starts at 100% tempo, Vocal Focus, the beginning and the whole piece, with Repeat off. The redesigned first-use studio tour follows the visible control rows; Skip/Done persists, and Tutorial replays it. See [studio interaction fixes and validation](docs/studio-interactions.md).
 
 ## Libraries
 
