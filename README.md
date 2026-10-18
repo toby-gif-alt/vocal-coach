@@ -6,16 +6,16 @@ No account, backend, or upload service is required. Scores, calibration, pitch d
 
 ## Practice flow
 
-1. Choose a built-in repertoire score, or upload `.musicxml`, `.xml`, or compressed `.mxl`.
+1. Choose an included or imported score from the unified repertoire library/dropdown, or import `.musicxml`, `.xml`, or compressed `.mxl`.
 2. Review every detected score part and select **I am singing this part**.
 3. View the selected part by itself or switch to the full score.
 4. Choose **Assisted** (guide + accompaniment + trace, without coaching judgement) or **Assessment** (accompaniment + trace + detailed coaching). The guide defaults to **Human voice**, with **Synthetic Ah** available from the same control panel.
-5. Practise the whole piece or enter/select a bar range directly on the score. **Start from** can begin later inside that section without assessing the deliberately skipped bars.
-6. Choose an Off/1-bar/2-bar count-in in Settings. Open **Starting note**, hear it and sing for as long as you need. Choose one of four large octave cards (−24/−12/0/+12 semitones), then Continue to practice. Live pitch shades the octave area even when flat/sharp; a precise match suggests a card but never selects it. The target is locked during a take.
+5. Practise the whole piece or enter/select a bar range directly on the score. Click the notation to position the green playhead, then press Play. Outside bars dim; Cancel clears the section.
+6. Choose an Off/1-bar/2-bar count-in in Settings. Use **Hear starting note**: the first press for this score/part in the app session opens octave confirmation; later presses preview the chosen pitch. Choose one of four large octave cards (−24/−12/0/+12 semitones), then Continue to practice. Live pitch shades the octave area even when flat/sharp; a precise match suggests a card but never selects it. The target is locked during a take.
 7. Before the first microphone session, complete the saved room-and-voice **Microphone Check**, then continue directly into starting-note selection: stay quiet for about one second, then sing a comfortable “Ah”, beginning normally and getting a little louder. Low/Normal/High remain available as advanced overrides.
 8. In a microphone mode, use the large vertical tuner to find the first vocal entrance at or after the selected starting bar and keep tuning through the count-in; during later rests it prepares the next entrance without adding those samples to assessment results.
-9. Enable and balance each non-vocal MusicXML part independently. These controls remain live during the take, and the take stores its individual part mix for synchronized review.
-10. Start another take to retain the immediately previous trace as a thin grey reference. Assisted ends with a trace/listen-back review only; Assessment additionally provides adaptive **Your Vocal Coach** observations and detailed metrics.
+9. Enable and balance each non-vocal MusicXML part independently. The mix stays locked during the take and is stored for synchronized review.
+10. Start another take to retain the immediately previous trace as a thin grey reference. Assisted opens a floating listen-back player. Assessment opens **Your Vocal Coach** one finding at a time in score order, highlighting each note and offering playback of its bar with voice, accompaniment and melody levels. Back/Next leads to full-take playback with Start, Stop and Restart. Listen back beside Play reopens it without starting audio.
 
 A small two-part MusicXML score is included so the complete flow can be tried immediately.
 
@@ -123,3 +123,5 @@ All app and sample-score paths are relative, so the site works at a project URL 
 ## Privacy
 
 MusicXML is parsed locally. Microphone input is analysed as short time-domain buffers; assessment audio is also captured locally for the **Hear my performance** control where MediaRecorder is supported. Imported files, pitch data, calibration values, and audio recordings are never uploaded. Microphone calibration and the guide-voice preference are saved in local browser storage; the recording is released with the session.
+
+See [Music-first studio and validation](docs/music-first-ui.md) for the current interface, catalogue persistence rules and browser/device checks.

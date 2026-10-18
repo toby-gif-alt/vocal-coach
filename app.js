@@ -44,11 +44,13 @@ import {
   clipTimelineToRange,
   firstNoteAtOrAfter,
   practiceLimits,
+  measureBoundaries,
   resolvePracticeRange,
   sampleWithinRange,
   validateSection,
 } from "./src/practice-range.js?v=27";
 import { createTakeMetadata, reviewLayers, reviewQuarterAtSeconds, reviewVolumes } from "./src/review-playback.js?v=24";
+import {coachingReviewSequence,reviewChunkSeconds} from "./src/coaching-review.js";
 import { classifyPlaybackPart } from "./src/playback-routing.js?v=24";
 import {
   appendScoreTraceSample,
@@ -88,7 +90,7 @@ const els = {
   coachLevel: $("#coachLevel"), coachIntro: $("#coachIntro"), coachObservations: $("#coachObservations"),
   performancePlayback: $("#performancePlayback"), performanceAudio: $("#performanceAudio"), performanceRestart: $("#performanceRestart"), performancePlay: $("#performancePlay"), performancePause: $("#performancePause"), performanceSeek: $("#performanceSeek"), performanceCurrentTime: $("#performanceCurrentTime"), performanceDuration: $("#performanceDuration"), reviewLayerInputs: [...document.querySelectorAll("[data-review-layer]")], reviewVolumeInputs: [...document.querySelectorAll("[data-review-volume]")], reviewVolumeOutputs: [...document.querySelectorAll("[data-review-volume-output]")],
   expectedLabel: $("#expectedLabel"), expectedNote: $("#expectedNote"), expectedPosition: $("#expectedPosition"), detectedNote: $("#detectedNote"), detectedFrequency: $("#detectedFrequency"), tuningMeter: $("#tuningMeter"), tuningPhase: $("#tuningPhase"), gaugeNeedle: $("#gaugeNeedle"), centsOutput: $("#centsOutput"),
-  statusCard: $("#statusCard"), statusTitle: $("#statusTitle"), statusCopy: $("#statusCopy"), sampleCount: $("#sampleCount"), finishButton: $("#finishButton"), previousTakeControl: $("#previousTakeControl"), showPreviousTake: $("#showPreviousTake"),
+  statusCard: $("#statusCard"), statusTitle: $("#statusTitle"), statusCopy: $("#statusCopy"), sampleCount: $("#sampleCount"), previousTakeControl: $("#previousTakeControl"), showPreviousTake: $("#showPreviousTake"),
   pitchDiagnostics: $("#pitchDiagnostics"), diagRawHz: $("#diagRawHz"), diagRawMidi: $("#diagRawMidi"), diagFilteredHz: $("#diagFilteredHz"), diagFilteredMidi: $("#diagFilteredMidi"), diagClarity: $("#diagClarity"), diagRms: $("#diagRms"), diagPeak: $("#diagPeak"), diagNearFullScale: $("#diagNearFullScale"), diagTarget: $("#diagTarget"), diagCents: $("#diagCents"), diagState: $("#diagState"), diagUsableFrames: $("#diagUsableFrames"), diagAcceptedAcquisition: $("#diagAcceptedAcquisition"), diagAcceptedContinuation: $("#diagAcceptedContinuation"), diagBelowOpenGate: $("#diagBelowOpenGate"), diagBelowContinuationGate: $("#diagBelowContinuationGate"), diagLowClarity: $("#diagLowClarity"), diagIsolatedJump: $("#diagIsolatedJump"), diagOctaveHarmonic: $("#diagOctaveHarmonic"), diagOutOfRange: $("#diagOutOfRange"), diagClipping: $("#diagClipping"), diagNoFrequency: $("#diagNoFrequency"), pitchSelfTest: $("#pitchSelfTest"), pitchSelfTestResult: $("#pitchSelfTestResult"),
   helpButton: $("#helpButton"), helpDialog: $("#helpDialog"), toast: $("#toast"),
 };
@@ -157,6 +159,13 @@ const state = {
   practiceDraft: null,
   playbackStartQuarter: null,
   scoreSeeking: false,
+  startingConfirmedSession: false,
+  partSelectionReturnId: null,
+  changingPart: false,
+  transportPreparing: false,
+  coachingSteps: [],
+  coachingStep: 0,
+  reviewChunk: null,
   playbackGeneration: 0,
   rangeSelectionMode: false,
   rangeSelectionStart: null,
@@ -182,17 +191,12 @@ async function loadRepertoireIndex() {
   try {
     const entries = await fetchManifest("./repertoire/index.json?v=25");
     state.repertoire = entries.filter((entry) => entry?.title && entry?.file);
-    els.repertoireSelect.replaceChildren(new Option("Select from repertoire", ""));
     await renderBuiltInOptions();
-    els.repertoireSelect.disabled = els.repertoireSelect.options.length < 2;
-    els.repertoireStatus.textContent = state.repertoire.length
-      ? `${state.repertoire.length} ${state.repertoire.length === 1 ? "score" : "scores"} available`
-      : "No built-in scores are available yet.";
   } catch (error) {
     console.warn("The repertoire index could not be loaded.", error);
     state.repertoire = [];
-    els.repertoireSelect.disabled = true;
-    els.repertoireStatus.textContent = "Repertoire unavailable — upload a MusicXML file instead.";
+    await renderBuiltInOptions();
+    els.repertoireStatus.textContent = "Included repertoire unavailable. Open a saved score or import MusicXML.";
   }
 }
 
@@ -255,7 +259,7 @@ function showView(name) {
   els.loadingView.hidden = name !== "loading";
   els.partView.hidden = name !== "parts";
   els.studioView.hidden = name !== "studio";
-  $("#studioHeaderControls").hidden = name !== "studio";
+  $("#studioHeaderControls").hidden = name === "parts" || name === "loading";
   document.body.classList.toggle("studio-active", name === "studio");
   window.scrollTo({ top: 0, behavior: "smooth" });
   tutorial.showView(name);
@@ -270,13 +274,14 @@ function toast(message) {
 
 async function loadScore(loader, context = null) {
   state.scoreContext = context;
+  state.startingConfirmedSession = false;
   state.savedPreferences = context?.record?.settings || context?.settings || null;
   showView("loading");
   els.loadingTitle.textContent = "Finding parts and phrases…";
   els.loadingMessage.textContent = "MusicXML keeps the voice and accompaniment as separate musical data.";
   try {
     state.score = await loader();
-    if (context?.record?.title) state.score.title = context.record.title;
+    if (context?.record?.title || context?.displayTitle) state.score.title = context.record?.title || context.displayTitle;
     state.samples = [];
     state.rawSamples = [];
     state.acceptedSamples = [];
@@ -323,6 +328,10 @@ function selectPart(partId) {
 }
 
 async function enterStudio() {
+  const changingPart = state.partSelectionReturnId !== null;
+  state.partSelectionReturnId = null;
+  state.startingConfirmedSession = false;
+  if(changingPart && state.savedPreferences) state.savedPreferences = {...state.savedPreferences, sectionStartMeasure:null, sectionEndMeasure:null, startMeasure:null};
   const vocalPart = selectedPart();
   if (!vocalPart) return;
   const vocalSampleManifest = await vocalSampleManifestPromise;
@@ -366,7 +375,7 @@ async function enterStudio() {
   els.studioMeta.textContent = `${state.score.creator ? `${state.score.creator} · ` : ""}${vocalPart.name} · ${vocalPart.vocalTimeline.length} target notes`;
   els.selectedPartName.textContent = vocalPart.name;
   els.scoreBannerPart.textContent = vocalPart.name;
-  els.scoreHeading.textContent = `${vocalPart.name} — vocal focus`;
+  els.scoreHeading.textContent = `I am singing ${vocalPart.name}`;
   renderAccompaniment();
   resetControls();
   restoreScorePreferences();
@@ -383,10 +392,10 @@ function restoreScorePreferences() {
   if (prefs.guideVoice) setGuideVoice(prefs.guideVoice);
   if (Number.isFinite(prefs.countInBars)) setCountInBars(prefs.countInBars);
   state.octaveByPart = {...(prefs.octaveByPart||{})};
-  const octavePreference = state.octaveByPart[state.selectedPartId];
+  const octavePreference = state.octaveByPart[state.selectedPartId] || (prefs.selectedPartId && prefs.selectedPartId !== state.selectedPartId ? {shift:DEFAULT_OCTAVE_SHIFT,chosen:false} : null);
   if (Number.isFinite(octavePreference?.shift ?? prefs.octaveShift)) setOctaveShift(octavePreference?.shift ?? prefs.octaveShift);
   state.startingOctaveChosen = octavePreference?.chosen ?? prefs.startingOctaveChosen ?? false;
-  if (Number.isFinite(prefs.tempoPercent)) {audio.setTempo(Math.max(50,Math.min(150,prefs.tempoPercent)));els.tempoSlider.value=audio.tempoPercent;els.tempoOutput.textContent=`${audio.tempoPercent}%`;els.bpmLabel.textContent=`${Math.round(audio.bpm)} BPM`;}
+  if (Number.isFinite(prefs.tempoPercent)) {audio.setTempo(Math.max(50,Math.min(150,prefs.tempoPercent)));els.tempoSlider.value=audio.tempoPercent;els.tempoOutput.textContent=`${audio.tempoPercent}%`;$("#tempoSummary").textContent=els.tempoOutput.textContent;els.bpmLabel.textContent=`${Math.round(audio.bpm)} BPM`;}
   if (validateSection(selectedPart(),prefs.sectionStartMeasure,prefs.sectionEndMeasure).valid) { state.sectionStartMeasure=prefs.sectionStartMeasure;state.sectionEndMeasure=prefs.sectionEndMeasure;state.startMeasure=prefs.startMeasure; }
   for (const part of state.score.parts.filter(p=>p.id!==state.selectedPartId)) {
     if (Number.isFinite(prefs.partVolumes?.[part.id])) {state.partVolumes[part.id]=Math.max(0,Math.min(100,prefs.partVolumes[part.id]));audio.setPartVolume(part.id,state.partVolumes[part.id]);}
@@ -396,7 +405,7 @@ function restoreScorePreferences() {
   renderAccompaniment();renderPracticeRangeControls();updateSetupSummary();
 }
 function scorePreferences() {
-  return {octaveByPart:{...state.octaveByPart,[state.selectedPartId]:{shift:state.octaveShift,chosen:state.startingOctaveChosen}},startingOctaveChosen:state.startingOctaveChosen,mode:state.mode==='listen'&&state.preferredMode?state.preferredMode:state.mode,guideVolume:state.guideVolume,guideVoice:state.guideVoice,countInBars:state.countInBars,octaveShift:state.octaveShift,tempoPercent:audio.tempoPercent,
+  return {selectedPartId:state.selectedPartId,octaveByPart:{...state.octaveByPart,[state.selectedPartId]:{shift:state.octaveShift,chosen:state.startingOctaveChosen}},startingOctaveChosen:state.startingOctaveChosen,mode:state.mode==='listen'&&state.preferredMode?state.preferredMode:state.mode,guideVolume:state.guideVolume,guideVoice:state.guideVoice,countInBars:state.countInBars,octaveShift:state.octaveShift,tempoPercent:audio.tempoPercent,
     sectionStartMeasure:state.sectionStartMeasure,sectionEndMeasure:state.sectionEndMeasure,startMeasure:state.startMeasure,partVolumes:{...state.partVolumes},partVoices:{...state.partVoices},enabledParts:[...state.enabledParts]};
 }
 async function persistScorePreferences() {
@@ -417,16 +426,9 @@ async function openSavedScore(record) {
 }
 async function openBuiltIn(entry) {
   const settings=await library.store.setting(`builtin:${entry.file}`).catch(()=>null);
-  return loadScore(()=>readScoreUrl(entry.file,entry.title),{builtin:entry.file,...settings});
+  return loadScore(()=>readScoreUrl(entry.file,entry.title),{builtin:entry.file,displayTitle:entry.title,...settings});
 }
-async function renderBuiltInOptions() {
-  const hidden=await library.hidden().catch(()=>[]);
-  els.repertoireSelect.replaceChildren(new Option("Select from repertoire",""));
-  for(const entry of state.repertoire.filter(e=>!hidden.includes(e.file)))els.repertoireSelect.add(new Option(entry.title,entry.file));
-  els.repertoireSelect.disabled=els.repertoireSelect.options.length<2;
-  const manager=$("#builtinVisibilityList");manager.replaceChildren();
-  for(const entry of state.repertoire) {const row=document.createElement("div"),name=document.createElement("span"),button=document.createElement("button");name.textContent=entry.title;button.type="button";button.textContent=hidden.includes(entry.file)?"Restore":"Hide";button.addEventListener("click",async()=>{try{const next=hidden.includes(entry.file)?hidden.filter(file=>file!==entry.file):[...hidden,entry.file];await library.store.setting("hidden-builtins",next);await renderBuiltInOptions();}catch(error){toast(error.message);}});row.append(name,button);manager.append(row);}
-}
+async function renderBuiltInOptions() { await library.setIncluded(state.repertoire); }
 
 function selectedPart() {
   return state.score?.parts.find((part) => part.id === state.selectedPartId) || null;
@@ -507,6 +509,7 @@ function renderTakeTraces() {
   });
   els.previousTakeControl.hidden = state.previousTakeTrace.length === 0;
   els.showPreviousTake.checked = state.showPreviousTake;
+  if(els.resultsPanel.open)markCoachingNote(state.coachingSteps[state.coachingStep]);
 }
 
 function archiveCompletedTrace() {
@@ -574,6 +577,7 @@ function openPracticeEditor() {
   state.rangeSelectionMode = true; state.rangeSelectionStart = null;
   state.startPickMode = false;
   $("#practiceEditor").hidden = false;
+  $("#editPracticeButton").setAttribute("aria-expanded","true");
   els.scoreContainer.classList.add("is-selecting");
   updateDraftFields();
   $("#practiceEditor").scrollIntoView({ block: "nearest" });
@@ -608,6 +612,7 @@ function cancelScoreSelection() {
   state.startPickMode = false; state.pendingStartMeasure = null;
   els.scoreContainer.classList.remove("is-selecting");
   $("#practiceEditor").hidden = true;
+  $("#editPracticeButton").setAttribute("aria-expanded","false");
   renderPracticeRangeControls();
 }
 function clearPracticeSection() {
@@ -782,7 +787,7 @@ async function renderScore() {
     resetCursor();
     rebuildScoreTrace();
     setCursorToQuarter(currentPracticeRange().startQuarter);
-    els.scoreHeading.textContent = state.scoreView === "vocal" ? `${selectedPart().name} — vocal focus` : "Full score";
+    els.scoreHeading.textContent = `I am singing ${selectedPart().name}`;
   } catch (error) {
     console.error(error);
     els.scoreContainer.innerHTML = `<p class="score-error">${escapeHtml(error.message || "The score could not be rendered.")}</p>`;
@@ -805,6 +810,7 @@ function rebuildScoreTrace() {
     renderTakeTraces();
     renderPracticeRangeOverlay();
     els.scoreContainer.dataset.mappedNotes = String(state.scoreGeometry.size);
+    if(els.resultsPanel.open)markCoachingNote(state.coachingSteps[state.coachingStep]);
   } catch (error) {
     state.scoreGeometry = new Map();
     state.measureGeometry = [];
@@ -951,7 +957,9 @@ function handleMicrophoneCalibration(calibration) {
 async function recheckMicrophone({ guideNext = !state.startingOctaveChosen } = {}) {
   if (audio.isPlaying || audio.isPaused || audio.isCountingIn) return false;
   const ready = await calibrationDialog.open({ keepActive: MODE_CONFIG[state.mode].microphone });
-  if (ready && guideNext) await openStartingNote({listen:true});
+  if (ready && guideNext && !state.startingConfirmedSession) {
+    if (await openStartingNote({listen:true})) state.startingConfirmedSession = true;
+  }
   if (ready && state.mode === "listen" && state.preferredMode && state.preferredMode !== "listen") setMode(state.preferredMode);
   return ready;
 }
@@ -1016,6 +1024,16 @@ async function openStartingNote(options={}) {
   return startingNoteDialog.open({listen:MODE_CONFIG[state.mode].microphone,chosen:state.startingOctaveChosen,suggested:state.octaveSuggestion?.shift,...options});
 }
 async function hearStartingNote() {
+  if (!state.startingConfirmedSession) {
+    if (audio.isPlaying || audio.isPaused || audio.isCountingIn || state.reviewPlaying || state.microphonePreparing) return;
+    if (MODE_CONFIG[state.mode].microphone && !state.microphoneCalibration?.signalGood) {
+      const ready = await calibrationDialog.open({keepActive:true});
+      if (!ready) return;
+    }
+    const confirmed = await openStartingNote();
+    if (confirmed) state.startingConfirmedSession = true;
+    return;
+  }
   if (audio.isPlaying || audio.isPaused || audio.isCountingIn || state.reviewPlaying || state.microphonePreparing) return;
   const starting = startingNoteForRange();
   if (!starting) { toast("There is no starting note in this section."); return; }
@@ -1170,7 +1188,7 @@ async function activateMicrophonePreparation(token) {
     await audio.startMicrophoneMonitoring(targetMidiAtQuarter);
     if (token !== state.microphoneActivationToken || !MODE_CONFIG[state.mode].microphone) return;
     updatePosition(audio.currentQuarter);
-    if(!state.startingOctaveChosen && !state.startingSetupShown) await openStartingNote({listen:true});
+    // The student opens the octave selector through Hear starting note.
     setStatus("idle", "Ready", "Your starting note is selected. Press Play when you are ready.");
   } catch (error) {
     if (token !== state.microphoneActivationToken) return;
@@ -1229,14 +1247,14 @@ function setMode(mode) {
   else {
     setTuningMeterInactive("Microphone off");
     setStatus("idle", "Listen mode — no mic needed", "Press Play to hear the guide and accompaniment. Pitch feedback and recording need Assisted or Assessment.");
-    els.finishButton.disabled = true;
   }
 }
 
 async function play({ skipCountIn = false } = {}) {
-  if(startingNoteDialog.active||calibrationDialog.active)return;
+  if(startingNoteDialog.active||calibrationDialog.active||state.transportPreparing)return;
   if (!state.score || state.rendering || state.microphonePreparing) return;
   cancelScoreSelection();
+  closeTakeFeedback({listen:false});closeFloatingReview();
   $("#setupPanel").open = false; $("#mixerPanel").open = false;
   tutorial.setActive(true);
   updateSetupSummary();
@@ -1276,6 +1294,7 @@ async function play({ skipCountIn = false } = {}) {
     clearPerformancePlayback();
     audio.discardPerformanceRecording();
   }
+  state.transportPreparing = true;
   setTransportBusy(true);
   try {
     await audio.play({
@@ -1310,6 +1329,7 @@ async function play({ skipCountIn = false } = {}) {
       setStatus("off", "Couldn’t start", error?.name === "NotAllowedError" ? "Microphone permission is required." : "Check the browser console and try again.");
     }
   } finally {
+    state.transportPreparing = false;
     setTransportBusy(false);
   }
 }
@@ -1323,7 +1343,7 @@ function pause() {
 
 async function stop({ keepSamples = true, completeAssessment = true, automatic = false } = {}) {
   if (!automatic) state.playbackGeneration += 1;
-  if (completeAssessment && MODE_CONFIG[state.mode].microphone && (audio.hasActivePerformanceRecording || state.samples.length)) {
+  if (completeAssessment && !state.takeCompleted && MODE_CONFIG[state.mode].microphone && (audio.hasActivePerformanceRecording || state.samples.length)) {
     await finishAssessment();
     return;
   }
@@ -1395,7 +1415,6 @@ function setPlaybackState(status) {
   els.playButton.disabled = playing;
   els.pauseButton.disabled = !playing;
   els.stopButton.disabled = !(playing || paused);
-  els.finishButton.disabled = !MODE_CONFIG[state.mode].microphone || (!state.samples.length && !playing && !paused);
   els.tempoSlider.disabled = playing || paused;
   setSetupControlsDisabled(playing || paused);
   els.toggleAllParts.disabled = !state.score.parts.some((part) => part.id !== state.selectedPartId);
@@ -1403,7 +1422,7 @@ function setPlaybackState(status) {
   els.transportState.textContent = playing ? (MODE_CONFIG[state.mode].microphone ? "Assessing" : "Playing") : paused ? "Paused" : "Ready";
   els.dockTransportState.textContent = els.transportState.textContent;
   els.dockPlayPauseButton.disabled = false;
-  els.dockPlayPauseButton.textContent = playing ? "⏸" : "▶";
+  els.dockPlayPauseButton.textContent = playing ? "⏸ Pause" : paused ? "▶ Resume" : "▶ Play";
   els.dockPlayPauseButton.setAttribute("aria-label", playing ? "Pause" : paused ? "Resume" : "Play");
   els.dockStopButton.disabled = !(playing || paused);
   els.dockRestartButton.disabled = false;
@@ -1582,7 +1601,6 @@ function handlePitchSample(sample) {
   if (error <= PITCH_THRESHOLDS.green) setStatus("good", "In the centre", "Keep the airflow and shape just like this.");
   else if (error <= PITCH_THRESHOLDS.yellow) setStatus("warn", "Nearly there", live.cents > 0 ? "Ease the pitch down a touch." : "Listen to the target and match it gently.");
   else setStatus("off", live.cents > 0 ? "Running sharp" : "Running flat", "Keep listening — the trace preserves how this note settles.");
-  els.finishButton.disabled = false;
 }
 
 function handleRawPitchSample(sample) {
@@ -1720,6 +1738,127 @@ async function handlePlaybackEnd() {
   }
 }
 
+function closeFloatingReview({restoreFocus=false}={}) {
+  stopPerformanceReview({resetCursorPosition:false});
+  els.performancePlayback.hidden = true;
+  if(MODE_CONFIG[state.mode]?.microphone && audio.stream)audio.startPitchSampling();
+  if(restoreFocus)$("#listenBackButton").focus({preventScroll:true});
+}
+function returnReviewPlayer() {
+  stopPerformanceReview({resetCursorPosition:false});
+  state.reviewChunk=null;
+  els.scoreContainer?.querySelectorAll(".coaching-current").forEach(marker=>marker.classList.remove("coaching-current"));
+  document.body.append(els.performancePlayback);
+  $("#closeReviewButton").hidden=false;
+  $("#performancePlaybackHeading").textContent="Listen to your take";
+  if(state.recording){els.performanceAudio.currentTime=0;updatePerformancePosition();updatePerformancePlaybackState();}
+}
+function openFloatingReview() {
+  if (!state.recording) return;
+  if (audio.isPlaying || audio.isPaused || audio.isCountingIn || state.microphonePreparing) return;
+  returnReviewPlayer();
+  els.performancePlayback.hidden = false;
+  $("#closeReviewButton").focus({preventScroll:true});
+}
+function showTakeFeedback() {
+  if (state.changingPart || $("#repeatPractice").checked || $("#changePartDialog").open) return;
+  els.resultsPanel.hidden = false;
+  if (!els.resultsPanel.open) els.resultsPanel.show();
+  state.coachingStep=0;
+  renderCoachingStep();
+}
+function closeTakeFeedback({listen=true}={}) {
+  if (els.resultsPanel.open) els.resultsPanel.close();
+  els.resultsPanel.hidden = true;
+  returnReviewPlayer();
+  els.performancePlayback.hidden=true;
+  if (listen) openFloatingReview();
+}
+function markCoachingNote(item,{scroll=false}={}) {
+  const markers=[...els.scoreContainer.querySelectorAll('.score-note-focus')];
+  markers.forEach(marker=>marker.classList.remove('coaching-current'));
+  if(!item||item.general)return;
+  const marker=markers.find(m=>m.dataset.noteId===item.noteId)||markers.find(m=>Number(m.dataset.measureNumber)===Number(item.measureNumber));
+  if(!marker)return;
+  marker.classList.add('coaching-current');
+  if(scroll){
+    focusScoreTarget(els.scoreContainer,item.noteId,item.measureNumber,{scroll:false});
+    marker.scrollIntoView({behavior:'instant',block:'nearest',inline:'center'});
+    const top=Math.max(0,document.querySelector('.topbar').getBoundingClientRect().bottom);
+    const available=els.resultsPanel.getBoundingClientRect().top;
+    const target=Math.max(top+20,(top+available)/2-marker.getBoundingClientRect().height/2);
+    window.scrollBy({top:marker.getBoundingClientRect().top-target,behavior:'instant'});
+  }
+}
+function renderCoachingStep() {
+  const item=state.coachingSteps[state.coachingStep];
+  stopPerformanceReview({resetCursorPosition:false});
+  els.resultsPanel.scrollTop=0;
+  els.coachObservations.replaceChildren();
+  $("#coachProgress").textContent=item?`${state.coachingStep+1} of ${state.coachingSteps.length}`:'No measured pitch feedback';
+  $("#coachPreviousButton").hidden=!item||state.coachingStep===0;
+  $("#feedbackContinueButton").textContent=!item||state.coachingStep===state.coachingSteps.length-1?'Listen to full take →':'Next →';
+  if(item){
+    const card=document.createElement('article');card.className=`coach-card ${item.tone}${item.provisional?' provisional':''}`;
+    const copy=document.createElement('div');copy.className='coach-card-copy';
+    const label=document.createElement('small');label.textContent=item.provisional?'Practice idea — not a measured finding':item.tone==='positive'?'What went well':'Something to work on';
+    const title=document.createElement('strong');title.textContent=item.title;
+    const body=document.createElement('span');body.textContent=item.body;
+    const exercise=document.createElement('details');exercise.className='coach-exercise';
+    const summary=document.createElement('summary');summary.textContent='Try this exercise';
+    const exerciseCopy=document.createElement('p');exerciseCopy.textContent=item.exercise;exercise.append(summary,exerciseCopy);
+    copy.append(label,title,body,exercise);card.append(copy);els.coachObservations.append(card);
+    els.coachIntro.textContent=item.general?'General practice guidance for this section.':'The note is marked in your score. Hear this bar, then try the exercise.';
+    state.reviewChunk=item.chunk;
+
+  } else state.reviewChunk=null;
+  if(state.recording){
+    $("#feedbackAudioSlot").append(els.performancePlayback);
+    $("#closeReviewButton").hidden=true;
+    $("#performancePlaybackHeading").textContent=item?`Hear bar ${item.chunk.measureNumber}`:'Hear your recording';
+    els.performancePlayback.hidden=false;
+    els.performanceAudio.currentTime=state.reviewChunk?.startSeconds??0;
+    updatePerformancePosition();updatePerformancePlaybackState();
+  }
+  if(item){markCoachingNote(item,{scroll:true});setCursorToQuarter(item.targetQuarter??item.chunk.startQuarter);}
+}
+function advanceCoachingStep(direction) {
+  if(direction>0&&state.coachingStep>=state.coachingSteps.length-1){closeTakeFeedback();return;}
+  state.coachingStep=Math.max(0,Math.min(state.coachingSteps.length-1,state.coachingStep+direction));renderCoachingStep();
+}
+function reviewPlaybackTake() {
+  return state.reviewChunk?{...state.recording.take,endQuarter:state.reviewChunk.endQuarter}:state.recording.take;
+}
+function stopReviewPlayback() {
+  if(!state.recording)return;
+  stopPerformanceReview({resetCursorPosition:false});
+  els.performanceAudio.currentTime=state.reviewChunk?.startSeconds??0;
+  updateReviewScorePosition(state.reviewChunk?.startQuarter??state.recording.take.startQuarter);
+  updatePerformancePosition();updatePerformancePlaybackState();
+}
+function startReviewPlayback() {
+  if(!state.recording)return;
+  const chunk=state.reviewChunk;
+  if(chunk&&(els.performanceAudio.currentTime<chunk.startSeconds||els.performanceAudio.currentTime>=chunk.endSeconds-.01))els.performanceAudio.currentTime=chunk.startSeconds;
+  els.performanceAudio.play().catch(()=>toast("The captured audio could not play."));
+}
+
+async function changeSingingPart() {
+  if (state.microphonePreparing || state.finishingAssessment || (state.transportPreparing && !audio.isCountingIn) || startingNoteDialog.active || calibrationDialog.active) return;
+  if (audio.isPlaying || audio.isPaused || audio.isCountingIn) {
+    const dialog=$("#changePartDialog");dialog.returnValue='cancel';dialog.showModal();
+    const choice=await new Promise(resolve=>dialog.addEventListener('close',()=>resolve(dialog.returnValue),{once:true}));
+    if(choice!=='change'){if(state.takeCompleted){if(state.activeTake?.mode==='assessment')showTakeFeedback();else openFloatingReview();}return;}
+  }
+  await persistScorePreferences();
+  state.savedPreferences=scorePreferences();
+  state.changingPart=true;
+  try { await stop(); } finally { state.changingPart=false; }
+  closeTakeFeedback({listen:false});closeFloatingReview();
+  state.partSelectionReturnId=state.selectedPartId;
+  renderPartChoices();showView('parts');
+}
+
 async function finishAssessment() {
   if (state.finishingAssessment) return;
   state.finishingAssessment = true;
@@ -1770,9 +1909,9 @@ async function finishAssessment() {
       els.detailedAnalysis.hidden = true;
       els.assessmentScope.textContent = `Assisted: ${assessmentRangeLabel(takeRange)}`;
       els.coachIntro.textContent = "Take complete — review your vocal line above or listen back below.";
-      els.resultsPanel.hidden = false;
-      if (!$("#repeatPractice").checked) els.resultsPanel.scrollIntoView({ behavior: "smooth", block: "start" });
-      setStatus("good", "Take complete", "Review your vocal line above or listen back below.");
+      els.resultsPanel.hidden = true;
+      if (!state.changingPart && !$("#repeatPractice").checked) openFloatingReview();
+      setStatus("good", "Take complete", "Listen to your take beside the score.");
       return;
     }
     els.resultsKicker.textContent = "Personalised assessment";
@@ -1784,11 +1923,12 @@ async function finishAssessment() {
       els.assessmentScope.textContent = `Assessment: ${assessmentRangeLabel(takeRange)}`;
       els.coachLevel.textContent = "No pitch result";
       els.coachIntro.textContent = "No clear pitch samples were captured, so there is no pitch coaching for this take.";
-      renderCoaching([], assessmentRangeLabel(takeRange));
+      state.coachingSteps=[];
+      els.coachObservations.replaceChildren();
       els.resultsBody.innerHTML = '<tr><td colspan="11" class="result-empty">No target notes had enough usable samples.</td></tr>';
       els.resultsSummary.textContent = `Assessment: ${assessmentRangeLabel(takeRange)} · Try the microphone check again, move a little closer, or use headphones.`;
       els.resultsPanel.hidden = false;
-      if (recording) els.resultsPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+      showTakeFeedback();
       toast("No clear pitch samples were captured. Recheck the microphone and try again.");
       setStatus("off", "No reliable pitch captured", "Your local voice recording is still available below when supported.");
       return;
@@ -1811,7 +1951,7 @@ async function finishAssessment() {
     const results = analysePerformance(soundingTimeline, assessedSamples, takeRange.bpm || audio.bpm);
     renderResults(results, takeRange);
     els.resultsPanel.hidden = false;
-    if (!$("#repeatPractice").checked) els.resultsPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+    showTakeFeedback();
     setStatus("good", "Assessment complete", "Review your pitch shape and hear your captured voice below.");
     if (!recording && !state.recordingAvailable) toast("Pitch results are ready. Audio recording is not supported in this browser.");
   } finally {
@@ -1822,6 +1962,8 @@ async function finishAssessment() {
 function clearPerformancePlayback() {
   stopPerformanceReview({ resetCursorPosition: false });
   state.recording = null;
+  state.coachingSteps=[];state.reviewChunk=null;
+  $("#listenBackButton").disabled = true;
   els.performanceAudio.pause();
   els.performanceAudio.removeAttribute("src");
   els.performanceAudio.load();
@@ -1856,7 +1998,8 @@ function attachPerformanceRecording(recording) {
   els.performanceAudio.src = recording.url;
   els.performanceAudio.volume = state.reviewVolumes.voice / 100;
   els.performanceAudio.muted = false;
-  els.performancePlayback.hidden = false;
+  els.performancePlayback.hidden = true;
+  $("#listenBackButton").disabled = false;
   const duration = Number(recording.durationSeconds) || 0;
   els.performanceSeek.max = String(duration);
   els.performanceDuration.textContent = formatTime(duration);
@@ -1905,7 +2048,7 @@ async function startPerformanceReview() {
   audio.pausePitchSampling();
   await audio.startReview({
     currentSeconds: els.performanceAudio.currentTime,
-    take: state.recording.take,
+    take: reviewPlaybackTake(),
     layers,
     volumes,
   });
@@ -1945,6 +2088,10 @@ function startPerformanceReviewSync() {
   cancelAnimationFrame(state.reviewSyncFrame);
   const frame = () => {
     if (!state.reviewPlaying || els.performanceAudio.paused || !state.recording) return;
+    if(state.reviewChunk && els.performanceAudio.currentTime>=state.reviewChunk.endSeconds){
+      els.performanceAudio.pause();els.performanceAudio.currentTime=state.reviewChunk.endSeconds;
+      updatePerformancePosition();updatePerformancePlaybackState();return;
+    }
     updatePerformancePosition();
     const quarter = reviewQuarterAtSeconds(
       els.performanceAudio.currentTime,
@@ -1976,12 +2123,12 @@ function updateReviewScorePosition(quarter) {
 
 function seekPerformanceReview() {
   if (!state.recording) return;
-  const seconds = Number(els.performanceSeek.value) || 0;
+  const seconds = reviewChunkSeconds(state.reviewChunk,els.performanceSeek.value);
   els.performanceAudio.currentTime = seconds;
   const quarter = reviewQuarterAtSeconds(seconds, state.recording.take.bpm, state.recording.take.startQuarter, state.recording.take.endQuarter);
   updateReviewScorePosition(quarter);
   if (state.reviewPlaying) {
-    void audio.resynchroniseReview(seconds, state.recording.take, currentReviewLayers(), currentReviewVolumes());
+    void audio.resynchroniseReview(seconds, reviewPlaybackTake(), currentReviewLayers(), currentReviewVolumes());
   }
   updatePerformancePosition();
 }
@@ -1989,11 +2136,11 @@ function seekPerformanceReview() {
 function restartPerformanceReview() {
   if (!state.recording) return;
   const wasPlaying = !els.performanceAudio.paused && !els.performanceAudio.ended;
-  els.performanceAudio.currentTime = 0;
-  updateReviewScorePosition(state.recording.take.startQuarter);
+  els.performanceAudio.currentTime = state.reviewChunk?.startSeconds??0;
+  updateReviewScorePosition(state.reviewChunk?.startQuarter??state.recording.take.startQuarter);
   updatePerformancePosition();
   if (wasPlaying) {
-    void audio.resynchroniseReview(0, state.recording.take, currentReviewLayers(), currentReviewVolumes());
+    void audio.resynchroniseReview(els.performanceAudio.currentTime, reviewPlaybackTake(), currentReviewLayers(), currentReviewVolumes());
   } else {
     els.performanceAudio.play().catch(() => toast("The captured audio could not play."));
   }
@@ -2003,7 +2150,7 @@ function updateReviewLayers() {
   const layers = currentReviewLayers();
   els.performanceAudio.muted = !layers.voice;
   if (state.reviewPlaying && state.recording) {
-    void audio.resynchroniseReview(els.performanceAudio.currentTime, state.recording.take, layers, currentReviewVolumes());
+    void audio.resynchroniseReview(els.performanceAudio.currentTime, reviewPlaybackTake(), layers, currentReviewVolumes());
   }
 }
 
@@ -2011,16 +2158,18 @@ function updatePerformancePlaybackState() {
   const playing = !els.performanceAudio.paused && !els.performanceAudio.ended;
   els.performancePlay.disabled = playing || !state.recording;
   els.performancePause.disabled = !playing;
+  $("#performanceStop").disabled = !state.recording;
 }
 
 function updatePerformancePosition() {
   const current = Number(els.performanceAudio.currentTime) || 0;
   const mediaDuration = Number.isFinite(els.performanceAudio.duration) ? els.performanceAudio.duration : 0;
   const duration = mediaDuration || state.recording?.durationSeconds || 0;
-  els.performanceSeek.max = String(duration);
-  els.performanceSeek.value = String(Math.min(current, duration));
-  els.performanceCurrentTime.textContent = formatTime(current);
-  els.performanceDuration.textContent = formatTime(duration);
+  const start=state.reviewChunk?.startSeconds??0,end=state.reviewChunk?.endSeconds??duration;
+  els.performanceSeek.min=String(start);els.performanceSeek.max=String(end);
+  els.performanceSeek.value=String(Math.max(start,Math.min(current,end)));
+  els.performanceCurrentTime.textContent=formatTime(Math.max(0,current-start));
+  els.performanceDuration.textContent=formatTime(end-start);
 }
 
 function renderResults(results, takeRange = state.activeTake || currentPracticeRange()) {
@@ -2042,30 +2191,12 @@ function renderResults(results, takeRange = state.activeTake || currentPracticeR
 }
 
 function renderCoaching(results, scope = assessmentRangeLabel(state.activeTake || currentPracticeRange())) {
-  const feedback = buildCoachingFeedback(results);
-  els.resultsPanel.dataset.level = feedback.profile.level;
-  els.coachLevel.hidden = true;
-  els.coachIntro.textContent = `One priority at a time · ${scope}. ${feedback.observations.some(item => item.provisional) ? "Provisional cards are practice ideas, not measured findings." : "Tap a finding to locate it in the score."}`;
-  els.coachObservations.replaceChildren();
-  for (const [heading, items] of [["3 Things to Work On", feedback.improvements], ["2 Things You Did Well", feedback.strengths]]) {
-    const group = document.createElement("section"); group.className = "coach-group";
-    const h = document.createElement("h3"); h.textContent = heading; group.append(h);
-    for (const [index, item] of items.entries()) {
-      const card = document.createElement(item.noteId ? "button" : "article");
-      card.className = `coach-card ${item.tone}${item.provisional ? " provisional" : ""}`;
-      if (item.noteId) { card.type = "button"; card.dataset.noteId = item.noteId; card.dataset.measureNumber = item.measureNumber; card.setAttribute("aria-label", `${item.title}. Show in score.`); }
-      const number = document.createElement("span"); number.className = "coach-card-number"; number.textContent = index + 1;
-      const copy = document.createElement("span"); copy.className = "coach-card-copy";
-      const label = document.createElement("small"); label.textContent = item.provisional ? "Provisional guidance" : item.tone === "positive" ? "Measured strength" : "Measured priority";
-      const title = document.createElement("strong"); title.textContent = item.title;
-      const body = document.createElement("span"); body.textContent = item.body;
-      const exercise = document.createElement("span"); exercise.className = "coach-exercise"; exercise.textContent = item.exercise;
-      copy.append(label, title, body, exercise); card.append(number, copy);
-      if (item.noteId) { const cue = document.createElement("span"); cue.className = "coach-card-cue"; cue.textContent = "Show in score ↑"; card.append(cue); }
-      group.append(card);
-    }
-    els.coachObservations.append(group);
-  }
+  const feedback=buildCoachingFeedback(results);
+  state.coachingSteps=coachingReviewSequence(feedback,selectedPart().vocalTimeline,measureBoundaries(selectedPart()),state.recording?.take||state.activeTake||currentPracticeRange());
+  state.coachingStep=0;
+  els.resultsPanel.dataset.level=feedback.profile.level;
+  els.coachLevel.hidden=true;
+  els.coachIntro.textContent=`Review your take in score order · ${scope}.`;
 }
 
 function setStatus(status, title, copy) {
@@ -2079,6 +2210,7 @@ function setStatus(status, title, copy) {
 }
 
 function resetControls() {
+  closeTakeFeedback({listen:false});closeFloatingReview();
   state.startingOctaveChosen = false;
   state.startingSetupShown = false;
   state.octaveByPart = {};
@@ -2087,7 +2219,7 @@ function resetControls() {
   cancelScoreSelection();
   const range = currentPracticeRange();
   els.tempoSlider.value = "100";
-  els.tempoOutput.textContent = "100%";
+  els.tempoOutput.textContent = "100%"; $("#tempoSummary").textContent="100%";
   els.bpmLabel.textContent = `${Math.round(state.score.originalTempo)} BPM`;
   const rangeDuration = (range.endQuarter - range.startQuarter) * 60 / audio.bpm;
   els.totalTime.textContent = formatTime(rangeDuration);
@@ -2156,6 +2288,7 @@ function resetControls() {
 }
 
 function resetToUpload() {
+  closeTakeFeedback({listen:false});closeFloatingReview();
   startingNoteDialog.close();
   void persistScorePreferences();
   state.scoreContext = null;
@@ -2230,19 +2363,28 @@ function runPitchSelfTest() {
 }
 
 function wireEvents() {
-  for(const panel of [$("#setupPanel"),$("#mixerPanel")]) {
-    panel.addEventListener('toggle',()=>{if(panel.open)for(const other of [$("#setupPanel"),$("#mixerPanel")])if(other!==panel)other.open=false;});
+  for(const panel of [$("#setupPanel"),$("#mixerPanel"),$("#tempoPanel")]) {
+    panel.addEventListener('toggle',()=>{if(panel.open)for(const other of [$("#setupPanel"),$("#mixerPanel"),$("#tempoPanel")])if(other!==panel)other.open=false;});
     document.addEventListener('pointerdown',event=>{if(panel.open&&!panel.contains(event.target))panel.open=false;});
     document.addEventListener('keydown',event=>{if(event.key==='Escape'&&panel.open){panel.open=false;panel.querySelector('summary').focus({preventScroll:true});}});
   }
   $("#setupPanel").addEventListener("input", () => queueMicrotask(updateSetupSummary));
   $("#setupPanel").addEventListener("click", () => queueMicrotask(updateSetupSummary));
   els.scoreInput.addEventListener("change", () => { const file = els.scoreInput.files?.[0]; if (file) void importAndOpen(file); });
-  els.repertoireSelect.addEventListener("change", () => {
-    const entry = state.repertoire.find((candidate) => candidate.file === els.repertoireSelect.value);
-    if (entry) void openBuiltIn(entry);
+  els.repertoireSelect.addEventListener("change", () => { void library.openChoice(els.repertoireSelect.value); });
+  els.partBackButton.addEventListener("click", () => {
+    if(state.partSelectionReturnId){state.selectedPartId=state.partSelectionReturnId;state.partSelectionReturnId=null;showView('studio');}
+    else resetToUpload();
   });
-  els.partBackButton.addEventListener("click", resetToUpload);
+  $("#changePartButton").addEventListener("click",()=>void changeSingingPart());
+  $("#listenBackButton").addEventListener("click",openFloatingReview);
+  $("#closeReviewButton").addEventListener("click",()=>closeFloatingReview({restoreFocus:true}));
+  document.addEventListener("keydown",event=>{if(event.key!=='Escape')return;if(els.resultsPanel.open){event.preventDefault();closeTakeFeedback();}else if(!els.performancePlayback.hidden&&!calibrationDialog.active&&!startingNoteDialog.active){closeFloatingReview({restoreFocus:true});}});
+  $("#closeFeedbackButton").addEventListener("click",()=>closeTakeFeedback());
+  $("#feedbackContinueButton").addEventListener("click",()=>advanceCoachingStep(1));
+  $("#coachPreviousButton").addEventListener("click",()=>advanceCoachingStep(-1));
+  els.resultsPanel.addEventListener('cancel',event=>{event.preventDefault();closeTakeFeedback();});
+
   els.newScoreButton.addEventListener("click", resetToUpload);
   els.partOptions.addEventListener("click", (event) => { const button = event.target.closest("[data-part-id]"); if (button) selectPart(button.dataset.partId); });
   els.continueButton.addEventListener("click", enterStudio);
@@ -2252,7 +2394,7 @@ function wireEvents() {
   els.recheckMicrophoneButton.addEventListener("click", recheckMicrophone);
   els.countInButtons.forEach((button) => button.addEventListener("click", () => setCountInBars(button.dataset.countIn)));
   for (const input of [els.sectionFrom, els.sectionTo]) input.addEventListener("input", updateDraftFromInputs);
-  $("#editPracticeButton").addEventListener("click", () => openPracticeEditor());
+  $("#editPracticeButton").addEventListener("click", () => {if(state.practiceDraft)cancelScoreSelection();else openPracticeEditor();});
   $("#cancelSectionButton").addEventListener("click", clearPracticeSection);
   wirePracticePointers();
   els.scoreContainer.addEventListener("keydown", (event) => {
@@ -2308,8 +2450,9 @@ function wireEvents() {
     renderTakeTraces();
   });
   els.tempoSlider.addEventListener("input", () => {
+    if(audio.isPlaying || audio.isPaused || audio.isCountingIn || state.microphonePreparing)return;
     audio.setTempo(els.tempoSlider.value);
-    els.tempoOutput.textContent = `${els.tempoSlider.value}%`;
+    els.tempoOutput.textContent = `${els.tempoSlider.value}%`;$("#tempoSummary").textContent=els.tempoOutput.textContent;
     els.bpmLabel.textContent = `${Math.round(audio.bpm)} BPM`;
     const range = currentPracticeRange();
     const duration = (range.endQuarter - range.startQuarter) * 60 / audio.bpm;
@@ -2317,12 +2460,13 @@ function wireEvents() {
     els.dockTotalTime.textContent = formatTime(duration);
     updatePosition(range.startQuarter);
   });
-  els.playButton.addEventListener("click", play); els.pauseButton.addEventListener("click", pause); els.stopButton.addEventListener("click", () => { void stop(); }); els.finishButton.addEventListener("click", () => { void finishAssessment(); });
+  els.playButton.addEventListener("click", play); els.pauseButton.addEventListener("click", pause); els.stopButton.addEventListener("click", () => { void stop(); });
   els.dockRestartButton.addEventListener("click", () => { void restartTransport(); });
   els.dockPlayPauseButton.addEventListener("click", () => { if (audio.isPlaying) pause(); else void play(); });
   els.dockStopButton.addEventListener("click", () => { void stop(); });
   els.followScoreButton.addEventListener("click", toggleScoreFollow);
-  els.performancePlay.addEventListener("click", () => { els.performanceAudio.play().catch(() => toast("The captured audio could not play.")); });
+  els.performancePlay.addEventListener("click", startReviewPlayback);
+  $("#performanceStop").addEventListener("click",stopReviewPlayback);
   els.performancePause.addEventListener("click", () => els.performanceAudio.pause());
   els.performanceRestart.addEventListener("click", restartPerformanceReview);
   els.performanceSeek.addEventListener("input", seekPerformanceReview);
@@ -2336,22 +2480,21 @@ function wireEvents() {
   els.performanceAudio.addEventListener("pause", pausePerformanceReview);
   els.performanceAudio.addEventListener("ended", () => { pausePerformanceReview(); updatePerformancePlaybackState(); });
   els.viewButtons.forEach((button) => button.addEventListener("click", async () => { if (audio.isPlaying || audio.isPaused || audio.isCountingIn) return; state.scoreView = button.dataset.view; els.viewButtons.forEach((item) => item.classList.toggle("active", item === button)); await renderScore(); }));
-  els.coachObservations.addEventListener("click", (event) => {
-    const card = event.target.closest("[data-note-id], [data-measure-number]");
-    if (!card) return;
-    if (!focusScoreTarget(els.scoreContainer, card.dataset.noteId || null, card.dataset.measureNumber || null)) {
-      toast("That note is not visible in the current score rendering.");
-    }
-  });
   els.helpButton.addEventListener("click", () => els.helpDialog.showModal());
   els.pitchSelfTest.addEventListener("click", runPitchSelfTest);
   window.addEventListener("resize", scheduleScoreTraceRefresh);
+  // OSMD also redraws after layout changes without a window resize. Rebuild
+  // overlays when it replaces a score SVG, not for our own trace mutations.
+  new MutationObserver(records=>{
+    if(records.some(record=>[...record.addedNodes].some(node=>
+      node.nodeType===1&&(node.matches?.('svg[id^="osmdSvgPage"]')||node.querySelector?.('svg[id^="osmdSvgPage"]')))))scheduleScoreTraceRefresh();
+  }).observe(els.scoreContainer,{childList:true,subtree:true});
   window.addEventListener("beforeunload", () => { tutorial.destroy(); audio.destroy(); });
 }
 
 const startingNoteDialog = createStartingNoteDialog({
   audio,getStarting:startingNoteForRange,getShift:()=>state.octaveShift,
-  onSelect:shift=>setOctaveShift(shift,{confirmed:true}),
+  onSelect:shift=>{setOctaveShift(shift,{confirmed:true});state.startingConfirmedSession=true;},
   onBusy:busy=>{tutorial.setActive(busy);setTransportBusy(busy);},
   onClose:listening=>{if(listening&&state.mode==='listen')audio.stopMicrophone({notify:false});else audio.targetMidiAtQuarter=targetMidiAtQuarter;},
 });
@@ -2382,7 +2525,7 @@ $("#replayTutorialButton").addEventListener("click", () => {
   els.helpDialog.close();
   tutorial.replay();
 });
-const library = createLibraryUI({ onOpen: openSavedScore, notify: toast,
+const library = createLibraryUI({ onOpen: openSavedScore, onOpenBuiltIn: openBuiltIn, notify: toast,
   onRemoveCurrent: async id => { if (state.scoreContext?.record?.id === id) resetToUpload(); },
 });
 setupPWA({ canUpdate: () => !audio.isPlaying && !audio.isPaused && !audio.isCountingIn && !state.reviewPlaying && !calibrationDialog.active && !startingNoteDialog.active });

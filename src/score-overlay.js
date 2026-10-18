@@ -448,6 +448,15 @@ export function renderMeasureSelection(scoreContainer, geometry, {
     const traceLayer = page.querySelector(".score-trace-layer");
     if (traceLayer) page.insertBefore(layer, traceLayer); else page.append(layer);
   });
+  // Leave selected notation unchanged so the green playhead and pitch trace
+  // retain their contrast. Dim only the unselected continuous system bands.
+  for (const band of practiceBands(geometry, sectionStartMeasure, sectionEndMeasure, wholePiece)) {
+    if (band.selected) continue;
+    pages[band.pageIndex]?.querySelector(".score-range-layer")?.append(svgElement("rect", {
+      class: "score-section-dim", x: band.xStart, y: band.yStart,
+      width: band.xEnd-band.xStart, height: band.height, "aria-hidden": "true",
+    }));
+  }
   // Transparent hit regions become keyboard targets only during explicit selection.
   for (const region of geometry || []) {
     const layer = pages[region.pageIndex]?.querySelector(".score-range-layer");
@@ -474,14 +483,14 @@ export function appendScoreTraceSample(scoreContainer, geometry, sample, previou
   appendSegment(pages[point.pageIndex], { from, to: point, colour: colourForCents((previousSample.cents + sample.cents) / 2) });
 }
 
-export function focusScoreTarget(scoreContainer, noteId, measureNumber = null) {
+export function focusScoreTarget(scoreContainer, noteId, measureNumber = null, {scroll=true} = {}) {
   const markers = [...scoreContainer.querySelectorAll(".score-note-focus")];
   const target = markers.find((marker) => marker.dataset.noteId === noteId)
     || markers.find((marker) => Number(marker.dataset.measureNumber) === Number(measureNumber));
   if (!target) return false;
   markers.forEach((marker) => marker.classList.remove("highlighted"));
   target.classList.add("highlighted");
-  target.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+  if(scroll)target.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
   window.setTimeout(() => target.classList.remove("highlighted"), 1800);
   return true;
 }
