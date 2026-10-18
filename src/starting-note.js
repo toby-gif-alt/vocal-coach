@@ -49,8 +49,8 @@ export function createStartingNoteDialog({audio,getStarting,getShift,onSelect,on
     if(!pending)return;button.disabled=true;mutedUntil=performance.now()+1100;model.reset();marker.hidden=true;cards.querySelectorAll('.near,.suggested,.live-region').forEach(row=>row.classList.remove('near','suggested','live-region'));showLabel('Listen, then sing when the note finishes…');
     try{await audio.previewPitch(midi);}catch{showLabel('The note could not play. Try again or choose manually.');}finally{if(pending)button.disabled=false;}
   }
-  function close(){if(!pending)return;token++;clearInterval(timer);timer=null;audio.octaveSetupActive=false;dialog.close();onBusy(false);onClose(listening);const complete=resolve;pending=null;resolve=null;complete?.(selected);}
-  hear.addEventListener('click',()=>void play(starting.midi+getShift(),hear));done.addEventListener('click',close);document.querySelector('#closeStartingNote').addEventListener('click',close);dialog.addEventListener('cancel',e=>{e.preventDefault();close();});
+  function close(confirmed=false){if(!pending)return;token++;clearInterval(timer);timer=null;audio.octaveSetupActive=false;dialog.close();onBusy(false);onClose(listening);const complete=resolve;pending=null;resolve=null;complete?.(selected && confirmed);}
+  hear.addEventListener('click',()=>void play(starting.midi+getShift(),hear));done.addEventListener('click',()=>close(true));document.querySelector('#closeStartingNote').addEventListener('click',()=>close());dialog.addEventListener('cancel',e=>{e.preventDefault();close();});
   return {get active(){return !!pending;},
     async open({listen=false,suggested=null,chosen=false}={}) {
       if(pending)return pending;starting=getStarting();if(!starting)return false;const attempt=++token;unsupportedAt=-Infinity;selected=chosen;listening=listen;model.reset();marker.hidden=true;hear.disabled=false;done.disabled=!selected;

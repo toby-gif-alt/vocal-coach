@@ -59,8 +59,12 @@ Real in-app browser QA used `/vocal-coach/` locally. It imported all three forma
 Before classroom rollout, manually test:
 
 1. Install from deployed HTTPS on Android Chrome, iPhone/iPad Safari and supported desktop Chrome/Edge. Confirm icons, standalone launch and install prompt suppression.
-2. Wait for Offline ready in the installed app, import each file format, fully close it, enable airplane mode and relaunch from its icon. Confirm sampled piano/human voices, score/range controls, real calibration, Assisted and Assessment, five cards and synchronized recording review.
+2. Allow background preparation while connected, import each file format, fully close the installed app, enable airplane mode and relaunch from its icon. Confirm sampled piano/human voices, score/range controls, real calibration, Assisted and Assessment, five cards and synchronized recording review.
 3. Exercise normal/soft/clipped/noisy real microphones, blocked permission, absent/busy device, headphones/speakers and cancellation during permission/each stage. Confirm saved good calibration survives failure and no extra capture remains after cancellation.
 4. Check Android attachment sharing and supported desktop file association. Check iOS Files → Import Score fallback. Test multiple shared files and duplicates.
 5. Export an original/backup, cancel and confirm removal of one score, retain others/settings, hide/restore built-ins, test full storage and disabled/private IndexedDB, then reconnect/apply an update with repertoire intact.
 6. Check narrow/touch layouts, keyboard focus/Escape in dialogs, screen-reader progress announcements, audio interruption/backgrounding and browser data eviction behaviour on each supported device.
+
+## Unified library
+
+Included and imported scores now share one list and dropdown. Included catalogue titles/hiding use browser-session storage in a regular tab and IndexedDB settings in actual standalone display mode. Imported files and their preferences remain persistent in both. Restore included scores is in Settings and never deletes imported files. See [Music-first UI validation](music-first-ui.md).

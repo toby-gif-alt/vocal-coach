@@ -1,12 +1,12 @@
 const WELCOME_KEY = "vocal-coach:welcome:v2", STUDIO_KEY = "vocal-coach:studio-tour:v2";
 export const TOUR_STEPS = [
-  [".part-and-tutorial", "Your singing part", "This badge names your selected vocal line. Tutorial beside it replays this guide any time you are not performing."],
+  ["#changePartButton", "Your singing part", "Click this heading to change the line you sing. Home, Settings, score views, Mixer and Tutorial stay in the top navigation, with practice-bar selection and session modes beside them."],
   [".mode-switch", "Choose your mode", "Listen needs no microphone. Assisted adds the guide and pitch trace. Assessment gives coaching without the guide."],
   ["#hearStartingNote", "Find a comfortable starting note", "Open Starting note, hear it, and sing. Large octave cards show your live pitch. Tap your preferred card and continue; your choice stays fixed during a take."],
-  ["#mixerPanel", "Balance your lesson", "Mixer adjusts accompaniment and vocal guide. Settings holds count-in, tempo, listening setup and microphone recheck."],
+  ["#mixerPanel", "Balance your lesson", "Mixer adjusts accompaniment and vocal guide. Settings holds count-in, listening setup and microphone recheck. Tempo is beside Play."],
   [".score-stage", "Follow the music", "The cursor follows your part. With a microphone, the live tuner and coloured trace show your pitch. You can scroll to explore the score; this tour never moves it for you."],
-  ["#editPracticeButton", "Practise selected bars", "Double-click a bar, or use Practice section. Enter a range or select by dragging, then Apply."],
-  ["#transportDock", "Play, pause and review", "The single transport stays available as you scroll. Finish & review ends a microphone take; Assessment shows three priorities and two strengths."],
+  ["#editPracticeButton", "Practise selected bars", "Enter bar numbers or drag across the score. Changes apply immediately. Bars outside the section dim; Cancel clears it. Repeat, inside the selection options, loops the section."],
+  ["#transportDock", "Play, pause and review", "Press Play to start; Stop finishes and saves a microphone take. Assisted opens Listen back. Assessment shows three priorities and two strengths before listening. Click the score to move the green line, then press Play."],
 ];
 
 // State and timing are independent of the DOM, so first-use behaviour is testable.

@@ -62,12 +62,13 @@ test('automatic preparation verifies existing assets and repairs only an incompl
   calls.length=0;await prepareOffline(reg,async(worker,type)=>{calls.push(type);return {ready:type==='DOWNLOAD'};});assert.deepEqual(calls,['VERIFY','DOWNLOAD','update']);
   await assert.rejects(prepareOffline(reg,async()=>({ready:false,error:'No space'})),/No space/);
 });
-test('studio has tutorial beside badge, a single visible transport and automatic device saving',async()=>{
+test('studio has navigation tutorial, a single visible transport and automatic device saving',async()=>{
   const html=await readFile('index.html','utf8'),app=await readFile('app.js','utf8'),tour=await readFile('src/tutorial.js','utf8');
-  assert.match(html, /part-and-tutorial[\s\S]*selectedPartName[\s\S]*studioTutorialButton/);
+  assert.match(html, /studioHeaderControls[\s\S]*studioTutorialButton/);
+  assert.match(html,/changePartButton[\s\S]*Click to change part/);
   assert.match(html,/legacy-transport" hidden aria-hidden="true"/);assert.equal((html.match(/id="transportDock"/g)||[]).length,1);
   const home=html.slice(0,html.indexOf('id="loadingView"'));assert.ok(!home.includes('downloadOfflineButton'));assert.ok(home.includes('installAppButton'));assert.ok(!html.includes('Retry offline setup'));assert.ok(!html.includes('id="offlineStatus"'));assert.ok(html.includes('Add Vocal Coach to this device'));
-  assert.match(app,/ready && guideNext\) await openStartingNote/);assert.match(app,/sessionOctaveShift !== null \|\| audio.isPlaying/);
+  assert.match(app,/ready && guideNext && !state.startingConfirmedSession/);assert.match(app,/sessionOctaveShift !== null \|\| audio.isPlaying/);
   assert.ok(!app.includes('OCTAVE_SELECTION_CONFIG.responseWindowMs'));assert.ok(!tour.includes('window.scrollTo'));
 });
 
