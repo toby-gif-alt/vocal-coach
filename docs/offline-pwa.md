@@ -67,4 +67,4 @@ Before classroom rollout, manually test:
 
 ## Unified library
 
-Included and imported scores now share one list and dropdown. Included catalogue titles/hiding use browser-session storage in a regular tab and IndexedDB settings in actual standalone display mode. Imported files and their preferences remain persistent in both. Restore included scores is in Settings and never deletes imported files. See [Music-first UI validation](music-first-ui.md).
+Included and imported scores now share one list and dropdown. Included catalogue titles/hiding use browser-session storage in a regular tab and IndexedDB settings in actual standalone display mode. Imported files and their preferences remain persistent in both. Restore included scores is under the library’s Storage & backup settings and never deletes imported files. See [Music-first UI validation](music-first-ui.md).

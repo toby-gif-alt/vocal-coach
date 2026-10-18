@@ -18,18 +18,33 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <title>Vocal Coach — Practise from the score</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%2317382f'/%3E%3Cpath d='M14 34c7 0 7-15 14-15s7 27 14 27 7-16 8-16' fill='none' stroke='%23d7ff72' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="./styles.css?v=30" />
+    <link rel="stylesheet" href="./styles.css?v=31" />
     <script src="./vendor/osmd.js" defer></script>
     <script src="./vendor/tone.js" defer></script>
     <script src="./vendor/jszip.js" defer></script>
-    <script type="module" src="./app.js?v=30"></script>
+    <script type="module" src="./app.js?v=31"></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to the app</a>
 
     <header class="topbar">
       <a class="brand" href="./" aria-label="Vocal Coach home"><span>Vocal Coach</span></a>
-      <nav id="studioHeaderControls" class="studio-header-controls" aria-label="Studio navigation" hidden><button id="newScoreButton" type="button" aria-label="Back to repertoire" title="Home">⌂ <span>Home</span></button><details id="setupPanel" class="setup-panel"><summary>Settings<span id="setupSummary" hidden>Count-in 1 bar · 100% tempo</span></summary><div class="setup-grid">            <div class="compact-setting">
+      <nav id="studioHeaderControls" class="studio-header-controls" aria-label="Studio navigation" hidden><button id="newScoreButton" type="button" aria-label="Back to repertoire" title="Home"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7M5 9v12h5v-7h4v7h5V9" /></svg><span>Home</span></button><details id="setupPanel" class="setup-panel"><summary>Settings<span id="setupSummary" hidden>Count-in 1 bar · 100% tempo</span></summary><div class="setup-grid"><section class="settings-section"><div class="microphone-check-setting">
+              <div class="setting-label"><span>Microphone</span><output id="microphoneCheckStatus">Not checked</output></div>
+
+              <button class="recheck-button" id="recheckMicrophoneButton" type="button" aria-label="Recheck microphone">Recheck</button>
+            </div>
+            <div class="listening-setup-block">
+              <div class="setting-label"><span>Listening setup</span><output id="listeningSetupOutput">Headphones</output></div>
+              <div class="sensitivity-switch listening-setup-switch" role="radiogroup" aria-label="Listening setup">
+                <button type="button" class="active" data-listening-setup="headphones" role="radio" aria-checked="true"><strong>Headphones</strong><small>Recommended</small></button>
+                <button type="button" data-listening-setup="speakers" role="radio" aria-checked="false"><strong>Speakers</strong><small>Echo control</small></button>
+              </div>
+
+            </div>
+
+            <div class="headphone-note" id="headphoneNote" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14v-2a8 8 0 0 1 16 0v2M4 14h4v6H5a1 1 0 0 1-1-1v-5Zm16 0h-4v6h3a1 1 0 0 0 1-1v-5Z" /></svg><p><strong>Use headphones for reliable scoring</strong><span>They stop the vocal guide and accompaniment from being mistaken for your voice.</span></p></div>
+</section><section class="settings-section"><div class="compact-setting">
               <div class="setting-label"><span>Count-in</span><output id="countInOutput">1 bar</output></div>
               <div class="option-switch" role="radiogroup" aria-label="Count-in length">
                 <button type="button" data-count-in="0" role="radio" aria-checked="false">Off</button>
@@ -37,17 +52,7 @@
                 <button type="button" data-count-in="2" role="radio" aria-checked="false">2 bars</button>
               </div>
             </div>
-            <details class="octave-setting">
-              <summary><span>Advanced / manual octave</span><output id="octaveOutput">Written</output></summary>
-
-              <p id="octaveHint">Written pitch — use Hear starting note to confirm.</p>
-            </details>
-            <div class="microphone-check-setting">
-              <div class="setting-label"><span>Microphone Check</span><output id="microphoneCheckStatus">Not checked</output></div>
-              <p id="microphoneCheckCopy">A quick room-and-voice check runs before your first assessment on this device.</p>
-              <button class="recheck-button" id="recheckMicrophoneButton" type="button">Recheck microphone</button>
-            </div>
-            <details class="sensitivity-block">
+            </section><details class="settings-advanced"><summary>Advanced</summary><p id="microphoneCheckCopy">A quick room-and-voice check runs before your first assessment on this device.</p><details class="sensitivity-block">
               <summary><span>Advanced microphone sensitivity</span><output id="sensitivityOutput">Normal</output></summary>
               <div class="sensitivity-switch" role="radiogroup" aria-label="Advanced microphone sensitivity">
                 <button type="button" data-sensitivity="low" role="radio" aria-checked="false"><strong>Low</strong><small>Stronger signal</small></button>
@@ -56,17 +61,12 @@
               </div>
               <p>Use only when the automatic check needs a manual adjustment.</p>
             </details>
-            <details class="sensitivity-block listening-setup-block">
-              <summary><span>Advanced listening setup</span><output id="listeningSetupOutput">Headphones</output></summary>
-              <div class="sensitivity-switch listening-setup-switch" role="radiogroup" aria-label="Listening setup">
-                <button type="button" class="active" data-listening-setup="headphones" role="radio" aria-checked="true"><strong>Headphones</strong><small>Recommended</small></button>
-                <button type="button" data-listening-setup="speakers" role="radio" aria-checked="false"><strong>Speakers</strong><small>Echo control</small></button>
-              </div>
-              <p>Changing this setting reacquires the microphone before the next take.</p>
-            </details>
+            <details class="octave-setting">
+              <summary><span>Advanced / manual octave</span><output id="octaveOutput">Written</output></summary>
 
-            <div class="headphone-note" id="headphoneNote" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14v-2a8 8 0 0 1 16 0v2M4 14h4v6H5a1 1 0 0 1-1-1v-5Zm16 0h-4v6h3a1 1 0 0 0 1-1v-5Z" /></svg><p><strong>Use headphones for reliable scoring</strong><span>They stop the vocal guide and accompaniment from being mistaken for your voice.</span></p></div>
-<div class="status-card" id="statusCard" data-status="idle"><span class="status-icon">•</span><p><strong id="statusTitle">Ready when you are</strong><small id="statusCopy">Choose a mode, then press play.</small></p></div><p class="settings-privacy">Your scores, microphone data and recordings stay on this device. Nothing is uploaded.</p><button id="restoreBuiltinsButton" type="button">Restore included scores</button><button id="helpButton" type="button">Quick guide &amp; app updates</button></div></details><div class="view-switch" role="group" aria-label="Score view"><button type="button" class="active" data-view="vocal">Vocal focus</button><button type="button" data-view="full">Full score</button></div><details id="mixerPanel" class="mixer-panel"><summary>Mixer</summary><div class="mixer-grid">            <div class="accompaniment-block"><div class="setting-label"><span>Accompaniment</span><button id="toggleAllParts" type="button">Mute all</button></div><div class="accompaniment-list" id="accompanimentList"></div></div>
+              <p id="octaveHint">Written pitch — use Hear starting note to confirm.</p>
+            </details>
+            <p class="settings-privacy">Your scores, microphone data and recordings stay on this device. Nothing is uploaded.</p></details></div></details><div class="view-switch" role="group" aria-label="Score view"><button type="button" class="active" data-view="vocal">Vocal focus</button><button type="button" data-view="full">Full score</button></div><details id="mixerPanel" class="mixer-panel"><summary>Mixer</summary><div class="mixer-grid">            <div class="accompaniment-block"><div class="setting-label"><span>Accompaniment</span><button id="toggleAllParts" type="button">Mute all</button></div><div class="accompaniment-list" id="accompanimentList"></div></div>
             <div class="volume-block">
               <label class="volume-field" for="guideVolume"><span><strong>Vocal Guide</strong><output id="guideVolumeOutput">92%</output></span><input id="guideVolume" type="range" min="0" max="100" value="92" step="2" /></label>
               <label class="guide-voice-field" for="guideVoice"><span>Guide voice</span><select id="guideVoice"><option value="human" selected>Human voice</option><option value="synthetic-ah">Synthetic Ah</option></select></label>
@@ -120,7 +120,7 @@
         <section class="repertoire-library" aria-labelledby="myRepertoireHeading">
           <div class="library-heading"><div><p class="eyebrow">Your music library</p><h2 id="myRepertoireHeading">Repertoire</h2></div><label for="librarySearch">Find a score<input id="librarySearch" type="search" placeholder="Title, composer or filename" /></label></div>
           <p id="libraryStatus" role="status">Opening saved repertoire…</p><div id="myRepertoireList"></div>
-          <details class="storage-settings"><summary>Storage &amp; backup settings</summary><p id="storageInfo"></p><button id="exportAllScoresButton" type="button">Download backup to this device</button><p>Uninstalling or clearing browser/app data may erase saved scores. Your device may also remove browser storage when space is low. Keep copies of important scores. Backups contain original score files; unzip them before importing again.</p></details>
+          <details class="storage-settings"><summary>Storage &amp; backup settings</summary><p id="storageInfo"></p><button id="restoreBuiltinsButton" type="button">Restore included scores</button><button id="updateAppButton" type="button" hidden>Update Vocal Coach</button><button id="exportAllScoresButton" type="button">Download backup to this device</button><p>Uninstalling or clearing browser/app data may erase saved scores. Your device may also remove browser storage when space is low. Keep copies of important scores. Backups contain original score files; unzip them before importing again.</p></details>
         </section>
       </section>
 
@@ -143,7 +143,7 @@
         <header class="studio-titlebar"><h1 id="studioTitle">Untitled score</h1><p id="studioMeta" hidden></p><span id="selectedPartName" hidden></span></header>
 
         <section class="studio-layout">
-          <div class="score-column">
+          <div class="score-column"><div class="status-card" id="statusCard" data-status="idle"><span class="status-icon">•</span><p><strong id="statusTitle">Ready when you are</strong><small id="statusCopy">Choose a mode, then press play.</small></p></div>
             <section class="transport panel legacy-transport" hidden aria-hidden="true">
               <div class="transport-buttons"><button class="play-button" id="playButton" type="button" aria-label="Play"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7V5Z" /></svg></button><button class="transport-button" id="pauseButton" type="button" aria-label="Pause" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6v12M16 6v12" /></svg></button><button class="transport-button" id="stopButton" type="button" aria-label="Stop" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v10H7z" /></svg></button></div>
               <div class="transport-progress"><span><strong id="transportState">Ready</strong><time id="currentTime">00:00</time><small>/</small><time id="totalTime">00:00</time></span><div class="progress-track" aria-hidden="true"><i id="progressFill"></i></div></div>
@@ -204,7 +204,10 @@
                 </aside>
               </div>
             </section>
-            <dialog class="results-panel feedback-dialog" id="resultsPanel" aria-labelledby="resultsHeading"><button id="closeFeedbackButton" class="panel-close" type="button" aria-label="Close feedback and listen to take">×</button>
+
+          </div>
+
+          <aside id="reviewCompanion" class="review-companion" aria-label="Take review" hidden>            <dialog class="results-panel feedback-dialog" id="resultsPanel" aria-labelledby="resultsHeading"><button id="closeFeedbackButton" class="panel-close" type="button" aria-label="Close feedback and listen to take">×</button>
               <div class="results-head" id="resultsHead"><div><p class="kicker" id="resultsKicker">Personalised assessment</p><h2 id="resultsHeading">Your Vocal Coach</h2></div><strong class="coach-level" id="coachLevel">Developing</strong></div>
               <p class="assessment-scope" id="assessmentScope">Assessment: whole piece</p>
               <p id="coachProgress" aria-live="polite"></p><p class="coach-intro" id="coachIntro">Your most useful strengths and next priorities will appear here.</p>
@@ -214,9 +217,28 @@
                 <summary><span>Detailed analysis</span><small id="resultsSummary">Results preserve the shape of each note instead of reducing it to pass or fail.</small></summary>
                 <div class="results-table-wrap"><table><thead><tr><th>Note</th><th>Measure</th><th>Initial</th><th>Average</th><th>Settle</th><th>Sustained</th><th>Green</th><th>Stability</th><th>Coverage</th><th>Dropouts</th><th>Drift</th></tr></thead><tbody id="resultsBody"></tbody></table></div>
               </details>
-            </dialog>
-          </div>
-
+            </dialog><section role="dialog" class="performance-playback floating-review" id="performancePlayback" hidden aria-labelledby="performancePlaybackHeading">
+                <button id="closeReviewButton" class="panel-close" type="button" aria-label="Close recording player">×</button><div class="performance-playback-head"><div><p class="kicker">Captured locally</p><h3 id="performancePlaybackHeading">Listen to your take</h3></div><span>Synced to score</span></div>
+                <audio id="performanceAudio" preload="metadata"></audio>
+                <fieldset class="performance-layers"><legend>Review layers</legend>
+                  <label><input type="checkbox" data-review-layer="voice" checked /><span>My voice</span></label>
+                  <label><input type="checkbox" data-review-layer="accompaniment" checked /><span>Accompaniment</span></label>
+                  <label><input type="checkbox" data-review-layer="melody" /><span>Melody guide</span></label>
+                </fieldset>
+                <div class="performance-buttons">
+                  <button id="performanceRestart" type="button" aria-label="Restart recording">⏮ <span>Restart</span></button>
+                  <button id="performancePlay" type="button" aria-label="Play recording">▶ <span>Start</span></button>
+                  <button id="performancePause" type="button" aria-label="Pause recording" hidden disabled>⏸ <span>Pause</span></button>
+                  <button id="performanceStop" type="button" aria-label="Stop recording playback" disabled>■ <span>Stop</span></button>
+                </div>
+                <label class="performance-seek" for="performanceSeek"><time id="performanceCurrentTime">00:00</time><input id="performanceSeek" type="range" min="0" max="0" value="0" step="0.01" aria-label="Seek through captured performance" /><time id="performanceDuration">00:00</time></label>
+                <details class="review-volumes"><summary>Volumes</summary><div class="performance-mixer" aria-label="Review volume controls">
+                  <label for="performanceVolume"><strong>My voice</strong><span><i aria-hidden="true">🔊</i><input id="performanceVolume" data-review-volume="voice" type="range" min="0" max="100" value="100" step="1" aria-label="My voice review volume" /><output data-review-volume-output="voice" for="performanceVolume">100%</output></span></label>
+                  <label for="reviewAccompanimentVolume"><strong>Accompaniment</strong><span><i aria-hidden="true">🔊</i><input id="reviewAccompanimentVolume" data-review-volume="accompaniment" type="range" min="0" max="100" value="68" step="1" aria-label="Accompaniment review volume" /><output data-review-volume-output="accompaniment" for="reviewAccompanimentVolume">68%</output></span></label>
+                  <label for="reviewMelodyVolume"><strong>Melody guide</strong><span><i aria-hidden="true">🔊</i><input id="reviewMelodyVolume" data-review-volume="melody" type="range" min="0" max="100" value="60" step="1" aria-label="Melody guide review volume" /><output data-review-volume-output="melody" for="reviewMelodyVolume">60%</output></span></label>
+                </div>
+                </details><p>The recording stays in this tab and is never uploaded.</p>
+              </section></aside>
           <aside class="monitor-panel panel" aria-labelledby="monitorHeading">
             <div class="panel-heading"><span>02</span><div><h2 id="monitorHeading">Session status</h2></div></div>
             <div class="expected-card"><span id="expectedLabel">Expected note</span><strong id="expectedNote">—</strong><small id="expectedPosition">The live tuner starts before Play</small></div>
@@ -249,28 +271,7 @@
 
     <dialog id="libraryActionDialog" class="microphone-reminder" aria-labelledby="libraryActionTitle"><form method="dialog"><h2 id="libraryActionTitle"></h2><p id="libraryActionCopy"></p><input id="libraryActionInput" aria-label="Display title" maxlength="200" hidden /><div><button id="libraryActionAccept" value="accept">Confirm</button><button id="libraryActionSecondary" value="secondary" hidden>Keep copy</button><button value="cancel">Cancel</button></div></form></dialog>
     <dialog id="installInstructionsDialog" class="microphone-reminder" aria-labelledby="installInstructionsTitle"><form method="dialog"><h2 id="installInstructionsTitle">Install Vocal Coach</h2><p id="installInstructionsCopy">Open Vocal Coach in Safari. Tap Share, then Add to Home Screen, then Add. If your browser offers Open as Web App, leave it enabled. Finish the offline download before practising without internet.</p><button>Got it</button></form></dialog>
-<section role="dialog" class="performance-playback floating-review" id="performancePlayback" hidden aria-labelledby="performancePlaybackHeading">
-                <button id="closeReviewButton" class="panel-close" type="button" aria-label="Close recording player">×</button><div class="performance-playback-head"><div><p class="kicker">Captured locally</p><h3 id="performancePlaybackHeading">Listen to your take</h3></div><span>Synced to score</span></div>
-                <audio id="performanceAudio" preload="metadata"></audio>
-                <fieldset class="performance-layers"><legend>Review layers</legend>
-                  <label><input type="checkbox" data-review-layer="voice" checked /><span>My voice</span></label>
-                  <label><input type="checkbox" data-review-layer="accompaniment" checked /><span>Accompaniment</span></label>
-                  <label><input type="checkbox" data-review-layer="melody" /><span>Melody guide</span></label>
-                </fieldset>
-                <div class="performance-buttons">
-                  <button id="performanceRestart" type="button" aria-label="Restart recording">⏮ <span>Restart</span></button>
-                  <button id="performancePlay" type="button" aria-label="Play recording">▶ <span>Start</span></button>
-                  <button id="performancePause" type="button" aria-label="Pause recording" hidden disabled>⏸ <span>Pause</span></button>
-                  <button id="performanceStop" type="button" aria-label="Stop recording playback" disabled>■ <span>Stop</span></button>
-                </div>
-                <label class="performance-seek" for="performanceSeek"><time id="performanceCurrentTime">00:00</time><input id="performanceSeek" type="range" min="0" max="0" value="0" step="0.01" aria-label="Seek through captured performance" /><time id="performanceDuration">00:00</time></label>
-                <details class="review-volumes"><summary>Volumes</summary><div class="performance-mixer" aria-label="Review volume controls">
-                  <label for="performanceVolume"><strong>My voice</strong><span><i aria-hidden="true">🔊</i><input id="performanceVolume" data-review-volume="voice" type="range" min="0" max="100" value="100" step="1" aria-label="My voice review volume" /><output data-review-volume-output="voice" for="performanceVolume">100%</output></span></label>
-                  <label for="reviewAccompanimentVolume"><strong>Accompaniment</strong><span><i aria-hidden="true">🔊</i><input id="reviewAccompanimentVolume" data-review-volume="accompaniment" type="range" min="0" max="100" value="68" step="1" aria-label="Accompaniment review volume" /><output data-review-volume-output="accompaniment" for="reviewAccompanimentVolume">68%</output></span></label>
-                  <label for="reviewMelodyVolume"><strong>Melody guide</strong><span><i aria-hidden="true">🔊</i><input id="reviewMelodyVolume" data-review-volume="melody" type="range" min="0" max="100" value="60" step="1" aria-label="Melody guide review volume" /><output data-review-volume-output="melody" for="reviewMelodyVolume">60%</output></span></label>
-                </div>
-                </details><p>The recording stays in this tab and is never uploaded.</p>
-              </section>
+
 <dialog id="changePartDialog" class="dialog" aria-labelledby="changePartTitle"><h2 id="changePartTitle">Change singing part?</h2><p>This will stop and finish your current take before changing parts. Its recording and trace will be cleared when you choose a new part.</p><form method="dialog"><button value="cancel">Keep singing</button><button value="change">Change part</button></form></dialog>
     <dialog id="startingNoteDialog" class="starting-note-dialog" aria-labelledby="startingNoteTitle"><button id="closeStartingNote" class="octave-close" type="button" aria-label="Close starting note selector">×</button><h2 id="startingNoteTitle">Find your starting note</h2><p>Listen to your starting note, then sing it at a comfortable pitch. Choose the octave that suits your voice.</p><button id="previewStartingNote" class="octave-hear" type="button">♬ Hear starting note</button><p id="octaveLiveLabel" aria-live="polite">Listening…</p><div class="octave-stack"><div id="octaveCards"></div><div id="octavePitchMarker" aria-hidden="true" hidden><span></span></div></div><p id="octaveSelectedCopy" role="status"></p><button id="continuePractice" type="button" disabled>Continue to practice</button></dialog>
     <dialog id="calibrationDialog" class="calibration-dialog" aria-labelledby="calibrationTitle">
@@ -279,7 +280,7 @@
       <progress id="calibrationProgress" aria-label="Microphone calibration progress" hidden></progress><meter id="calibrationLevel" min="0" max="1" value="0" aria-label="Live microphone input level" hidden></meter>
       <div class="calibration-actions"><button id="startCalibrationButton" type="button">Start microphone check</button><button id="cancelCalibrationButton" type="button">Cancel / Use Listen mode</button><button id="finishCalibrationButton" type="button" hidden>Continue to Vocal Coach</button></div>
     </dialog>
-    <dialog class="dialog" id="helpDialog"><form method="dialog"><button class="dialog-close" value="close" aria-label="Close help">×</button><p class="eyebrow"><span></span> Quick guide</p><h2>From MusicXML to useful feedback.</h2><ol><li><span>1</span><p><strong>Export MusicXML.</strong> In your notation software, export the full score as MusicXML or compressed MXL.</p></li><li><span>2</span><p><strong>Choose exactly what you sing.</strong> Vocal Coach never assumes a part named “Voice” exists.</p></li><li><span>3</span><p><strong>Choose how much help you need.</strong> Listen needs no microphone. Assisted adds a guide and pitch trace; Assessment removes the guide and gives three priorities and two strengths.</p></li><li><span>4</span><p><strong>Review the shape.</strong> Your accepted pitch stays on the written staff and your immediately previous take can remain as a quiet reference.</p></li></ol><p class="dialog-note">This prototype assesses fundamental pitch only. It does not yet grade rhythm, vibrato, breath, diction, or voice type.</p><button id="updateAppButton" type="button" hidden>Update Vocal Coach</button><button id="replayTutorialButton" type="button">Replay button tour</button><button class="continue-button" value="close">Got it</button></form></dialog>
+
     <dialog id="microphoneReminderDialog" class="microphone-reminder" aria-labelledby="microphoneReminderTitle">
       <h2 id="microphoneReminderTitle">Check your microphone</h2>
       <p id="microphoneReminderCopy">A quick room-and-voice check is recommended each time you reopen Vocal Coach, especially if your room, microphone or distance has changed.</p>

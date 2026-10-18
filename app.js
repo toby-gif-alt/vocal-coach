@@ -4,7 +4,7 @@ import { createLibraryUI } from "./src/library-ui.js";
 import { setupPWA } from "./src/pwa.js";
 import { createCalibrationDialog } from "./src/calibration-dialog.js";
 import { draftFromRange, dragRange, validateDraft, measureAtPoint, scorePositionAtPoint } from "./src/practice-selection.js?v=27";
-import { createTutorial } from "./src/tutorial.js?v=28";
+import { createTutorial } from "./src/tutorial.js?v=31";
 import { AudioEngine } from "./src/audio-engine.js?v=30";
 import { analysePerformance, performanceSummary } from "./src/analysis.js?v=27";
 import { buildCoachingFeedback } from "./src/coaching.js?v=27";
@@ -92,7 +92,7 @@ const els = {
   expectedLabel: $("#expectedLabel"), expectedNote: $("#expectedNote"), expectedPosition: $("#expectedPosition"), detectedNote: $("#detectedNote"), detectedFrequency: $("#detectedFrequency"), tuningMeter: $("#tuningMeter"), tuningPhase: $("#tuningPhase"), gaugeNeedle: $("#gaugeNeedle"), centsOutput: $("#centsOutput"),
   statusCard: $("#statusCard"), statusTitle: $("#statusTitle"), statusCopy: $("#statusCopy"), sampleCount: $("#sampleCount"), previousTakeControl: $("#previousTakeControl"), showPreviousTake: $("#showPreviousTake"),
   pitchDiagnostics: $("#pitchDiagnostics"), diagRawHz: $("#diagRawHz"), diagRawMidi: $("#diagRawMidi"), diagFilteredHz: $("#diagFilteredHz"), diagFilteredMidi: $("#diagFilteredMidi"), diagClarity: $("#diagClarity"), diagRms: $("#diagRms"), diagPeak: $("#diagPeak"), diagNearFullScale: $("#diagNearFullScale"), diagTarget: $("#diagTarget"), diagCents: $("#diagCents"), diagState: $("#diagState"), diagUsableFrames: $("#diagUsableFrames"), diagAcceptedAcquisition: $("#diagAcceptedAcquisition"), diagAcceptedContinuation: $("#diagAcceptedContinuation"), diagBelowOpenGate: $("#diagBelowOpenGate"), diagBelowContinuationGate: $("#diagBelowContinuationGate"), diagLowClarity: $("#diagLowClarity"), diagIsolatedJump: $("#diagIsolatedJump"), diagOctaveHarmonic: $("#diagOctaveHarmonic"), diagOutOfRange: $("#diagOutOfRange"), diagClipping: $("#diagClipping"), diagNoFrequency: $("#diagNoFrequency"), pitchSelfTest: $("#pitchSelfTest"), pitchSelfTestResult: $("#pitchSelfTestResult"),
-  helpButton: $("#helpButton"), helpDialog: $("#helpDialog"), toast: $("#toast"),
+  toast: $("#toast"),
 };
 
 const state = {
@@ -119,6 +119,7 @@ const state = {
   scoreGeometry: new Map(),
   measureGeometry: [],
   overlayResizeTimer: null,
+  layoutResizeTimer: null,
   syncFrame: null,
   toastTimer: null,
   rendering: false,
@@ -168,6 +169,7 @@ const state = {
   reviewChunk: null,
   playbackGeneration: 0,
   rangeSelectionMode: false,
+  practiceDragging: false,
   rangeSelectionStart: null,
   startPickMode: false,
   pendingStartMeasure: null,
@@ -254,7 +256,7 @@ function clearSavedMicrophoneCalibration() {
   }
 }
 
-function showView(name) {
+function showView(name, {onboarding=true} = {}) {
   els.uploadView.hidden = name !== "upload";
   els.loadingView.hidden = name !== "loading";
   els.partView.hidden = name !== "parts";
@@ -262,7 +264,7 @@ function showView(name) {
   $("#studioHeaderControls").hidden = name === "parts" || name === "loading";
   document.body.classList.toggle("studio-active", name === "studio");
   window.scrollTo({ top: 0, behavior: "smooth" });
-  tutorial.showView(name);
+  if(onboarding)tutorial.showView(name);
 }
 
 function toast(message) {
@@ -343,7 +345,7 @@ async function enterStudio() {
     .filter((part) => part.id !== vocalPart.id && classifyPlaybackPart(part) === "vocal")
     .map((part) => [part.id, DEFAULT_GUIDE_VOICE]));
   state.mode = "listen";
-  state.scoreView = "vocal";
+  setScoreView("vocal");
   state.samples = [];
   state.rawSamples = [];
   state.acceptedSamples = [];
@@ -379,8 +381,10 @@ async function enterStudio() {
   renderAccompaniment();
   resetControls();
   restoreScorePreferences();
-  showView("studio");
+  showView("studio",{onboarding:false});
   await renderScore();
+  tutorial.setActive(false);
+  tutorial.showView("studio");
   void persistScorePreferences();
 }
 
@@ -395,8 +399,6 @@ function restoreScorePreferences() {
   const octavePreference = state.octaveByPart[state.selectedPartId] || (prefs.selectedPartId && prefs.selectedPartId !== state.selectedPartId ? {shift:DEFAULT_OCTAVE_SHIFT,chosen:false} : null);
   if (Number.isFinite(octavePreference?.shift ?? prefs.octaveShift)) setOctaveShift(octavePreference?.shift ?? prefs.octaveShift);
   state.startingOctaveChosen = octavePreference?.chosen ?? prefs.startingOctaveChosen ?? false;
-  if (Number.isFinite(prefs.tempoPercent)) {audio.setTempo(Math.max(50,Math.min(150,prefs.tempoPercent)));els.tempoSlider.value=audio.tempoPercent;els.tempoOutput.textContent=`${audio.tempoPercent}%`;$("#tempoSummary").textContent=els.tempoOutput.textContent;els.bpmLabel.textContent=`${Math.round(audio.bpm)} BPM`;}
-  if (validateSection(selectedPart(),prefs.sectionStartMeasure,prefs.sectionEndMeasure).valid) { state.sectionStartMeasure=prefs.sectionStartMeasure;state.sectionEndMeasure=prefs.sectionEndMeasure;state.startMeasure=prefs.startMeasure; }
   for (const part of state.score.parts.filter(p=>p.id!==state.selectedPartId)) {
     if (Number.isFinite(prefs.partVolumes?.[part.id])) {state.partVolumes[part.id]=Math.max(0,Math.min(100,prefs.partVolumes[part.id]));audio.setPartVolume(part.id,state.partVolumes[part.id]);}
     if (prefs.partVoices?.[part.id]) {state.partVoices[part.id]=normaliseGuideVoice(prefs.partVoices[part.id]);audio.setPartVoice(part.id,state.partVoices[part.id]);}
@@ -644,23 +646,34 @@ function scoreMeasureAt(event) {
   return null;
 }
 function wirePracticePointers() {
-  let drag = null;
+  let drag=null, scrollFrame=null, previewFrame=null;
+  const preview=measure=>{
+    if(measure===null||!drag)return;
+    const next=dragRange(state.practiceDraft,drag.anchor,measure);
+    if(next.from===state.practiceDraft.from&&next.to===state.practiceDraft.to)return;
+    state.practiceDraft=next;
+    if(previewFrame===null)previewFrame=requestAnimationFrame(()=>{
+      previewFrame=null;
+      if(!drag)return;
+      els.sectionFrom.value=String(state.practiceDraft.from);els.sectionTo.value=String(state.practiceDraft.to);
+      els.practiceRangeStatus.textContent=`Selected: bars ${state.practiceDraft.from}–${state.practiceDraft.to}`;
+      renderPracticeRangeOverlay();
+    });
+  };
   function scrollDrag() {
-    if (!drag || !state.rangeSelectionMode || !state.practiceDraft) return;
-    const rect = els.scoreContainer.getBoundingClientRect();
-    const top = Math.max(0, rect.top), bottom = Math.min(innerHeight - 85, rect.bottom);
-    const delta = drag.y > bottom - 40 ? 12 : drag.y < top + 40 ? -12 : 0;
-    if (delta) {
-      const before = els.scoreContainer.scrollTop;
-      els.scoreContainer.scrollTop += delta;
-      if (els.scoreContainer.scrollTop === before) window.scrollBy(0, delta);
-      const measure = scoreMeasureAt({ clientX: drag.x, clientY: drag.y });
-      if (measure !== null) {
-        const next = dragRange(state.practiceDraft, drag.anchor, measure);
-        if (next.from !== state.practiceDraft.from || next.to !== state.practiceDraft.to) { state.practiceDraft = next; updateDraftFields(); }
-      }
+    if(!drag)return;
+    const viewport=els.scoreContainer.closest('.score-viewport');
+    const rect=els.scoreContainer.getBoundingClientRect();
+    const top=Math.max(document.querySelector('.topbar').getBoundingClientRect().bottom,rect.top);
+    const bottom=Math.min(innerHeight,rect.bottom);
+    const delta=drag.y>bottom-30?8:drag.y<top+30?-8:0;
+    if(delta){
+      const column=els.scoreContainer.closest('.score-column');
+      const scroller=[els.scoreContainer,viewport,column].find(element=>element&&element.scrollHeight>element.clientHeight+1&&['auto','scroll'].includes(getComputedStyle(element).overflowY))||window;
+      scroller.scrollBy({top:delta,behavior:'instant'});
+      preview(scoreMeasureAt({clientX:drag.x,clientY:drag.y}));
     }
-    requestAnimationFrame(scrollDrag);
+    scrollFrame=requestAnimationFrame(scrollDrag);
   }
   els.scoreContainer.addEventListener("click", async event => {
     if (state.rangeSelectionMode) return;
@@ -698,30 +711,34 @@ function wirePracticePointers() {
     if (!state.rangeSelectionMode || practiceLocked() || !event.isPrimary || event.button !== 0) return;
     const measure = scoreMeasureAt(event); if (measure === null) return;
     event.preventDefault();
-    drag = { id: event.pointerId, anchor: measure, original: { ...state.practiceDraft }, x: event.clientX, y: event.clientY };
-    requestAnimationFrame(scrollDrag);
+    drag={id:event.pointerId,anchor:measure,x:event.clientX,y:event.clientY};
+    state.practiceDragging=true;
     els.scoreContainer.setPointerCapture(event.pointerId);
-    state.practiceDraft = dragRange(state.practiceDraft, measure, measure); updateDraftFields();
+    state.practiceDraft=dragRange(state.practiceDraft,measure,measure);
+    els.sectionFrom.value=String(measure);els.sectionTo.value=String(measure);
+    renderPracticeRangeOverlay();
+    scrollFrame=requestAnimationFrame(scrollDrag);
   });
-  els.scoreContainer.addEventListener("pointermove", event => {
-    if (!drag || event.pointerId !== drag.id) return;
-    drag.x = event.clientX; drag.y = event.clientY;
-    const measure = scoreMeasureAt(event);
-    if (measure !== null) { state.practiceDraft = dragRange(state.practiceDraft, drag.anchor, measure); updateDraftFields(); }
-
+  els.scoreContainer.addEventListener("pointermove",event=>{
+    if(!drag||event.pointerId!==drag.id)return;
+    event.preventDefault();drag.x=event.clientX;drag.y=event.clientY;preview(scoreMeasureAt(event));
   });
-  const finish = (event, cancelled = false) => {
-    if (!drag || event.pointerId !== drag.id) return;
-    if (cancelled) state.practiceDraft = drag.original;
-    if (els.scoreContainer.hasPointerCapture(event.pointerId)) els.scoreContainer.releasePointerCapture(event.pointerId);
-    drag = null; updateDraftFields();
+  const finish=event=>{
+    if(!drag||event.pointerId!==drag.id)return;
+    preview(scoreMeasureAt(event));
+    const id=drag.id;drag=null;state.practiceDragging=false;
+    cancelAnimationFrame(scrollFrame);cancelAnimationFrame(previewFrame);previewFrame=null;
+    // Clear drag before releasing capture: lostpointercapture is synchronous on
+    // some browsers and must not roll back the completed selection.
+    if(els.scoreContainer.hasPointerCapture(id))els.scoreContainer.releasePointerCapture(id);
+    updateDraftFields();
   };
-  els.scoreContainer.addEventListener("pointerup", event => finish(event));
-  els.scoreContainer.addEventListener("pointercancel", event => finish(event, true));
-  els.scoreContainer.addEventListener("lostpointercapture", event => finish(event, true));
+  els.scoreContainer.addEventListener("pointerup",finish);
+  els.scoreContainer.addEventListener("pointercancel",finish);
+  els.scoreContainer.addEventListener("lostpointercapture",finish);
   document.addEventListener("keydown", event => {
     if (event.key === "Escape" && state.practiceDraft) {
-      if (drag) { const id = drag.id; drag = null; if (els.scoreContainer.hasPointerCapture(id)) els.scoreContainer.releasePointerCapture(id); }
+      if (drag) { const id = drag.id; drag = null;state.practiceDragging=false;cancelAnimationFrame(scrollFrame);cancelAnimationFrame(previewFrame);previewFrame=null; if (els.scoreContainer.hasPointerCapture(id)) els.scoreContainer.releasePointerCapture(id); }
       clearPracticeSection(); $("#editPracticeButton").focus();
     }
   });
@@ -744,7 +761,7 @@ function renderAccompaniment() {
     const soundControl = classification === "vocal"
       ? `<label class="part-sound"><span>Sound</span><select data-part-voice="${escapeHtml(part.id)}" aria-label="${escapeHtml(part.name)} sound"><option value="human" ${state.partVoices[part.id] !== "synthetic-ah" ? "selected" : ""}>Human voice</option><option value="synthetic-ah" ${state.partVoices[part.id] === "synthetic-ah" ? "selected" : ""}>Synthetic Ah</option></select></label>`
       : `<span class="part-sound part-sound-static"><span>Sound</span><strong>${classification === "piano" ? "Sampled piano" : "Sampled piano (fallback)"}</strong></span>`;
-    row.innerHTML = `<label class="part-toggle"><input type="checkbox" data-part-enabled="${escapeHtml(part.id)}" ${state.enabledParts.has(part.id) ? "checked" : ""} /><span>${escapeHtml(part.name)}</span></label>${soundControl}<input class="part-volume" type="range" min="0" max="100" step="1" value="${volume}" data-part-volume="${escapeHtml(part.id)}" aria-label="${escapeHtml(part.name)} volume" /><output class="part-volume-output" data-part-volume-output="${escapeHtml(part.id)}">${volume}%</output>`;
+    row.innerHTML = `<label class="part-toggle"><input type="checkbox" data-part-enabled="${escapeHtml(part.id)}" ${state.enabledParts.has(part.id) ? "checked" : ""} /><span>${escapeHtml(part.name)}</span></label>${soundControl}<label class="part-level"><span>Volume</span><input class="part-volume" type="range" min="0" max="100" step="1" value="${volume}" data-part-volume="${escapeHtml(part.id)}" aria-label="${escapeHtml(part.name)} volume" /><output class="part-volume-output" data-part-volume-output="${escapeHtml(part.id)}">${volume}%</output></label>`;
     els.accompanimentList.append(row);
   }
   updateMuteAllLabel();
@@ -753,6 +770,14 @@ function renderAccompaniment() {
 function updateMuteAllLabel() {
   const accompaniment = state.score?.parts.filter((part) => part.id !== state.selectedPartId) || [];
   els.toggleAllParts.textContent = accompaniment.length && accompaniment.every((part) => state.enabledParts.has(part.id)) ? "Mute all" : "Play all";
+}
+
+function setScoreView(view) {
+  state.scoreView=view==='full'?'full':'vocal';
+  els.viewButtons.forEach(button=>{
+    const active=button.dataset.view===state.scoreView;
+    button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));
+  });
 }
 
 async function renderScore() {
@@ -764,7 +789,7 @@ async function renderScore() {
     if (!OSMD) throw new Error("The notation renderer did not load. Check your connection and refresh.");
     if (!state.osmd) {
       state.osmd = new OSMD(els.scoreContainer, {
-        autoResize: true,
+        autoResize: false,
         backend: "svg",
         drawTitle: true,
         drawPartNames: true,
@@ -776,6 +801,7 @@ async function renderScore() {
       });
       await state.osmd.load(state.score.xmlText);
     }
+    setScoreView(state.scoreView);
     els.scoreContainer.classList.toggle("full-score", state.scoreView === "full");
     state.osmd.setOptions({ drawTitle: false, drawPartNames: state.scoreView === "full" });
     state.osmd.Sheet.Instruments.forEach((instrument, index) => {
@@ -818,9 +844,21 @@ function rebuildScoreTrace() {
   }
 }
 
+function scheduleScoreLayout() {
+  clearTimeout(state.layoutResizeTimer);
+  state.layoutResizeTimer=setTimeout(async()=>{
+    if(!state.osmd||!state.score||els.studioView.hidden)return;
+    if(state.practiceDragging||state.rendering){scheduleScoreLayout();return;}
+    await renderScore();
+    if(els.resultsPanel.open){const item=state.coachingSteps[state.coachingStep];markCoachingNote(item,{scroll:true});if(item)setCursorToQuarter(item.targetQuarter??item.chunk.startQuarter);}
+    else if(state.recording&&!els.performancePlayback.hidden){updateReviewScorePosition(reviewQuarterAtSeconds(els.performanceAudio.currentTime,state.recording.take.bpm,state.recording.take.startQuarter,state.recording.take.endQuarter));}
+    else setCursorToQuarter(audio.currentQuarter);
+  },100);
+}
+
 function scheduleScoreTraceRefresh() {
   clearTimeout(state.overlayResizeTimer);
-  state.overlayResizeTimer = setTimeout(rebuildScoreTrace, 320);
+  state.overlayResizeTimer = setTimeout(()=>{if(state.practiceDragging){scheduleScoreTraceRefresh();return;}rebuildScoreTrace();if(els.resultsPanel.open)markCoachingNote(state.coachingSteps[state.coachingStep],{scroll:true});}, 320);
 }
 
 function resetCursor() {
@@ -1024,7 +1062,7 @@ async function openStartingNote(options={}) {
   return startingNoteDialog.open({listen:MODE_CONFIG[state.mode].microphone,chosen:state.startingOctaveChosen,suggested:state.octaveSuggestion?.shift,...options});
 }
 async function hearStartingNote() {
-  if (!state.startingConfirmedSession) {
+  if (MODE_CONFIG[state.mode].microphone && !state.startingConfirmedSession) {
     if (audio.isPlaying || audio.isPaused || audio.isCountingIn || state.reviewPlaying || state.microphonePreparing) return;
     if (MODE_CONFIG[state.mode].microphone && !state.microphoneCalibration?.signalGood) {
       const ready = await calibrationDialog.open({keepActive:true});
@@ -1515,14 +1553,7 @@ function followScoreAtQuarter(quarter, expectedNote = null) {
     || [...els.scoreContainer.querySelectorAll(".score-measure-region")]
       .find((candidate) => Number(candidate.dataset.measureNumber) === Number(region.measureNumber));
   if (!marker) return;
-  const markerRect = marker.getBoundingClientRect();
-  const containerRect = els.scoreContainer.getBoundingClientRect();
-  const dockRect = document.getElementById("transportDock")?.getBoundingClientRect();
-  const topSafe = containerRect.top + 42;
-  const bottomSafe = Math.min(containerRect.bottom - 72, (dockRect?.top ?? window.innerHeight) - 24);
-  if (markerRect.top >= topSafe && markerRect.bottom <= bottomSafe) return;
-  const targetTop = els.scoreContainer.scrollTop + markerRect.top - containerRect.top - els.scoreContainer.clientHeight * 0.28;
-  els.scoreContainer.scrollTo({ top: Math.max(0, targetTop), behavior: "smooth" });
+  revealScoreMarker(marker);
 }
 
 function toggleScoreFollow() {
@@ -1738,9 +1769,21 @@ async function handlePlaybackEnd() {
   }
 }
 
+function syncReviewLayout() {
+  const open=els.resultsPanel.open||!els.performancePlayback.hidden;
+  $("#reviewCompanion").hidden=!open;
+  const layout=document.querySelector('.studio-layout'),changed=layout.classList.contains('has-review')!==open;
+  layout.classList.toggle('has-review',open);
+  if(changed)scheduleScoreLayout();
+}
+function revealScoreMarker(marker) {
+  if(!marker)return;
+  marker.scrollIntoView({behavior:'instant',block:'nearest',inline:'nearest'});
+}
 function closeFloatingReview({restoreFocus=false}={}) {
   stopPerformanceReview({resetCursorPosition:false});
   els.performancePlayback.hidden = true;
+  syncReviewLayout();
   if(MODE_CONFIG[state.mode]?.microphone && audio.stream)audio.startPitchSampling();
   if(restoreFocus)$("#listenBackButton").focus({preventScroll:true});
 }
@@ -1748,7 +1791,7 @@ function returnReviewPlayer() {
   stopPerformanceReview({resetCursorPosition:false});
   state.reviewChunk=null;
   els.scoreContainer?.querySelectorAll(".coaching-current").forEach(marker=>marker.classList.remove("coaching-current"));
-  document.body.append(els.performancePlayback);
+  $("#reviewCompanion").append(els.performancePlayback);
   $("#closeReviewButton").hidden=false;
   $("#performancePlaybackHeading").textContent="Listen to your take";
   if(state.recording){els.performanceAudio.currentTime=0;updatePerformancePosition();updatePerformancePlaybackState();}
@@ -1758,12 +1801,14 @@ function openFloatingReview() {
   if (audio.isPlaying || audio.isPaused || audio.isCountingIn || state.microphonePreparing) return;
   returnReviewPlayer();
   els.performancePlayback.hidden = false;
+  syncReviewLayout();
   $("#closeReviewButton").focus({preventScroll:true});
 }
 function showTakeFeedback() {
   if (state.changingPart || $("#repeatPractice").checked || $("#changePartDialog").open) return;
   els.resultsPanel.hidden = false;
   if (!els.resultsPanel.open) els.resultsPanel.show();
+  syncReviewLayout();
   state.coachingStep=0;
   renderCoachingStep();
 }
@@ -1773,6 +1818,7 @@ function closeTakeFeedback({listen=true}={}) {
   returnReviewPlayer();
   els.performancePlayback.hidden=true;
   if (listen) openFloatingReview();
+  syncReviewLayout();
 }
 function markCoachingNote(item,{scroll=false}={}) {
   const markers=[...els.scoreContainer.querySelectorAll('.score-note-focus')];
@@ -1783,11 +1829,7 @@ function markCoachingNote(item,{scroll=false}={}) {
   marker.classList.add('coaching-current');
   if(scroll){
     focusScoreTarget(els.scoreContainer,item.noteId,item.measureNumber,{scroll:false});
-    marker.scrollIntoView({behavior:'instant',block:'nearest',inline:'center'});
-    const top=Math.max(0,document.querySelector('.topbar').getBoundingClientRect().bottom);
-    const available=els.resultsPanel.getBoundingClientRect().top;
-    const target=Math.max(top+20,(top+available)/2-marker.getBoundingClientRect().height/2);
-    window.scrollBy({top:marker.getBoundingClientRect().top-target,behavior:'instant'});
+    revealScoreMarker(marker);
   }
 }
 function renderCoachingStep() {
@@ -2217,7 +2259,9 @@ function resetControls() {
   state.octaveMismatchDetector.clear();
   clearOctaveSuggestion();
   cancelScoreSelection();
+  clearPerformancePlayback();
   const range = currentPracticeRange();
+  audio.setTempo(100);
   els.tempoSlider.value = "100";
   els.tempoOutput.textContent = "100%"; $("#tempoSummary").textContent="100%";
   els.bpmLabel.textContent = `${Math.round(state.score.originalTempo)} BPM`;
@@ -2291,6 +2335,7 @@ function resetToUpload() {
   closeTakeFeedback({listen:false});closeFloatingReview();
   startingNoteDialog.close();
   void persistScorePreferences();
+  setScoreView("vocal");
   state.scoreContext = null;
   state.preferredMode = null;
   state.savedPreferences = null;
@@ -2300,6 +2345,7 @@ function resetToUpload() {
   audio.destroy();
   cancelAnimationFrame(state.syncFrame);
   clearTimeout(state.overlayResizeTimer);
+  clearTimeout(state.layoutResizeTimer);
   state.score = null; state.selectedPartId = null; state.samples = []; state.rawSamples = []; state.acceptedSamples = []; state.visualTraceSamples = []; state.previousTakeTrace = []; state.takeCompleted = false; state.osmd = null; state.cursor = null; state.cursorTimeline = []; state.cursorIndex = 0; state.scoreGeometry = new Map(); state.measureGeometry = [];
   state.practiceDraft = null; $("#practiceEditor").hidden = true; state.sectionStartMeasure = null; state.sectionEndMeasure = null; state.startMeasure = null; state.rangeSelectionMode = false; state.rangeSelectionStart = null; state.startPickMode = false; state.pendingStartMeasure = null;
   state.activeTake = null;
@@ -2364,7 +2410,17 @@ function runPitchSelfTest() {
 
 function wireEvents() {
   for(const panel of [$("#setupPanel"),$("#mixerPanel"),$("#tempoPanel")]) {
-    panel.addEventListener('toggle',()=>{if(panel.open)for(const other of [$("#setupPanel"),$("#mixerPanel"),$("#tempoPanel")])if(other!==panel)other.open=false;});
+    const position=()=>{
+      if(!panel.open)return;
+      const content=panel.querySelector(':scope > div,:scope > label'),anchor=panel.querySelector('summary').getBoundingClientRect();
+      const width=content.getBoundingClientRect().width;
+      content.style.left=`${Math.max(8,Math.min(anchor.left,innerWidth-width-8))}px`;
+      const top=Math.max(anchor.bottom,document.querySelector('.topbar').getBoundingClientRect().bottom)+8;
+      content.style.top=`${top}px`;
+      content.style.maxHeight=`${Math.max(120,innerHeight-top-12)}px`;
+    };
+    panel.addEventListener('toggle',()=>{if(panel.open){for(const other of [$("#setupPanel"),$("#mixerPanel"),$("#tempoPanel")])if(other!==panel)other.open=false;position();}});
+    window.addEventListener('resize',position);
     document.addEventListener('pointerdown',event=>{if(panel.open&&!panel.contains(event.target))panel.open=false;});
     document.addEventListener('keydown',event=>{if(event.key==='Escape'&&panel.open){panel.open=false;panel.querySelector('summary').focus({preventScroll:true});}});
   }
@@ -2479,10 +2535,9 @@ function wireEvents() {
   els.performanceAudio.addEventListener("play", () => { void startPerformanceReview(); });
   els.performanceAudio.addEventListener("pause", pausePerformanceReview);
   els.performanceAudio.addEventListener("ended", () => { pausePerformanceReview(); updatePerformancePlaybackState(); });
-  els.viewButtons.forEach((button) => button.addEventListener("click", async () => { if (audio.isPlaying || audio.isPaused || audio.isCountingIn) return; state.scoreView = button.dataset.view; els.viewButtons.forEach((item) => item.classList.toggle("active", item === button)); await renderScore(); }));
-  els.helpButton.addEventListener("click", () => els.helpDialog.showModal());
+  els.viewButtons.forEach((button) => button.addEventListener("click", async () => { if (audio.isPlaying || audio.isPaused || audio.isCountingIn) return; setScoreView(button.dataset.view); await renderScore(); }));
   els.pitchSelfTest.addEventListener("click", runPitchSelfTest);
-  window.addEventListener("resize", scheduleScoreTraceRefresh);
+  window.addEventListener("resize", scheduleScoreLayout);
   // OSMD also redraws after layout changes without a window resize. Rebuild
   // overlays when it replaces a score SVG, not for our own trace mutations.
   new MutationObserver(records=>{
@@ -2521,10 +2576,7 @@ $("#calibrateMicrophoneButton").addEventListener("click", () => {
 $("#skipMicrophoneButton").addEventListener("click", () => $("#microphoneReminderDialog").close());
 $("#studioTutorialButton").addEventListener("click",()=>tutorial.replay());
 $("#changeOctaveButton").addEventListener("click",()=>void openStartingNote());
-$("#replayTutorialButton").addEventListener("click", () => {
-  els.helpDialog.close();
-  tutorial.replay();
-});
+
 const library = createLibraryUI({ onOpen: openSavedScore, onOpenBuiltIn: openBuiltIn, notify: toast,
   onRemoveCurrent: async id => { if (state.scoreContext?.record?.id === id) resetToUpload(); },
 });

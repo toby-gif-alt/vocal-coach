@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createOnboarding, tutorialOverviewScale } from "../src/tutorial.js";
+import { createOnboarding, orderTourTargets, tutorialPosition } from "../src/tutorial.js";
 import { draftFromRange, dragRange, validateDraft, measureAtPoint } from "../src/practice-selection.js";
 import { practiceBands } from "../src/score-overlay.js";
 
@@ -61,14 +61,24 @@ test("first studio tutorial ends with calibration suggestion; new app sessions r
   reopened.controller.view('studio'); assert.deepEqual(reasons,['first-tour','returning']);
 });
 test("microphone suggestion is suppressed during active playback", () => {
-  const reasons=[];const t=onboarding(new Map([['vocal-coach:studio-tour:v2','done']]),reason=>reasons.push(reason));
+  const reasons=[];const t=onboarding(new Map([['vocal-coach:studio-tour:v3','done']]),reason=>reasons.push(reason));
   t.controller.active(true);t.controller.view('studio');assert.deepEqual(reasons,[]);
 });
-test("overview fits the screen without enlarging a short studio", () => {
-  assert.equal(tutorialOverviewScale(300,1000,12,false),1);
-  for (const compact of [true,false]) {
-    const scale=tutorialOverviewScale(1200,844,12,compact);
-    assert.ok(scale>0 && scale<1);
-    assert.ok(1200*scale<=844-12-(compact?350:95));
-  }
+test('tour order follows wrapped visual rows rather than DOM sequence',()=>{
+ const item=(name,left,top)=>({name,rect:{left,top,bottom:top+44,height:44}});
+ const items=[item('Mixer',0,60),item('Home',0,0),item('Full score',200,0),item('Settings',100,0),item('Modes',100,120),item('Select bars',0,120)];
+ assert.deepEqual(orderTourTargets(items).map(i=>i.name),['Home','Settings','Full score','Mixer','Select bars','Modes']);
+});
+test('tutorial card stays inside viewport and avoids a highlighted control',()=>{
+ for(const width of [390,834,1440]){
+  const target={left:width-120,right:width-20,top:70,bottom:114};
+  const p=tutorialPosition(target,{width:300,height:210},{width,height:844});
+  assert.ok(p.left>=8&&p.left+300<=width-8);assert.ok(p.top>=8&&p.top+210<=836);
+  assert.ok(p.left+300<=target.left||p.left>=target.right||p.top>=target.bottom||p.top+210<=target.top);
+ }
+});
+test('redesigned tour is offered once to a user who completed the previous version',()=>{
+ const t=onboarding(new Map([['vocal-coach:studio-tour:v2','done']]));t.controller.view('studio');
+ assert.deepEqual(t.shown,['studio']);t.controller.skip('studio');
+ const reopened=onboarding(t.storage);reopened.controller.view('studio');assert.deepEqual(reopened.shown,[]);
 });
