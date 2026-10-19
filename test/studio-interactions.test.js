@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
+import {guideSettings} from '../src/guide-settings.js';
 import {dragRange} from '../src/practice-selection.js';
 const source=await readFile(new URL('../app.js',import.meta.url),'utf8');
 const extract=(start,end)=>source.slice(source.indexOf(start),source.indexOf(end));
@@ -14,7 +15,7 @@ test('score-view state and both accessible button states reset together',()=>{
 test('legacy saved tempo and section cannot override fresh-session defaults or calibration',()=>{
  const calibration={signalGood:true},state={savedPreferences:{tempoPercent:150,sectionStartMeasure:3,sectionEndMeasure:6,startMeasure:4,octaveShift:-12,startingOctaveChosen:true},score:{parts:[]},selectedPartId:'voice',sectionStartMeasure:null,sectionEndMeasure:null,startMeasure:1,microphoneCalibration:calibration};
  const audio={tempoPercent:100,setTempo(){throw Error('Saved tempo must not be restored');}};
- const deps={state,audio,MODE_CONFIG:{},DEFAULT_OCTAVE_SHIFT:0,renderAccompaniment(){},renderPracticeRangeControls(){},updateSetupSummary(){},setOctaveShift(shift){state.octaveShift=shift;}};
+ const deps={state,audio,guideSettings,renderGuideSettings(){},MODE_CONFIG:{},DEFAULT_OCTAVE_SHIFT:0,renderAccompaniment(){},renderPracticeRangeControls(){},updateSetupSummary(){},setOctaveShift(shift){state.octaveShift=shift;}};
  const restore=new Function(...Object.keys(deps),extract('function restoreScorePreferences()','function scorePreferences()')+';return restoreScorePreferences;')(...Object.values(deps));
  restore();assert.equal(audio.tempoPercent,100);assert.equal(state.sectionStartMeasure,null);assert.equal(state.startMeasure,1);assert.equal(state.octaveShift,-12);assert.equal(state.microphoneCalibration,calibration);
 });
@@ -61,4 +62,11 @@ test('score reflow waits for an active drag and restores the current coaching ta
  const layout=new Function(...Object.keys(deps),extract('function scheduleScoreLayout()','function scheduleScoreTraceRefresh()')+';return scheduleScoreLayout;')(...Object.values(deps));
  layout();await jobs.get(id)();assert.deepEqual(calls,[]);
  state.practiceDragging=false;await jobs.get(id)();assert.deepEqual(calls,['render','mark',10]);
+});
+
+test('notation reflow keeps a stopped seek position and selected part/view while rebuilding geometry',async()=>{
+ const calls=[],state={score:{parts:[{id:'voice'}]},scoreView:'full',selectedPartId:'voice',cursorQuarter:12,osmd:{Sheet:{Instruments:[{}]},setOptions(){},render(){calls.push('layout');}}};
+ const deps={state,els:{scoreContainer:{setAttribute(){},removeAttribute(){},classList:{toggle(){}}},scoreHeading:{}},window:{opensheetmusicdisplay:{OpenSheetMusicDisplay:function(){}}},setScoreView:view=>assert.equal(view,'full'),indexCursorTimeline(){},resetCursor:()=>{state.cursorQuarter=0;},rebuildScoreTrace:()=>calls.push('geometry'),setCursorToQuarter:q=>calls.push(q),currentPracticeRange:()=>({startQuarter:0}),selectedPart:()=>({name:'Voice'}),tutorial:{refreshOverview(){}}};
+ const render=new Function(...Object.keys(deps),extract('async function renderScore()','function rebuildScoreTrace()')+';return renderScore;')(...Object.values(deps));
+ await render();assert.deepEqual(calls,['layout','geometry',12]);assert.equal(state.selectedPartId,'voice');assert.equal(state.scoreView,'full');
 });

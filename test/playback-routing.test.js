@@ -43,5 +43,5 @@ test("the audio scheduler uses explicit routes and never inspects gain to decide
   assert.doesNotMatch(source, /this\.synths|volume\?\.value|=== -Infinity/);
   assert.match(source, /this\.partEngines\.get\(part\.id\)/);
   assert.match(source, /channel\.instrument\.triggerAttackRelease\(request\)/);
-  assert.match(source, /channel\.instrument\.triggerAttackRelease\(\{ midi: note\.midi/);
+  assert.match(source, /role === "guide" \? guideOctaveShift : 0/);
 });

@@ -29,11 +29,13 @@ export class StartingPitchModel {
   }
   current(now){if(now-this.lastAt>320){this.reset();return null;}return this.value;}
 }
-export function createStartingNoteDialog({audio,getStarting,getShift,onSelect,onBusy,onClose}) {
+export function createStartingNoteDialog({audio,getStarting,getShift,onSelect,onBusy,onClose,onDemoClose=()=>{}}) {
   const dialog=document.querySelector('#startingNoteDialog'),cards=document.querySelector('#octaveCards'),label=document.querySelector('#octaveLiveLabel'),marker=document.querySelector('#octavePitchMarker'),hear=document.querySelector('#previewStartingNote'),done=document.querySelector('#continuePractice'),model=new StartingPitchModel();
+  let demonstration=false,demoShift=0;
+  const currentShift=()=>demonstration?demoShift:getShift();
   let pending=null,resolve=null,timer=null,starting=null,listening=false,selected=false,mutedUntil=0,unsupportedAt=-Infinity,token=0;
   function showLabel(text){if(label.textContent!==text)label.textContent=text;}
-  function render(selectedShift=getShift(),suggestedShift=null) {
+  function render(selectedShift=currentShift(),suggestedShift=null) {
     cards.replaceChildren();
     for(const candidate of octaveCards(starting.midi)) {
       const row=document.createElement('div');row.className='octave-card';row.dataset.shift=candidate.shift;
@@ -41,7 +43,7 @@ export function createStartingNoteDialog({audio,getStarting,getShift,onSelect,on
       const choose=document.createElement('button');choose.type='button';choose.className='octave-card-choice';choose.setAttribute('aria-pressed',String(candidate.shift===selectedShift));choose.setAttribute('aria-label',`${candidate.name}, ${candidate.description}`);
       const name=document.createElement('strong');name.textContent=candidate.name;const copy=document.createElement('span');copy.textContent=candidate.description;const hint=document.createElement('small');hint.textContent=candidate.supported?'Tap to choose':'Outside live detector range — choose manually';choose.append(name,copy,hint);
       choose.addEventListener('keydown',event=>{if(!['ArrowUp','ArrowDown'].includes(event.key))return;event.preventDefault();const options=[...cards.querySelectorAll('.octave-card-choice')],index=options.indexOf(choose);options[(index+(event.key==='ArrowDown'?1:options.length-1))%options.length].focus({preventScroll:true});});
-      choose.addEventListener('click',()=>{onSelect(candidate.shift);selected=true;done.disabled=false;render();cards.querySelector(`[data-shift="${candidate.shift}"] .octave-card-choice`).focus({preventScroll:true});document.querySelector('#octaveSelectedCopy').textContent=`Selected ${candidate.name} · ${candidate.description}. Your accompaniment stays at written pitch.`;});
+      choose.addEventListener('click',()=>{if(demonstration)demoShift=candidate.shift;else onSelect(candidate.shift);selected=true;done.disabled=false;render();cards.querySelector(`[data-shift="${candidate.shift}"] .octave-card-choice`).focus({preventScroll:true});document.querySelector('#octaveSelectedCopy').textContent=`Selected ${candidate.name} · ${candidate.description}. Your accompaniment stays at written pitch.`;});
       const preview=document.createElement('button');preview.type='button';preview.className='octave-preview';preview.textContent='🔊';preview.setAttribute('aria-label',`Hear ${candidate.name}`);preview.addEventListener('click',()=>void play(candidate.midi,preview));row.append(choose,preview);cards.append(row);
     }
   }
@@ -49,17 +51,26 @@ export function createStartingNoteDialog({audio,getStarting,getShift,onSelect,on
     if(!pending)return;button.disabled=true;mutedUntil=performance.now()+1100;model.reset();marker.hidden=true;cards.querySelectorAll('.near,.suggested,.live-region').forEach(row=>row.classList.remove('near','suggested','live-region'));showLabel('Listen, then sing when the note finishes…');
     try{await audio.previewPitch(midi);}catch{showLabel('The note could not play. Try again or choose manually.');}finally{if(pending)button.disabled=false;}
   }
-  function close(confirmed=false){if(!pending)return;token++;clearInterval(timer);timer=null;audio.octaveSetupActive=false;dialog.close();onBusy(false);onClose(listening);const complete=resolve;pending=null;resolve=null;complete?.(selected && confirmed);}
-  hear.addEventListener('click',()=>void play(starting.midi+getShift(),hear));done.addEventListener('click',()=>close(true));document.querySelector('#closeStartingNote').addEventListener('click',()=>close());dialog.addEventListener('cancel',e=>{e.preventDefault();close();});
+  function close(confirmed=false,{silent=false}={}){
+    if(!pending)return;const wasDemo=demonstration;token++;clearInterval(timer);timer=null;
+    audio.octaveSetupActive=false;dialog.close();dialog.classList.remove('tutorial-octaves');
+    const complete=resolve;pending=null;resolve=null;demonstration=false;
+    if(!wasDemo){onBusy(false);onClose(listening);}complete?.(selected&&confirmed);
+    if(wasDemo&&!silent)onDemoClose();
+  }
+
+  hear.addEventListener('click',()=>void play(starting.midi+currentShift(),hear));done.addEventListener('click',()=>close(true));document.querySelector('#closeStartingNote').addEventListener('click',()=>close());dialog.addEventListener('cancel',e=>{e.preventDefault();close();});
   return {get active(){return !!pending;},
-    async open({listen=false,suggested=null,chosen=false}={}) {
-      if(pending)return pending;starting=getStarting();if(!starting)return false;const attempt=++token;unsupportedAt=-Infinity;selected=chosen;listening=listen;model.reset();marker.hidden=true;hear.disabled=false;done.disabled=!selected;
-      pending=new Promise(r=>{resolve=r;});const completion=pending;render(getShift(),suggested);document.querySelector('#octaveSelectedCopy').textContent=chosen?`Selected ${pitchName(starting.midi+getShift())}. You can keep this octave or choose another.`:'Choose a card, then continue to practice.';
-      showLabel(listen?'Starting microphone…':'Choose manually, or use Assisted for live pitch.');dialog.showModal();onBusy(true);
+    async open({listen=false,suggested=null,chosen=false,demonstration:demo=false}={}) {
+      if(pending)return pending;demonstration=demo;demoShift=getShift();starting=getStarting();if(!starting)return false;const attempt=++token;unsupportedAt=-Infinity;selected=chosen;listening=listen;model.reset();marker.hidden=true;hear.disabled=false;done.disabled=!selected;
+      pending=new Promise(r=>{resolve=r;});const completion=pending;render(currentShift(),suggested);document.querySelector('#octaveSelectedCopy').textContent=chosen?`Selected ${pitchName(starting.midi+currentShift())}. You can keep this octave or choose another.`:'Choose a card, then continue to practice.';
+      showLabel(demo?'Demonstration — temporary octave choices':listen?'Starting microphone…':'Choose manually, or use Assisted for live pitch.');if(demo){dialog.classList.add('tutorial-octaves');dialog.show();}else{dialog.showModal();onBusy(true);}
       if(listen){audio.octaveSetupActive=true;try{await audio.startMicrophoneMonitoring(()=>null);if(attempt!==token)return completion;showLabel('Listening…');}catch{if(attempt===token){listening=false;showLabel('Microphone unavailable — preview and choose an octave manually.');}}}
-      if(attempt===token)timer=setInterval(()=>{if(performance.now()>mutedUntil&&model.current(performance.now())===null){marker.hidden=true;if(listen&&performance.now()-unsupportedAt>320)showLabel('Listening…');cards.querySelectorAll('.near,.suggested,.live-region').forEach(row=>row.classList.remove('near','suggested','live-region'));}},100);
+      if(!demo&&attempt===token)timer=setInterval(()=>{if(performance.now()>mutedUntil&&model.current(performance.now())===null){marker.hidden=true;if(listen&&performance.now()-unsupportedAt>320)showLabel('Listening…');cards.querySelectorAll('.near,.suggested,.live-region').forEach(row=>row.classList.remove('near','suggested','live-region'));}},100);
       return completion;
     },
+    selectDemo(shift){if(!pending||!demonstration)return;demoShift=shift;render(shift);document.querySelector('#octaveSelectedCopy').textContent=`Demo target: ${pitchName(starting.midi+shift)} — your real choice is unchanged.`;},
+    closeDemo(){if(demonstration)close(false,{silent:true});},
     observe(sample){if(!pending||!listening||performance.now()<mutedUntil)return;
       const result=model.observe(sample,starting.midi);
       if(!result){if(sample.gateOpen&&sample.clarity>=.82&&sample.rawFrequency>0&&(sample.rawFrequency<AUDIO_CONFIG.minimumFrequency||sample.rawFrequency>AUDIO_CONFIG.maximumFrequency)){unsupportedAt=performance.now();showLabel(`Outside the supported ${AUDIO_CONFIG.minimumFrequency}–${AUDIO_CONFIG.maximumFrequency} Hz range — choose manually.`);marker.hidden=true;}return;}

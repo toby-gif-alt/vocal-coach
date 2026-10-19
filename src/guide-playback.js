@@ -10,12 +10,13 @@ export function normaliseGuideVoice(value) {
 }
 
 // MusicXML parsing already resolves written and transposing-instrument pitches
-// into sounding MIDI. Guide playback must use that value directly: the singer's
-// separately selected octave only changes microphone targets and assessment.
-export function guideNoteRequest(note, { duration, time, velocity = 0.52 } = {}) {
+// into sounding MIDI. Apply the explicitly requested guide octave on top of
+// that pitch; callers pass zero for every accompaniment route.
+export function guideNoteRequest(note, { duration, time, velocity = 0.52, octaveShift = 0 } = {}) {
   const midi = Number(note?.midi);
   if (!Number.isFinite(midi)) return null;
-  return { midi, duration, time, velocity };
+  const shift = [-24,-12,0,12].includes(Number(octaveShift)) ? Number(octaveShift) : 0;
+  return { midi: midi + shift, duration, time, velocity };
 }
 
 export function explicitVoiceBank(partName) {

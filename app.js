@@ -1,10 +1,13 @@
+import {createTutorialDemos} from "./src/tutorial-demo.js?v=32";
+import {createDemoUI} from "./src/tutorial-demo-ui.js?v=32";
+import {guideSettings} from "./src/guide-settings.js?v=32";
 import { createStartingNoteDialog, pitchName } from "./src/starting-note.js";
 import { incomingScoreFile } from "./src/repertoire-store.js";
 import { createLibraryUI } from "./src/library-ui.js";
 import { setupPWA } from "./src/pwa.js";
 import { createCalibrationDialog } from "./src/calibration-dialog.js";
 import { draftFromRange, dragRange, validateDraft, measureAtPoint, scorePositionAtPoint } from "./src/practice-selection.js?v=27";
-import { createTutorial } from "./src/tutorial.js?v=31";
+import { createTutorial } from "./src/tutorial.js?v=32";
 import { AudioEngine } from "./src/audio-engine.js?v=30";
 import { analysePerformance, performanceSummary } from "./src/analysis.js?v=27";
 import { buildCoachingFeedback } from "./src/coaching.js?v=27";
@@ -134,6 +137,8 @@ const state = {
   octaveMismatchDetector: new OctaveMismatchDetector(),
   octaveSuggestion: null,
   guideVolume: PLAYBACK_CONFIG.defaultGuideVolume,
+  guideByMode: guideSettings(),
+  tutorialDemoActive: false,
   guideVoice: loadGuideVoice(),
   partVolumes: {},
   partVoices: {},
@@ -275,6 +280,7 @@ function toast(message) {
 }
 
 async function loadScore(loader, context = null) {
+  tutorialDemos.stop();
   state.scoreContext = context;
   state.startingConfirmedSession = false;
   state.savedPreferences = context?.record?.settings || context?.settings || null;
@@ -345,6 +351,8 @@ async function enterStudio() {
     .filter((part) => part.id !== vocalPart.id && classifyPlaybackPart(part) === "vocal")
     .map((part) => [part.id, DEFAULT_GUIDE_VOICE]));
   state.mode = "listen";
+  state.guideByMode = guideSettings();
+  state.cursorQuarter = -1;
   setScoreView("vocal");
   state.samples = [];
   state.rawSamples = [];
@@ -392,7 +400,8 @@ function restoreScorePreferences() {
   const prefs = state.savedPreferences;
   if (!prefs) return;
   state.preferredMode = MODE_CONFIG[prefs.mode] ? prefs.mode : "listen";
-  if (Number.isFinite(prefs.guideVolume)) { state.guideVolume = Math.max(0,Math.min(100,prefs.guideVolume)); els.guideVolume.value = state.guideVolume; updateVolume("guide",state.guideVolume); }
+  state.guideByMode=guideSettings(prefs.guideByMode,prefs.guideVolume);
+  renderGuideSettings();
   if (prefs.guideVoice) setGuideVoice(prefs.guideVoice);
   if (Number.isFinite(prefs.countInBars)) setCountInBars(prefs.countInBars);
   state.octaveByPart = {...(prefs.octaveByPart||{})};
@@ -407,11 +416,11 @@ function restoreScorePreferences() {
   renderAccompaniment();renderPracticeRangeControls();updateSetupSummary();
 }
 function scorePreferences() {
-  return {selectedPartId:state.selectedPartId,octaveByPart:{...state.octaveByPart,[state.selectedPartId]:{shift:state.octaveShift,chosen:state.startingOctaveChosen}},startingOctaveChosen:state.startingOctaveChosen,mode:state.mode==='listen'&&state.preferredMode?state.preferredMode:state.mode,guideVolume:state.guideVolume,guideVoice:state.guideVoice,countInBars:state.countInBars,octaveShift:state.octaveShift,tempoPercent:audio.tempoPercent,
+  return {guideByMode:structuredClone(state.guideByMode),selectedPartId:state.selectedPartId,octaveByPart:{...state.octaveByPart,[state.selectedPartId]:{shift:state.octaveShift,chosen:state.startingOctaveChosen}},startingOctaveChosen:state.startingOctaveChosen,mode:state.mode==='listen'&&state.preferredMode?state.preferredMode:state.mode,guideVolume:state.guideVolume,guideVoice:state.guideVoice,countInBars:state.countInBars,octaveShift:state.octaveShift,tempoPercent:audio.tempoPercent,
     sectionStartMeasure:state.sectionStartMeasure,sectionEndMeasure:state.sectionEndMeasure,startMeasure:state.startMeasure,partVolumes:{...state.partVolumes},partVoices:{...state.partVoices},enabledParts:[...state.enabledParts]};
 }
 async function persistScorePreferences() {
-  if (!state.scoreContext || !state.score || !state.selectedPartId || els.studioView.hidden) return;
+  if (state.tutorialDemoActive || !state.scoreContext || !state.score || !state.selectedPartId || els.studioView.hidden) return;
   const context=state.scoreContext;
   const patch={selectedPartId:state.selectedPartId,selectedPartName:selectedPart()?.name,settings:scorePreferences(),lastOpenedAt:new Date().toISOString()};
   try {if(context.record) await library.store.update(context.record.id,patch);else if(context.builtin)await library.store.setting(`builtin:${context.builtin}`,patch);}
@@ -782,6 +791,7 @@ function setScoreView(view) {
 
 async function renderScore() {
   if (state.rendering || !state.score) return;
+  const preservedQuarter = state.cursorQuarter >= 0 ? state.cursorQuarter : currentPracticeRange().startQuarter;
   state.rendering = true;
   els.scoreContainer.setAttribute("aria-busy", "true");
   try {
@@ -812,7 +822,7 @@ async function renderScore() {
     indexCursorTimeline();
     resetCursor();
     rebuildScoreTrace();
-    setCursorToQuarter(currentPracticeRange().startQuarter);
+    setCursorToQuarter(preservedQuarter);
     els.scoreHeading.textContent = `I am singing ${selectedPart().name}`;
   } catch (error) {
     console.error(error);
@@ -852,7 +862,7 @@ function scheduleScoreLayout() {
     await renderScore();
     if(els.resultsPanel.open){const item=state.coachingSteps[state.coachingStep];markCoachingNote(item,{scroll:true});if(item)setCursorToQuarter(item.targetQuarter??item.chunk.startQuarter);}
     else if(state.recording&&!els.performancePlayback.hidden){updateReviewScorePosition(reviewQuarterAtSeconds(els.performanceAudio.currentTime,state.recording.take.bpm,state.recording.take.startQuarter,state.recording.take.endQuarter));}
-    else setCursorToQuarter(audio.currentQuarter);
+    else if(audio.isPlaying||audio.isPaused||audio.isCountingIn)setCursorToQuarter(audio.currentQuarter);
   },100);
 }
 
@@ -993,6 +1003,7 @@ function handleMicrophoneCalibration(calibration) {
 }
 
 async function recheckMicrophone({ guideNext = !state.startingOctaveChosen } = {}) {
+  if(state.tutorialDemoActive)return false;
   if (audio.isPlaying || audio.isPaused || audio.isCountingIn) return false;
   const ready = await calibrationDialog.open({ keepActive: MODE_CONFIG[state.mode].microphone });
   if (ready && guideNext && !state.startingConfirmedSession) {
@@ -1014,7 +1025,7 @@ function setCountInBars(value) {
 }
 
 function setOctaveShift(value, { confirmed = false } = {}) {
-  if (state.sessionOctaveShift !== null || audio.isPlaying || audio.isPaused || audio.isCountingIn) return;
+  if (state.tutorialDemoActive || state.sessionOctaveShift !== null || audio.isPlaying || audio.isPaused || audio.isCountingIn) return;
   clearOctaveSuggestion();
   const nextShift = [-24, -12, 0, 12].includes(Number(value)) ? Number(value) : 0;
   const changed = nextShift !== state.octaveShift;
@@ -1036,6 +1047,7 @@ function setOctaveShift(value, { confirmed = false } = {}) {
     const soundingName = starting ? midiToName(starting.midi + state.octaveShift) : "this pitch";
     els.octaveConfirmation.textContent = `✓ Great — we’ll use ${soundingName}`;
     els.octaveConfirmation.classList.add("confirmed");
+    if(changed)toast("Octave changed — hear the first note, then sing it back to check it feels comfortable.");
   }
   updateOctaveHint(noteAtQuarter(selectedPart()?.vocalTimeline || [], audio.currentQuarter) || selectedPart()?.vocalTimeline[0]);
   updatePosition(audio.currentQuarter);
@@ -1057,11 +1069,13 @@ function unlockSessionOctave() {
 }
 
 async function openStartingNote(options={}) {
+  if(state.tutorialDemoActive)return false;
   if(state.sessionOctaveShift!==null||audio.isPlaying||audio.isPaused||audio.isCountingIn||state.reviewPlaying){toast("Stop or finish this take before changing octave.");return false;}
   state.startingSetupShown = true;
   return startingNoteDialog.open({listen:MODE_CONFIG[state.mode].microphone,chosen:state.startingOctaveChosen,suggested:state.octaveSuggestion?.shift,...options});
 }
 async function hearStartingNote() {
+  if(state.tutorialDemoActive)return;
   if (MODE_CONFIG[state.mode].microphone && !state.startingConfirmedSession) {
     if (audio.isPlaying || audio.isPaused || audio.isCountingIn || state.reviewPlaying || state.microphonePreparing) return;
     if (MODE_CONFIG[state.mode].microphone && !state.microphoneCalibration?.signalGood) {
@@ -1081,10 +1095,19 @@ async function hearStartingNote() {
   finally { els.hearStartingNote.disabled = audio.isPlaying || audio.isPaused || audio.isCountingIn; }
 }
 
+function renderGuideSettings() {
+  const settings=state.guideByMode[state.mode];
+  state.guideVolume=settings.volume;els.guideVolume.value=String(settings.volume);
+  els.guideVolumeOutput.textContent=`${settings.volume}%`;
+  $("#guideEnabled").checked=settings.enabled;
+  audio.setGuideVolume(settings.volume);
+}
+
 function updateVolume(kind, value) {
   const percent = Math.max(0, Math.min(100, Number(value) || 0));
   if (kind === "guide") {
     state.guideVolume = percent;
+    state.guideByMode[state.mode].volume=percent;
     audio.setGuideVolume(percent);
     els.guideVolumeOutput.textContent = `${percent}%`;
   }
@@ -1094,7 +1117,7 @@ function setGuideVoice(value, { persist = true } = {}) {
   state.guideVoice = normaliseGuideVoice(value);
   els.guideVoice.value = state.guideVoice;
   audio.setGuideVoice(state.guideVoice);
-  if (persist) saveGuideVoice(state.guideVoice);
+  if (persist && !state.tutorialDemoActive) saveGuideVoice(state.guideVoice);
 }
 
 function handleGuideVoiceStatus(status = {}) {
@@ -1142,6 +1165,7 @@ function updateOctaveHint(note) {
   const starting = startingNoteForRange();
   els.hearStartingNote.setAttribute("aria-label",starting?`Hear starting note ${pitchName(starting.midi+octaveShift)}`:"Hear starting note");
   els.hearStartingNote.title="Hear the starting note at your chosen singing octave";
+  $("#settingsHearStartingNote").textContent=starting?`♫ Hear first note · ${pitchName(starting.midi+octaveShift)}`:"♫ Hear first note";
   els.startingNoteName.textContent = starting
     ? pitchName(starting.midi + octaveShift)
     : "—";
@@ -1250,10 +1274,11 @@ async function activateMicrophonePreparation(token) {
 }
 
 function setMode(mode) {
-  if (startingNoteDialog.active || !MODE_CONFIG[mode] || audio.isPlaying || audio.isPaused || audio.isCountingIn) return;
+  if (state.tutorialDemoActive || startingNoteDialog.active || !MODE_CONFIG[mode] || audio.isPlaying || audio.isPaused || audio.isCountingIn) return;
   state.microphoneActivationToken += 1;
   const activationToken = state.microphoneActivationToken;
   state.mode = mode;
+  renderGuideSettings();
   state.preferredMode = mode;
   clearOctaveSuggestion();
   updateSetupSummary();
@@ -1270,6 +1295,7 @@ function setMode(mode) {
   if (!config.microphone) { audio.stopMicrophone(); tutorial.setActive(false); }
   els.headphoneNote.hidden = !config.microphone;
   document.body.classList.toggle("microphone-mode", config.microphone);
+  scheduleScoreLayout();
   els.transportState.textContent = `${config.label} ready`;
   els.dockTransportState.textContent = els.transportState.textContent;
   updatePosition(audio.currentQuarter);
@@ -1289,7 +1315,7 @@ function setMode(mode) {
 }
 
 async function play({ skipCountIn = false } = {}) {
-  if(startingNoteDialog.active||calibrationDialog.active||state.transportPreparing)return;
+  if(state.tutorialDemoActive||startingNoteDialog.active||calibrationDialog.active||state.transportPreparing)return;
   if (!state.score || state.rendering || state.microphonePreparing) return;
   cancelScoreSelection();
   closeTakeFeedback({listen:false});closeFloatingReview();
@@ -1317,7 +1343,9 @@ async function play({ skipCountIn = false } = {}) {
       partVolumes: state.partVolumes,
       partVoices: state.partVoices,
       guideVoice: state.guideVoice,
-      guideEnabled: mode.guide,
+      guideEnabled: state.guideByMode[state.mode].enabled,
+      guideOctaveShift: takeOctaveShift,
+      guideVolume: state.guideVolume,
       mode: state.mode,
       durationSeconds: (range.endQuarter - range.startQuarter) * 60 / audio.bpm,
       vocalPartId: state.selectedPartId,
@@ -1337,7 +1365,8 @@ async function play({ skipCountIn = false } = {}) {
   try {
     await audio.play({
       vocalPartId: state.selectedPartId,
-      guideEnabled: mode.guide,
+      guideEnabled: state.guideByMode[state.mode].enabled,
+      guideOctaveShift: takeOctaveShift,
       enabledPartIds: [...state.enabledParts],
       assessmentMode: mode.microphone,
       countInBars: skipCountIn ? 0 : state.countInBars,
@@ -1478,8 +1507,10 @@ function setSetupControlsDisabled(disabled) {
   els.countInButtons.forEach((button) => { button.disabled = disabled; });
   els.octaveButtons.forEach((button) => { button.disabled = disabled; });
   els.hearStartingNote.disabled = disabled;
+  $("#settingsHearStartingNote").disabled = disabled;
   $("#changeOctaveButton").disabled = disabled;
   $("#studioTutorialButton").disabled = disabled;
+  $("#guideEnabled").disabled=disabled;
   els.guideVolume.disabled = disabled;
   els.guideVoice.disabled = disabled;
   els.accompanimentList.querySelectorAll("input, select").forEach((control) => { control.disabled = disabled; });
@@ -1580,8 +1611,8 @@ function renderOctaveSuggestion() {
   if (!suggestion) return;
   const locked = audio.isPlaying || audio.isPaused || audio.isCountingIn || state.sessionOctaveShift !== null;
   const direction = suggestion.relativeShift < 0 ? "lower" : "higher";
-  $("#octaveSuggestionCopy").textContent = `Your voice suggests ${Math.abs(suggestion.relativeShift) === 24 ? "two octaves" : "an octave"} ${direction} than the current target. Switch the singing octave?${locked ? " Stop or finish this take to switch for the next one." : ""}`;
-  $("#acceptOctaveSuggestion").textContent = "Change singing octave";
+  $("#octaveSuggestionCopy").textContent = `Your voice suggests ${Math.abs(suggestion.relativeShift) === 24 ? "two octaves" : "an octave"} ${direction} than the current target. Switch your singing target and vocal guide?${locked ? " Stop or finish this take to switch for the next one." : ""}`;
+  $("#acceptOctaveSuggestion").textContent = "Change singing & guide octave";
   $("#acceptOctaveSuggestion").disabled = locked;
 }
 function maybeSuggestSingingOctave(sample, targetInfo, phase) {
@@ -1594,6 +1625,7 @@ function maybeSuggestSingingOctave(sample, targetInfo, phase) {
 }
 
 function handlePitchSample(sample) {
+  if(state.tutorialDemoActive)return;
   if (!MODE_CONFIG[state.mode].microphone || !audio.hasMicrophoneStream) return;
   const phase = tuningPhase();
   const targetInfo = tuningTarget(sample.scoreQuarter, phase);
@@ -1635,6 +1667,7 @@ function handlePitchSample(sample) {
 }
 
 function handleRawPitchSample(sample) {
+  if(state.tutorialDemoActive)return;
   const phase = tuningPhase();
   const targetKind = tuningTarget(sample.scoreQuarter, phase).kind;
   if (!MODE_CONFIG[state.mode].microphone || !assessmentSampleEligible({ phase, targetKind })) return;
@@ -1644,6 +1677,7 @@ function handleRawPitchSample(sample) {
 }
 
 function handlePitchDiagnostic(sample) {
+  if(state.tutorialDemoActive)return;
   startingNoteDialog.observe(sample);
   const phase = tuningPhase();
   const targetInfo = tuningTarget(sample.scoreQuarter, phase);
@@ -1886,6 +1920,7 @@ function startReviewPlayback() {
 }
 
 async function changeSingingPart() {
+  if(state.tutorialDemoActive)return;
   if (state.microphonePreparing || state.finishingAssessment || (state.transportPreparing && !audio.isCountingIn) || startingNoteDialog.active || calibrationDialog.active) return;
   if (audio.isPlaying || audio.isPaused || audio.isCountingIn) {
     const dialog=$("#changePartDialog");dialog.returnValue='cancel';dialog.showModal();
@@ -1923,7 +1958,9 @@ async function finishAssessment() {
     partVolumes: plannedRange.partVolumes || state.partVolumes,
     partVoices: plannedRange.partVoices || state.partVoices,
     guideVoice: plannedRange.guideVoice || state.guideVoice,
-    guideEnabled: plannedRange.guideEnabled ?? MODE_CONFIG[state.mode].guide,
+    guideEnabled: plannedRange.guideEnabled ?? state.guideByMode[state.mode].enabled,
+    guideVolume: plannedRange.guideVolume ?? state.guideVolume,
+    guideOctaveShift: plannedRange.guideOctaveShift ?? effectiveOctaveShift(),
     mode: plannedRange.mode || state.mode,
     vocalPartId: plannedRange.vocalPartId || state.selectedPartId,
     endMeasure,
@@ -2297,8 +2334,7 @@ function resetControls() {
   els.coachLevel.hidden = false;
   els.coachObservations.hidden = false;
   els.detailedAnalysis.hidden = false;
-  els.guideVolume.value = String(state.guideVolume);
-  updateVolume("guide", state.guideVolume);
+  renderGuideSettings();
   setGuideVoice(state.guideVoice, { persist: false });
   setCountInBars(state.countInBars);
   state.octaveShift = DEFAULT_OCTAVE_SHIFT;
@@ -2332,6 +2368,7 @@ function resetControls() {
 }
 
 function resetToUpload() {
+  tutorialDemos.stop();
   closeTakeFeedback({listen:false});closeFloatingReview();
   startingNoteDialog.close();
   void persistScorePreferences();
@@ -2409,6 +2446,7 @@ function runPitchSelfTest() {
 }
 
 function wireEvents() {
+  document.addEventListener("click",event=>{if(state.tutorialDemoActive&&!event.target.closest(".tutorial-card,#mixerPanel,#tempoPanel,.tutorial-octaves")){event.preventDefault();event.stopImmediatePropagation();}},true);
   for(const panel of [$("#setupPanel"),$("#mixerPanel"),$("#tempoPanel")]) {
     const position=()=>{
       if(!panel.open)return;
@@ -2465,8 +2503,12 @@ function wireEvents() {
     if (state.octaveSuggestion) state.octaveMismatchDetector.dismiss(state.octaveSuggestion.shift);
     clearOctaveSuggestion();
   });
-  els.octaveButtons.forEach((button) => button.addEventListener("click", () => setOctaveShift(button.dataset.octave)));
+  els.octaveButtons.forEach((button) => button.addEventListener("click", () => setOctaveShift(button.dataset.octave,{confirmed:true})));
   els.hearStartingNote.addEventListener("click", hearStartingNote);
+  $("#settingsHearStartingNote").addEventListener("click",()=>{
+    $("#setupPanel").open=false;els.hearStartingNote.focus({preventScroll:true});void hearStartingNote();
+  });
+  $("#guideEnabled").addEventListener("change",()=>{state.guideByMode[state.mode].enabled=$("#guideEnabled").checked;});
   els.guideVolume.addEventListener("input", () => updateVolume("guide", els.guideVolume.value));
   els.guideVoice.addEventListener("change", () => setGuideVoice(els.guideVoice.value));
   els.accompanimentList.addEventListener("change", (event) => {
@@ -2535,9 +2577,14 @@ function wireEvents() {
   els.performanceAudio.addEventListener("play", () => { void startPerformanceReview(); });
   els.performanceAudio.addEventListener("pause", pausePerformanceReview);
   els.performanceAudio.addEventListener("ended", () => { pausePerformanceReview(); updatePerformancePlaybackState(); });
-  els.viewButtons.forEach((button) => button.addEventListener("click", async () => { if (audio.isPlaying || audio.isPaused || audio.isCountingIn) return; setScoreView(button.dataset.view); await renderScore(); }));
+  els.viewButtons.forEach((button) => button.addEventListener("click", async () => { if (state.tutorialDemoActive || audio.isPlaying || audio.isPaused || audio.isCountingIn) return; setScoreView(button.dataset.view); await renderScore(); }));
   els.pitchSelfTest.addEventListener("click", runPitchSelfTest);
   window.addEventListener("resize", scheduleScoreLayout);
+  let scoreWidth=0;
+  new ResizeObserver(entries=>{
+    const width=Math.round(entries[0].contentRect.width);
+    if(width>0&&Math.abs(width-scoreWidth)>1){scoreWidth=width;scheduleScoreLayout();}
+  }).observe(els.scoreContainer);
   // OSMD also redraws after layout changes without a window resize. Rebuild
   // overlays when it replaces a score SVG, not for our own trace mutations.
   new MutationObserver(records=>{
@@ -2549,6 +2596,7 @@ function wireEvents() {
 
 const startingNoteDialog = createStartingNoteDialog({
   audio,getStarting:startingNoteForRange,getShift:()=>state.octaveShift,
+  onDemoClose:()=>tutorialDemos.stop(),
   onSelect:shift=>{setOctaveShift(shift,{confirmed:true});state.startingConfirmedSession=true;},
   onBusy:busy=>{tutorial.setActive(busy);setTransportBusy(busy);},
   onClose:listening=>{if(listening&&state.mode==='listen')audio.stopMicrophone({notify:false});else audio.targetMidiAtQuarter=targetMidiAtQuarter;},
@@ -2565,7 +2613,24 @@ function showMicrophoneReminder(reason) {
   $("#microphoneReminderTitle").textContent = reason === "first-tour" ? "Ready for a microphone check?" : "Check your microphone for this session";
   $("#microphoneReminderDialog").showModal();
 }
+const tutorialDemos=createTutorialDemos(createDemoUI({state,audio,els,$,selectedPart,
+  range:currentPracticeRange,calibration:()=>calibrationDialog,octaves:()=>startingNoteDialog,
+  renderMix:renderAccompaniment,renderGuide:renderGuideSettings,layout:scheduleScoreLayout,
+  cursor:(quarter,note)=>{syncCursor(quarter);followScoreAtQuarter(quarter,note);},restoreCursor:setCursorToQuarter,
+  restoreRange:renderPracticeRangeOverlay,
+  previewRange:(from,to)=>renderMeasureSelection(els.scoreContainer,state.measureGeometry,{sectionStartMeasure:from,sectionEndMeasure:to,startMeasure:from,wholePiece:false,interactionMode:null}),
+}));
 const tutorial = createTutorial({
+  demos:tutorialDemos,
+  onTry:lesson=>{
+    if(lesson==='starting')void hearStartingNote();
+    else if(lesson==='octaves')void openStartingNote();
+    else if(lesson==='pitch'||lesson==='phrase')setMode('assisted');
+    else if(lesson==='review')setMode('assessment');
+    else if(lesson==='mixer')$('#mixerPanel').open=true;
+    else if(lesson==='tempo')$('#tempoPanel').open=true;
+    else if(lesson==='practice')openPracticeEditor();
+  },
   onStudioReady: showMicrophoneReminder,
   onLayoutChange: () => requestAnimationFrame(() => { if (state.osmd && !state.rendering) void renderScore(); }),
 });
@@ -2580,7 +2645,7 @@ $("#changeOctaveButton").addEventListener("click",()=>void openStartingNote());
 const library = createLibraryUI({ onOpen: openSavedScore, onOpenBuiltIn: openBuiltIn, notify: toast,
   onRemoveCurrent: async id => { if (state.scoreContext?.record?.id === id) resetToUpload(); },
 });
-setupPWA({ canUpdate: () => !audio.isPlaying && !audio.isPaused && !audio.isCountingIn && !state.reviewPlaying && !calibrationDialog.active && !startingNoteDialog.active });
+setupPWA({ canUpdate: () => !state.tutorialDemoActive && !audio.isPlaying && !audio.isPaused && !audio.isCountingIn && !state.reviewPlaying && !calibrationDialog.active && !startingNoteDialog.active });
 let preferenceSaveTimer;
 document.addEventListener("input", event => { if(event.target.closest?.("#studioView,#studioHeaderControls")){clearTimeout(preferenceSaveTimer);preferenceSaveTimer=setTimeout(()=>void persistScorePreferences(),150);} });
 document.addEventListener("click", event => { if(event.target.closest?.("#studioView,#studioHeaderControls"))queueMicrotask(()=>void persistScorePreferences()); });

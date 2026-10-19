@@ -33,7 +33,7 @@ test("playback modes keep guide and microphone behaviour unambiguous", () => {
     {
       listen: { guide: true, microphone: false },
       assisted: { guide: true, microphone: true },
-      assessment: { guide: false, microphone: true },
+      assessment: { guide: true, microphone: true },
     },
   );
 });

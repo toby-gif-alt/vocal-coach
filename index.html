@@ -18,11 +18,11 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <title>Vocal Coach — Practise from the score</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%2317382f'/%3E%3Cpath d='M14 34c7 0 7-15 14-15s7 27 14 27 7-16 8-16' fill='none' stroke='%23d7ff72' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="./styles.css?v=31" />
+    <link rel="stylesheet" href="./styles.css?v=32" />
     <script src="./vendor/osmd.js" defer></script>
     <script src="./vendor/tone.js" defer></script>
     <script src="./vendor/jszip.js" defer></script>
-    <script type="module" src="./app.js?v=31"></script>
+    <script type="module" src="./app.js?v=32"></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to the app</a>
@@ -52,7 +52,11 @@
                 <button type="button" data-count-in="2" role="radio" aria-checked="false">2 bars</button>
               </div>
             </div>
-            </section><details class="settings-advanced"><summary>Advanced</summary><p id="microphoneCheckCopy">A quick room-and-voice check runs before your first assessment on this device.</p><details class="sensitivity-block">
+            </section>            <details class="octave-setting">
+              <summary><span>Singing & guide octave</span><output id="octaveOutput">Written</output></summary>
+
+              <div class="settings-octaves" role="radiogroup" aria-label="Singing & guide octave"><button type="button" data-octave="-24" role="radio" aria-checked="false">Two octaves lower</button><button type="button" data-octave="-12" role="radio" aria-checked="false">Octave lower</button><button type="button" data-octave="0" role="radio" aria-checked="true">Written pitch</button><button type="button" data-octave="12" role="radio" aria-checked="false">Octave higher</button></div><p>Changes your singing target and vocal guide. The score and accompaniment stay as written.</p><p id="octaveHint">Written pitch — use Hear starting note to confirm.</p><div class="octave-check"><p>Hear the first note, then sing it back to check this octave feels comfortable.</p><button id="settingsHearStartingNote" type="button">♫ Hear first note</button></div>
+            </details><details class="settings-advanced"><summary>Advanced</summary><p id="microphoneCheckCopy">A quick room-and-voice check runs before your first assessment on this device.</p><details class="sensitivity-block">
               <summary><span>Advanced microphone sensitivity</span><output id="sensitivityOutput">Normal</output></summary>
               <div class="sensitivity-switch" role="radiogroup" aria-label="Advanced microphone sensitivity">
                 <button type="button" data-sensitivity="low" role="radio" aria-checked="false"><strong>Low</strong><small>Stronger signal</small></button>
@@ -61,13 +65,9 @@
               </div>
               <p>Use only when the automatic check needs a manual adjustment.</p>
             </details>
-            <details class="octave-setting">
-              <summary><span>Advanced / manual octave</span><output id="octaveOutput">Written</output></summary>
 
-              <p id="octaveHint">Written pitch — use Hear starting note to confirm.</p>
-            </details>
             <p class="settings-privacy">Your scores, microphone data and recordings stay on this device. Nothing is uploaded.</p></details></div></details><div class="view-switch" role="group" aria-label="Score view"><button type="button" class="active" data-view="vocal">Vocal focus</button><button type="button" data-view="full">Full score</button></div><details id="mixerPanel" class="mixer-panel"><summary>Mixer</summary><div class="mixer-grid">            <div class="accompaniment-block"><div class="setting-label"><span>Accompaniment</span><button id="toggleAllParts" type="button">Mute all</button></div><div class="accompaniment-list" id="accompanimentList"></div></div>
-            <div class="volume-block">
+            <div class="volume-block"><label class="guide-enabled-control"><input id="guideEnabled" type="checkbox" checked /> Vocal guide: On / Off</label><p class="guide-headphone-advice">Headphones are recommended for reliable assessment. Speakers can leak the guide into your microphone.</p>
               <label class="volume-field" for="guideVolume"><span><strong>Vocal Guide</strong><output id="guideVolumeOutput">92%</output></span><input id="guideVolume" type="range" min="0" max="100" value="92" step="2" /></label>
               <label class="guide-voice-field" for="guideVoice"><span>Guide voice</span><select id="guideVoice"><option value="human" selected>Human voice</option><option value="synthetic-ah">Synthetic Ah</option></select></label>
               <p class="setting-message guide-voice-status" id="guideVoiceStatus" role="status" aria-live="polite" hidden></p>
@@ -165,7 +165,7 @@
               <div class="score-secondary-controls" hidden><span id="octaveConfirmation" hidden role="status"></span><span id="measureNumber" hidden>1</span></div>
               <div id="octaveSuggestion" class="octave-suggestion" hidden role="status" aria-live="polite">
                 <span id="octaveSuggestionCopy"></span>
-                <button id="acceptOctaveSuggestion" type="button">Change singing octave</button>
+                <button id="acceptOctaveSuggestion" type="button">Change singing &amp; guide octave</button>
                 <button id="dismissOctaveSuggestion" type="button">Keep current octave</button>
               </div>
               <section class="practice-section-setting panel" id="practiceEditor" hidden aria-labelledby="practiceSectionLabel">

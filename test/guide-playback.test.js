@@ -19,7 +19,7 @@ test("human guide is the default and only the two studio choices are accepted", 
   assert.equal(normaliseGuideVoice("synthetic-ooh"), "human");
 });
 
-test("SATB guide requests use each selected score part's sounding MIDI directly", () => {
+test("SATB guide requests apply the explicit octave on top of the parser sounding MIDI", () => {
   const parts = [
     { name: "Soprano", note: { midi: 72, frequency: 523.25 }, singerOctaveShift: -12 },
     { name: "Alto", note: { midi: 67, frequency: 392 }, singerOctaveShift: 12 },
@@ -32,9 +32,9 @@ test("SATB guide requests use each selected score part's sounding MIDI directly"
       duration: "192i",
       time: 4,
       velocity: 0.52,
-      singerOctaveShift: part.singerOctaveShift,
+      octaveShift: part.singerOctaveShift,
     });
-    assert.equal(request.midi, part.note.midi, `${part.name} guide pitch must not inherit the singer octave`);
+    assert.equal(request.midi, part.note.midi + part.singerOctaveShift);
   }
 
   const octaveTransposingTenor = guideNoteRequest({ writtenPitch: "C4", midi: 48 }, { duration: 1, time: 0 });
@@ -75,21 +75,21 @@ test("generated bank entries become adaptive Ah anchors without changing MIDI", 
   assert.equal(guideNoteRequest({ midi: 55 }, { duration: 1, time: 0 }).midi, 55);
 });
 
-test("the audio scheduler has no singer-octave input and routes guide notes through the vocal instrument", async () => {
+test("the audio scheduler uses an explicit guide octave and the vocal instrument", async () => {
   const source = await readFile(new URL("../src/audio-engine.js", import.meta.url), "utf8");
   assert.doesNotMatch(source, /vocalOctaveSemitones/);
   assert.doesNotMatch(source, /guideSynth/);
   assert.doesNotMatch(source, /take\?\.octaveShift/);
-  assert.match(source, /guideNoteRequest\(note, \{ duration, time \}\)/);
+  assert.match(source, /guideNoteRequest\(note, \{ duration, time, octaveShift \}\)/);
   assert.match(source, /new VocalGuideInstrument\(/);
   assert.match(source, /channel\.instrument\.triggerAttackRelease\(request\)/);
 });
 
-test("octave-card previews are isolated from unchanged written guide routing", async () => {
+test("octave-card previews and guide requests use explicit absolute pitches", async () => {
   const source = await readFile(new URL("../app.js", import.meta.url), "utf8");
   const selector = await readFile(new URL("../src/starting-note.js", import.meta.url), "utf8");
   assert.match(selector, /audio\.previewPitch\(midi\)/);
-  assert.match(selector, /play\(starting\.midi\+getShift\(\)/);
+  assert.match(selector, /play\(starting\.midi\+currentShift\(\)/);
   assert.match(source, /audio\.previewPitch\(starting\.midi\s*\+\s*effectiveOctaveShift\(\)\)/);
   assert.match(source, /Human voice unavailable — using Synthetic Ah\./);
 });
