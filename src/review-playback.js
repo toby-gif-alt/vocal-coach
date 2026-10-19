@@ -46,7 +46,7 @@ export function createTakeMetadata({
     guideVoice: guideVoice === "synthetic-ah" ? "synthetic-ah" : "human",
     guideEnabled: Boolean(guideEnabled),
     guideOctaveShift: [-24,-12,0,12].includes(Number(guideOctaveShift)) ? Number(guideOctaveShift) : 0,
-    guideVolume: clampVolume(guideVolume, mode === "assessment" ? 70 : 92),
+    guideVolume: clampVolume(guideVolume, 92),
     mode: mode === "assisted" ? "assisted" : "assessment",
     durationSeconds: Math.max(0, Number(durationSeconds) || 0),
     vocalPartId: vocalPartId == null ? null : String(vocalPartId),

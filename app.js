@@ -1,6 +1,6 @@
 import {createTutorialDemos} from "./src/tutorial-demo.js?v=32";
 import {createDemoUI} from "./src/tutorial-demo-ui.js?v=32";
-import {guideSettings} from "./src/guide-settings.js?v=32";
+import {guideSettings,practiceMode} from "./src/guide-settings.js?v=32";
 import { createStartingNoteDialog, pitchName } from "./src/starting-note.js";
 import { incomingScoreFile } from "./src/repertoire-store.js";
 import { createLibraryUI } from "./src/library-ui.js";
@@ -103,8 +103,10 @@ const state = {
   scoreContext: null,
   savedPreferences: null,
   selectedPartId: null,
-  mode: "listen",
+  mode: "assisted",
   microphoneCheckedThisOpen: false,
+  microphoneDecision: "unchecked",
+  takeUsesMicrophone: false,
   scoreView: "vocal",
   enabledParts: new Set(),
   samples: [],
@@ -136,8 +138,7 @@ const state = {
   sessionOctaveShift: null,
   octaveMismatchDetector: new OctaveMismatchDetector(),
   octaveSuggestion: null,
-  guideVolume: PLAYBACK_CONFIG.defaultGuideVolume,
-  guideByMode: guideSettings(),
+  guideSettings: guideSettings(),
   tutorialDemoActive: false,
   guideVoice: loadGuideVoice(),
   partVolumes: {},
@@ -350,8 +351,8 @@ async function enterStudio() {
   state.partVoices = Object.fromEntries(state.score.parts
     .filter((part) => part.id !== vocalPart.id && classifyPlaybackPart(part) === "vocal")
     .map((part) => [part.id, DEFAULT_GUIDE_VOICE]));
-  state.mode = "listen";
-  state.guideByMode = guideSettings();
+  state.mode = "assisted";
+  state.guideSettings = guideSettings();
   state.cursorQuarter = -1;
   setScoreView("vocal");
   state.samples = [];
@@ -360,6 +361,7 @@ async function enterStudio() {
   state.visualTraceSamples = [];
   state.previousTakeTrace = [];
   state.takeCompleted = false;
+  state.takeUsesMicrophone = false;
   const { firstMeasure } = practiceLimits(vocalPart);
   state.sectionStartMeasure = null;
   state.sectionEndMeasure = null;
@@ -374,7 +376,7 @@ async function enterStudio() {
   audio.setSelectedPart(vocalPart.id);
   audio.setHumanVoiceManifest(vocalSampleManifest);
   audio.setTempo(100);
-  audio.setGuideVolume(state.guideVolume);
+  audio.setGuideVolume(state.guideSettings.volume);
   audio.setGuideVoice(state.guideVoice);
   for (const [partId, volume] of Object.entries(state.partVolumes)) {
     audio.setPartVolume(partId, volume);
@@ -399,8 +401,8 @@ async function enterStudio() {
 function restoreScorePreferences() {
   const prefs = state.savedPreferences;
   if (!prefs) return;
-  state.preferredMode = MODE_CONFIG[prefs.mode] ? prefs.mode : "listen";
-  state.guideByMode=guideSettings(prefs.guideByMode,prefs.guideVolume);
+  state.mode = practiceMode(prefs.mode);
+  state.guideSettings=guideSettings(prefs);
   renderGuideSettings();
   if (prefs.guideVoice) setGuideVoice(prefs.guideVoice);
   if (Number.isFinite(prefs.countInBars)) setCountInBars(prefs.countInBars);
@@ -413,10 +415,10 @@ function restoreScorePreferences() {
     if (prefs.partVoices?.[part.id]) {state.partVoices[part.id]=normaliseGuideVoice(prefs.partVoices[part.id]);audio.setPartVoice(part.id,state.partVoices[part.id]);}
     if (Array.isArray(prefs.enabledParts)) {if(prefs.enabledParts.includes(part.id))state.enabledParts.add(part.id);else state.enabledParts.delete(part.id);audio.setPartEnabled(part.id,state.enabledParts.has(part.id));}
   }
-  renderAccompaniment();renderPracticeRangeControls();updateSetupSummary();
+  renderAccompaniment();renderPracticeRangeControls();setMode(state.mode);updateSetupSummary();
 }
 function scorePreferences() {
-  return {guideByMode:structuredClone(state.guideByMode),selectedPartId:state.selectedPartId,octaveByPart:{...state.octaveByPart,[state.selectedPartId]:{shift:state.octaveShift,chosen:state.startingOctaveChosen}},startingOctaveChosen:state.startingOctaveChosen,mode:state.mode==='listen'&&state.preferredMode?state.preferredMode:state.mode,guideVolume:state.guideVolume,guideVoice:state.guideVoice,countInBars:state.countInBars,octaveShift:state.octaveShift,tempoPercent:audio.tempoPercent,
+  return {guideSettings:{...state.guideSettings},selectedPartId:state.selectedPartId,octaveByPart:{...state.octaveByPart,[state.selectedPartId]:{shift:state.octaveShift,chosen:state.startingOctaveChosen}},startingOctaveChosen:state.startingOctaveChosen,mode:state.mode,guideVoice:state.guideVoice,countInBars:state.countInBars,octaveShift:state.octaveShift,tempoPercent:audio.tempoPercent,
     sectionStartMeasure:state.sectionStartMeasure,sectionEndMeasure:state.sectionEndMeasure,startMeasure:state.startMeasure,partVolumes:{...state.partVolumes},partVoices:{...state.partVoices},enabledParts:[...state.enabledParts]};
 }
 async function persistScorePreferences() {
@@ -529,6 +531,7 @@ function archiveCompletedTrace() {
     state.showPreviousTake = true;
   }
   state.takeCompleted = false;
+  state.takeUsesMicrophone = false;
 }
 
 function commitVisualTrace(nextSamples) {
@@ -560,6 +563,7 @@ function clearTakeForRangeChange() {
   state.visualTraceSamples = [];
   state.previousTakeTrace = [];
   state.takeCompleted = false;
+  state.takeUsesMicrophone = false;
   state.activeTake = null;
   els.sampleCount.textContent = "0";
   els.resultsPanel.hidden = true;
@@ -984,15 +988,16 @@ function setListeningSetup(setup) {
   els.listeningSetupOutput.textContent = setup === "speakers" ? "Speakers" : "Headphones";
   const token = ++state.microphoneActivationToken;
   setTuningMeterInactive("Reconnecting…");
-  if (MODE_CONFIG[state.mode].microphone) void activateMicrophonePreparation(token);
+  if (state.microphoneDecision === "ready") void activateMicrophonePreparation(token);
 }
 
 function updateMicrophoneCheckSetting() {
-  const ready = Boolean(state.microphoneCalibration?.signalGood);
-  els.microphoneCheckStatus.textContent = ready ? "Ready" : "Not checked";
+  const ready=usingMicrophone();
+  els.microphoneCheckStatus.textContent=ready?"Active":state.microphoneDecision==='skipped'?"Skipped":"Off";
+  els.recheckMicrophoneButton.textContent=ready?"Recheck":"Enable microphone";
   els.microphoneCheckCopy.textContent = ready
     ? "Signal: Good. This device is ready for microphone-based sessions."
-    : "A quick room-and-voice check runs before your first assessment on this device.";
+    : "Enable the microphone for live pitch, recording and measured coaching. Music playback works without it.";
 }
 
 function handleMicrophoneCalibration(calibration) {
@@ -1002,15 +1007,10 @@ function handleMicrophoneCalibration(calibration) {
   updateMicrophoneCheckSetting();
 }
 
-async function recheckMicrophone({ guideNext = !state.startingOctaveChosen } = {}) {
+async function recheckMicrophone() {
   if(state.tutorialDemoActive)return false;
   if (audio.isPlaying || audio.isPaused || audio.isCountingIn) return false;
-  const ready = await calibrationDialog.open({ keepActive: MODE_CONFIG[state.mode].microphone });
-  if (ready && guideNext && !state.startingConfirmedSession) {
-    if (await openStartingNote({listen:true})) state.startingConfirmedSession = true;
-  }
-  if (ready && state.mode === "listen" && state.preferredMode && state.preferredMode !== "listen") setMode(state.preferredMode);
-  return ready;
+  return activateMicrophonePreparation(++state.microphoneActivationToken,{recheck:true});
 }
 
 function setCountInBars(value) {
@@ -1072,20 +1072,10 @@ async function openStartingNote(options={}) {
   if(state.tutorialDemoActive)return false;
   if(state.sessionOctaveShift!==null||audio.isPlaying||audio.isPaused||audio.isCountingIn||state.reviewPlaying){toast("Stop or finish this take before changing octave.");return false;}
   state.startingSetupShown = true;
-  return startingNoteDialog.open({listen:MODE_CONFIG[state.mode].microphone,chosen:state.startingOctaveChosen,suggested:state.octaveSuggestion?.shift,...options});
+  return startingNoteDialog.open({listen:usingMicrophone(),chosen:state.startingOctaveChosen,suggested:state.octaveSuggestion?.shift,...options});
 }
 async function hearStartingNote() {
   if(state.tutorialDemoActive)return;
-  if (MODE_CONFIG[state.mode].microphone && !state.startingConfirmedSession) {
-    if (audio.isPlaying || audio.isPaused || audio.isCountingIn || state.reviewPlaying || state.microphonePreparing) return;
-    if (MODE_CONFIG[state.mode].microphone && !state.microphoneCalibration?.signalGood) {
-      const ready = await calibrationDialog.open({keepActive:true});
-      if (!ready) return;
-    }
-    const confirmed = await openStartingNote();
-    if (confirmed) state.startingConfirmedSession = true;
-    return;
-  }
   if (audio.isPlaying || audio.isPaused || audio.isCountingIn || state.reviewPlaying || state.microphonePreparing) return;
   const starting = startingNoteForRange();
   if (!starting) { toast("There is no starting note in this section."); return; }
@@ -1096,8 +1086,8 @@ async function hearStartingNote() {
 }
 
 function renderGuideSettings() {
-  const settings=state.guideByMode[state.mode];
-  state.guideVolume=settings.volume;els.guideVolume.value=String(settings.volume);
+  const settings=state.guideSettings;
+  els.guideVolume.value=String(settings.volume);
   els.guideVolumeOutput.textContent=`${settings.volume}%`;
   $("#guideEnabled").checked=settings.enabled;
   audio.setGuideVolume(settings.volume);
@@ -1106,8 +1096,7 @@ function renderGuideSettings() {
 function updateVolume(kind, value) {
   const percent = Math.max(0, Math.min(100, Number(value) || 0));
   if (kind === "guide") {
-    state.guideVolume = percent;
-    state.guideByMode[state.mode].volume=percent;
+    state.guideSettings.volume=percent;
     audio.setGuideVolume(percent);
     els.guideVolumeOutput.textContent = `${percent}%`;
   }
@@ -1181,14 +1170,14 @@ function setTuningMeterInactive(message = "Listening…") {
   state.liveTuningFeedback.reset();
   els.tuningMeter.classList.add("is-listening");
   els.tuningMeter.classList.remove("is-held");
-  els.tuningMeter.classList.toggle("is-inactive", !MODE_CONFIG[state.mode].microphone);
+  els.tuningMeter.classList.toggle("is-inactive", !usingMicrophone());
   els.tuningMeter.style.setProperty("--tuner-position", "50%");
   els.tuningMeter.style.setProperty("--tuner-colour", "#82928c");
   els.tuningMeter.removeAttribute("aria-valuenow");
   els.tuningMeter.setAttribute("aria-label", `Live tuning: ${message}`);
   els.detectedNote.textContent = "—";
   els.detectedNote.style.color = "";
-  els.detectedFrequency.textContent = MODE_CONFIG[state.mode].microphone ? message : "Choose a microphone mode to listen";
+  els.detectedFrequency.textContent = usingMicrophone() ? message : "Enable the microphone for live pitch";
   els.centsOutput.textContent = message;
   els.centsOutput.style.color = "";
   els.tuningPhase.textContent = phaseLabel();
@@ -1235,83 +1224,69 @@ function renderTuningDropout(sample) {
   els.centsOutput.style.color = "#82928c";
 }
 
-async function activateMicrophonePreparation(token) {
-  if (!MODE_CONFIG[state.mode].microphone) return;
-  tutorial.setActive(true);
-  state.microphonePreparing = true;
-  els.playButton.disabled = true;
-  els.dockPlayPauseButton.disabled = true;
-  els.recheckMicrophoneButton.disabled = true;
+function usingMicrophone() {
+  return state.microphoneDecision === 'ready' && audio.hasMicrophoneStream;
+}
+
+function updatePracticeMicrophoneUI() {
+  const active=usingMicrophone();
+  document.body.classList.toggle('microphone-mode',active);
+  els.headphoneNote.hidden=!active;
+  updateMicrophoneCheckSetting();
+  $("#enableMicrophoneButton").hidden=active;
+  scheduleScoreLayout();
+  if(!active)setTuningMeterInactive('Microphone off');
+}
+
+function musicOnlyStatus() {
+  setStatus('idle','Music-only practice',state.mode==='assessment'
+    ? 'Music-only practice. Enable the microphone for recording and measured coaching.'
+    : 'Music-only practice. Enable the microphone for recording and live pitch tracking.');
+}
+
+function skipPracticeMicrophone() {
+  state.microphoneActivationToken++;
+  state.microphoneDecision='skipped';state.microphonePreparing=false;
+  audio.stopMicrophone({notify:false});
+  tutorial.setActive(false);setTransportBusy(false);
+  updatePracticeMicrophoneUI();musicOnlyStatus();
+}
+
+async function activateMicrophonePreparation(token,{recheck=false}={}) {
+  if(state.tutorialDemoActive||audio.isPlaying||audio.isPaused||audio.isCountingIn)return false;
+  tutorial.setActive(true);state.microphonePreparing=true;setTransportBusy(true);
+  audio.targetMidiAtQuarter=targetMidiAtQuarter;
   try {
-    if (!state.microphoneCalibration) {
-      const ready = await recheckMicrophone();
-      if (!ready || token !== state.microphoneActivationToken) { if (token === state.microphoneActivationToken) setMode("listen"); return; }
+    let ready=true;
+    if(recheck||!state.microphoneCalibration?.signalGood)ready=await calibrationDialog.open({keepActive:true});
+    if(!ready||token!==state.microphoneActivationToken)return false;
+    try {await audio.startMicrophoneMonitoring(targetMidiAtQuarter);}
+    catch(error){
+      if(token!==state.microphoneActivationToken)return false;
+      if(error?.name==='AbortError')return false;
+      ready=await calibrationDialog.open({keepActive:true,error});
+      if(!ready||token!==state.microphoneActivationToken)return false;
     }
-    await audio.startMicrophoneMonitoring(targetMidiAtQuarter);
-    if (token !== state.microphoneActivationToken || !MODE_CONFIG[state.mode].microphone) return;
-    updatePosition(audio.currentQuarter);
-    // The student opens the octave selector through Hear starting note.
-    setStatus("idle", "Ready", "Your starting note is selected. Press Play when you are ready.");
-  } catch (error) {
-    if (token !== state.microphoneActivationToken) return;
-    if (error?.name === "AbortError") return;
-    console.error(error);
-    if (error?.name === "MicrophoneCheckError") toast(error.message);
-    else if (error?.name === "NotAllowedError") toast("Microphone permission was blocked. Allow microphone access to continue.");
-    else toast(error.message || "The microphone could not start.");
-    state.microphonePreparing = false;
-    setMode("listen");
-    toast("Microphone unavailable — Listen mode is ready. Press Play to practise without pitch feedback. You can retry Assisted or Assessment later.");
+    if(token!==state.microphoneActivationToken||!audio.hasMicrophoneStream)return false;
+    state.microphoneDecision='ready';state.microphoneCheckedThisOpen=true;
+    updatePracticeMicrophoneUI();updatePosition(audio.currentQuarter);
+    setStatus('good','Microphone ready','Hear your first note, then sing it back before pressing Play.');
+    return true;
   } finally {
-    if (token === state.microphoneActivationToken) {
-      state.microphonePreparing = false;
-      tutorial.setActive(audio.isPlaying || audio.isPaused || audio.isCountingIn);
-      els.playButton.disabled = false;
-      els.dockPlayPauseButton.disabled = false;
-      els.recheckMicrophoneButton.disabled = false;
+    if(token===state.microphoneActivationToken){
+      state.microphonePreparing=false;tutorial.setActive(false);setTransportBusy(false);
+      updatePracticeMicrophoneUI();
     }
   }
 }
 
 function setMode(mode) {
-  if (state.tutorialDemoActive || startingNoteDialog.active || !MODE_CONFIG[mode] || audio.isPlaying || audio.isPaused || audio.isCountingIn) return;
-  state.microphoneActivationToken += 1;
-  const activationToken = state.microphoneActivationToken;
-  state.mode = mode;
-  renderGuideSettings();
-  state.preferredMode = mode;
-  clearOctaveSuggestion();
-  updateSetupSummary();
-  els.modeButtons.forEach((button) => {
-    const active = button.dataset.mode === mode;
-    button.classList.toggle("active", active);
-    button.setAttribute("aria-checked", String(active));
-  });
-  const config = MODE_CONFIG[mode];
-  state.microphonePreparing = false;
-  els.playButton.disabled = false;
-  els.dockPlayPauseButton.disabled = false;
-  els.recheckMicrophoneButton.disabled = false;
-  if (!config.microphone) { audio.stopMicrophone(); tutorial.setActive(false); }
-  els.headphoneNote.hidden = !config.microphone;
-  document.body.classList.toggle("microphone-mode", config.microphone);
-  scheduleScoreLayout();
-  els.transportState.textContent = `${config.label} ready`;
-  els.dockTransportState.textContent = els.transportState.textContent;
-  updatePosition(audio.currentQuarter);
-  setTuningMeterInactive("Listening…");
-  setStatus(
-    "idle",
-    state.microphoneCalibration ? "Starting live tuner…" : "Microphone Check first",
-    state.microphoneCalibration
-      ? "Your saved calibration will be used for pre-performance tuning."
-      : "Your first microphone session starts with a short room-and-voice check.",
-  );
-  if (config.microphone) void activateMicrophonePreparation(activationToken);
-  else {
-    setTuningMeterInactive("Microphone off");
-    setStatus("idle", "Listen mode — no mic needed", "Press Play to hear the guide and accompaniment. Pitch feedback and recording need Assisted or Assessment.");
-  }
+  if(state.tutorialDemoActive||startingNoteDialog.active||calibrationDialog.active||state.microphonePreparing||!MODE_CONFIG[mode]||audio.isPlaying||audio.isPaused||audio.isCountingIn)return;
+  state.mode=mode;renderGuideSettings();clearOctaveSuggestion();updateSetupSummary();
+  els.modeButtons.forEach(button=>{const active=button.dataset.mode===mode;button.classList.toggle('active',active);button.setAttribute('aria-checked',String(active));});
+  updatePracticeMicrophoneUI();updatePosition(audio.currentQuarter);
+  if(usingMicrophone())setStatus('idle','Ready','Hear your first note, then press Play when you are ready.');
+  else musicOnlyStatus();
 }
 
 async function play({ skipCountIn = false } = {}) {
@@ -1323,11 +1298,15 @@ async function play({ skipCountIn = false } = {}) {
   tutorial.setActive(true);
   updateSetupSummary();
   stopPerformanceReview({ resetCursorPosition: false });
-  const mode = MODE_CONFIG[state.mode];
+  if(state.microphoneDecision!=="skipped"&&!usingMicrophone()){
+    await activateMicrophonePreparation(++state.microphoneActivationToken);
+    if(state.microphoneDecision!=="skipped"&&!usingMicrophone())return;
+  }
+  const recordMicrophone=usingMicrophone();
   const range = currentPracticeRange();
   const freshStart = !audio.isPaused;
   const takeOctaveShift = freshStart ? lockSessionOctave() : effectiveOctaveShift();
-  const freshAssessment = mode.microphone && freshStart;
+  const freshAssessment = recordMicrophone && freshStart;
   if (freshAssessment) {
     archiveCompletedTrace();
     state.samples = [];
@@ -1343,9 +1322,9 @@ async function play({ skipCountIn = false } = {}) {
       partVolumes: state.partVolumes,
       partVoices: state.partVoices,
       guideVoice: state.guideVoice,
-      guideEnabled: state.guideByMode[state.mode].enabled,
+      guideEnabled: state.guideSettings.enabled,
       guideOctaveShift: takeOctaveShift,
-      guideVolume: state.guideVolume,
+      guideVolume: state.guideSettings.volume,
       mode: state.mode,
       durationSeconds: (range.endQuarter - range.startQuarter) * 60 / audio.bpm,
       vocalPartId: state.selectedPartId,
@@ -1360,15 +1339,16 @@ async function play({ skipCountIn = false } = {}) {
     clearPerformancePlayback();
     audio.discardPerformanceRecording();
   }
+  state.takeUsesMicrophone=recordMicrophone;
   state.transportPreparing = true;
-  setTransportBusy(true);
+  tutorial.setActive(true);setTransportBusy(true);
   try {
     await audio.play({
       vocalPartId: state.selectedPartId,
-      guideEnabled: state.guideByMode[state.mode].enabled,
+      guideEnabled: state.guideSettings.enabled,
       guideOctaveShift: takeOctaveShift,
       enabledPartIds: [...state.enabledParts],
-      assessmentMode: mode.microphone,
+      assessmentMode: recordMicrophone,
       countInBars: skipCountIn ? 0 : state.countInBars,
       targetMidiAtQuarter: targetMidiAtQuarter,
       startQuarter: range.startQuarter,
@@ -1378,15 +1358,16 @@ async function play({ skipCountIn = false } = {}) {
     setPlaybackState("playing");
     startSync();
   } catch (error) {
-    if (!audio.isPlaying && !audio.isPaused) unlockSessionOctave();
+    if (!audio.isPlaying && !audio.isPaused) {unlockSessionOctave();state.takeUsesMicrophone=false;state.activeTake=null;}
     if (error?.name === "AbortError") {
       setPlaybackState("stopped");
       return;
     }
     console.error(error);
-    if (error.microphoneUnavailable && mode.microphone && !audio.isPlaying && !audio.isPaused) {
-      setMode("listen");
-      toast("Microphone unavailable — switched to Listen. Press Play to continue without pitch feedback.");
+    if (error.microphoneUnavailable && !audio.isPlaying && !audio.isPaused) {
+      state.takeUsesMicrophone=false;state.activeTake=null;
+      state.microphoneDecision="unchecked";updatePracticeMicrophoneUI();
+      await calibrationDialog.open({keepActive:true,error});
       return;
     }
     if (error?.name === "MicrophoneCheckError") toast(error.message);
@@ -1410,18 +1391,18 @@ function pause() {
 
 async function stop({ keepSamples = true, completeAssessment = true, automatic = false } = {}) {
   if (!automatic) state.playbackGeneration += 1;
-  if (completeAssessment && !state.takeCompleted && MODE_CONFIG[state.mode].microphone && (audio.hasActivePerformanceRecording || state.samples.length)) {
+  if (completeAssessment && !state.takeCompleted && state.takeUsesMicrophone && (audio.hasActivePerformanceRecording || state.samples.length)) {
     await finishAssessment();
     return;
   }
   const range = currentPracticeRange();
-  audio.stop({ reset: true, resetQuarter: range.startQuarter, microphone: !MODE_CONFIG[state.mode].microphone });
+  audio.stop({ reset: true, resetQuarter: range.startQuarter, microphone: !usingMicrophone() });
   unlockSessionOctave();
   cancelAnimationFrame(state.syncFrame);
   setPlaybackState("stopped");
   setCursorToQuarter(range.startQuarter);
   updatePosition(range.startQuarter);
-  if (MODE_CONFIG[state.mode].microphone) setStatus("idle", "Find your starting note", "The live tuner is active. Preparation samples are not assessed.");
+  if (usingMicrophone()) setStatus("idle", "Find your starting note", "The live tuner is active. Preparation samples are not assessed.");
   if (!keepSamples) {
     state.samples = [];
     els.sampleCount.textContent = "0";
@@ -1434,7 +1415,7 @@ async function stop({ keepSamples = true, completeAssessment = true, automatic =
 async function restartTransport() {
   const range = currentPracticeRange();
   if (audio.hasActivePerformanceRecording) await audio.finishPerformanceRecording();
-  audio.stop({ reset: true, resetQuarter: range.startQuarter, microphone: !MODE_CONFIG[state.mode].microphone });
+  audio.stop({ reset: true, resetQuarter: range.startQuarter, microphone: !usingMicrophone() });
   unlockSessionOctave();
   audio.discardPerformanceRecording();
   cancelAnimationFrame(state.syncFrame);
@@ -1451,7 +1432,7 @@ async function restartTransport() {
   setPlaybackState("stopped");
   setCursorToQuarter(range.startQuarter);
   updatePosition(range.startQuarter);
-  setStatus("idle", `Back at bar ${range.startMeasure}`, MODE_CONFIG[state.mode].microphone ? "Find the starting note, then press Play for a new take." : "Press play when you are ready for a new take.");
+  setStatus("idle", `Back at bar ${range.startMeasure}`, usingMicrophone() ? "Find the starting note, then press Play for a new take." : "Press play when you are ready for a new take.");
 }
 
 function setTransportBusy(busy) {
@@ -1486,7 +1467,7 @@ function setPlaybackState(status) {
   setSetupControlsDisabled(playing || paused);
   els.toggleAllParts.disabled = !state.score.parts.some((part) => part.id !== state.selectedPartId);
   els.viewButtons.forEach((button) => { button.disabled = playing || paused; });
-  els.transportState.textContent = playing ? (MODE_CONFIG[state.mode].microphone ? "Assessing" : "Playing") : paused ? "Paused" : "Ready";
+  els.transportState.textContent = playing ? (usingMicrophone() ? "Assessing" : "Playing") : paused ? "Paused" : "Ready";
   els.dockTransportState.textContent = els.transportState.textContent;
   els.dockPlayPauseButton.disabled = false;
   els.dockPlayPauseButton.textContent = playing ? "⏸ Pause" : paused ? "▶ Resume" : "▶ Play";
@@ -1494,8 +1475,8 @@ function setPlaybackState(status) {
   els.dockStopButton.disabled = !(playing || paused);
   els.dockRestartButton.disabled = false;
   els.recheckMicrophoneButton.disabled = playing || paused;
-  if (playing) setStatus("idle", MODE_CONFIG[state.mode].microphone ? "Listening" : "Playing your score", MODE_CONFIG[state.mode].microphone ? "Sing the selected line while the cursor moves." : "Follow the guide and accompaniment.");
-  else if (!MODE_CONFIG[state.mode].microphone) setStatus("idle", paused ? "Paused" : "Listen mode — ready", "Press Play to hear the guide and accompaniment without a microphone.");
+  if (playing) setStatus("idle", usingMicrophone() ? "Listening" : "Playing your score", usingMicrophone() ? "Sing the selected line while the cursor moves." : "Follow the guide and accompaniment.");
+  else if (!usingMicrophone()) {if(paused)setStatus("idle","Paused","Your place in the music is saved.");else musicOnlyStatus();}
 }
 
 function setSetupControlsDisabled(disabled) {
@@ -1511,6 +1492,7 @@ function setSetupControlsDisabled(disabled) {
   $("#changeOctaveButton").disabled = disabled;
   $("#studioTutorialButton").disabled = disabled;
   $("#guideEnabled").disabled=disabled;
+  $("#enableMicrophoneButton").disabled=disabled;
   els.guideVolume.disabled = disabled;
   els.guideVoice.disabled = disabled;
   els.accompanimentList.querySelectorAll("input, select").forEach((control) => { control.disabled = disabled; });
@@ -1626,7 +1608,7 @@ function maybeSuggestSingingOctave(sample, targetInfo, phase) {
 
 function handlePitchSample(sample) {
   if(state.tutorialDemoActive)return;
-  if (!MODE_CONFIG[state.mode].microphone || !audio.hasMicrophoneStream) return;
+  if (!usingMicrophone() || !audio.hasMicrophoneStream) return;
   const phase = tuningPhase();
   const targetInfo = tuningTarget(sample.scoreQuarter, phase);
   if(startingNoteDialog.active)return;
@@ -1670,7 +1652,7 @@ function handleRawPitchSample(sample) {
   if(state.tutorialDemoActive)return;
   const phase = tuningPhase();
   const targetKind = tuningTarget(sample.scoreQuarter, phase).kind;
-  if (!MODE_CONFIG[state.mode].microphone || !assessmentSampleEligible({ phase, targetKind })) return;
+  if (!usingMicrophone() || !assessmentSampleEligible({ phase, targetKind })) return;
   const assessedRange = state.activeTake || currentPracticeRange();
   if (!sampleWithinRange(sample, assessedRange.startQuarter, assessedRange.endQuarter)) return;
   state.rawSamples.push({ ...sample });
@@ -1702,7 +1684,7 @@ function handlePitchDiagnostic(sample) {
   els.diagState.textContent = sample.status === "accepted"
     ? `${sample.reason}${sample.octaveCorrection ? ` (${sample.octaveCorrection > 0 ? "+" : ""}${sample.octaveCorrection} semitones)` : ""}`
     : `No reliable pitch — ${sample.reason}`;
-  if (sample.status !== "accepted" && MODE_CONFIG[state.mode].microphone && audio.hasMicrophoneStream) {
+  if (sample.status !== "accepted" && usingMicrophone() && audio.hasMicrophoneStream) {
     renderTuningDropout(sample);
     if (phase === "performance" && targetKind === "current" && sampleWithinRange(sample, assessedRange.startQuarter, assessedRange.endQuarter)) {
       const before = state.visualTraceSamples.length;
@@ -1757,6 +1739,7 @@ function handleCountIn(event) {
 
 function handleMicrophoneState(status, details = {}) {
   calibrationDialog.state(status, details);
+  if(status==='disconnected'){updatePracticeMicrophoneUI();setStatus('off','Microphone disconnected','Music playback is still available. Enable the microphone again when ready.');}
   if (status === "requesting") setStatus("idle", "Microphone permission", "Allow access so assessment can listen locally.");
   if (status === "checking-room") {
     els.microphoneCheckStatus.textContent = "Checking room";
@@ -1792,7 +1775,7 @@ function handleRecordingState(status) {
 async function handlePlaybackEnd() {
   const repeat = $("#repeatPractice").checked;
   const generation = state.playbackGeneration;
-  if (MODE_CONFIG[state.mode].microphone) await finishAssessment();
+  if (state.takeUsesMicrophone) await finishAssessment();
   else await stop({ automatic: true });
   if (repeat && generation === state.playbackGeneration && $("#repeatPractice").checked) {
     state.playbackStartQuarter = null;
@@ -1818,7 +1801,7 @@ function closeFloatingReview({restoreFocus=false}={}) {
   stopPerformanceReview({resetCursorPosition:false});
   els.performancePlayback.hidden = true;
   syncReviewLayout();
-  if(MODE_CONFIG[state.mode]?.microphone && audio.stream)audio.startPitchSampling();
+  if(usingMicrophone() && audio.stream)audio.startPitchSampling();
   if(restoreFocus)$("#listenBackButton").focus({preventScroll:true});
 }
 function returnReviewPlayer() {
@@ -1937,7 +1920,7 @@ async function changeSingingPart() {
 }
 
 async function finishAssessment() {
-  if (state.finishingAssessment) return;
+  if (state.finishingAssessment || !state.takeUsesMicrophone || !state.activeTake) return;
   state.finishingAssessment = true;
   const hadSamples = state.samples.length > 0;
   const plannedRange = state.activeTake || currentPracticeRange();
@@ -1958,8 +1941,8 @@ async function finishAssessment() {
     partVolumes: plannedRange.partVolumes || state.partVolumes,
     partVoices: plannedRange.partVoices || state.partVoices,
     guideVoice: plannedRange.guideVoice || state.guideVoice,
-    guideEnabled: plannedRange.guideEnabled ?? state.guideByMode[state.mode].enabled,
-    guideVolume: plannedRange.guideVolume ?? state.guideVolume,
+    guideEnabled: plannedRange.guideEnabled ?? state.guideSettings.enabled,
+    guideVolume: plannedRange.guideVolume ?? state.guideSettings.volume,
     guideOctaveShift: plannedRange.guideOctaveShift ?? effectiveOctaveShift(),
     mode: plannedRange.mode || state.mode,
     vocalPartId: plannedRange.vocalPartId || state.selectedPartId,
@@ -1971,7 +1954,7 @@ async function finishAssessment() {
   const takeOctaveShift = takeRange.octaveShift;
   try {
     const recording = await audio.finishPerformanceRecording();
-    audio.stop({ reset: true, resetQuarter: takeRange.startQuarter, microphone: !MODE_CONFIG[state.mode].microphone });
+    audio.stop({ reset: true, resetQuarter: takeRange.startQuarter, microphone: !usingMicrophone() });
     unlockSessionOctave();
     cancelAnimationFrame(state.syncFrame);
     setPlaybackState("stopped");
@@ -2035,6 +2018,7 @@ async function finishAssessment() {
     if (!recording && !state.recordingAvailable) toast("Pitch results are ready. Audio recording is not supported in this browser.");
   } finally {
     state.finishingAssessment = false;
+    state.takeUsesMicrophone = false;
   }
 }
 
@@ -2280,7 +2264,7 @@ function renderCoaching(results, scope = assessmentRangeLabel(state.activeTake |
 
 function setStatus(status, title, copy) {
   els.statusCard.dataset.status = status;
-  const concise=audio.isPlaying?(MODE_CONFIG[state.mode].microphone?'Recording':'Playing'):audio.isCountingIn?'Count-in':state.microphonePreparing?'Microphone setup':status==='off'?'Check pitch':state.mode==='listen'?'Ready':title.includes('permission')?'Microphone needed':title.includes('Checking')?'Checking microphone':title.includes('ready')?'Ready':'Listening';
+  const concise=audio.isPlaying?(usingMicrophone()?'Recording':'Playing'):audio.isCountingIn?'Count-in':state.microphonePreparing?'Microphone setup':status==='off'?'Check pitch':!usingMicrophone()?'Music only':title.includes('permission')?'Microphone needed':title.includes('Checking')?'Checking microphone':title.includes('ready')?'Ready':'Listening';
   els.statusCard.setAttribute('title',`${title}. ${copy}`);
   els.statusCard.setAttribute('aria-label',`${concise}. ${title}. ${copy}`);
   els.statusTitle.textContent = concise;
@@ -2319,16 +2303,17 @@ function resetControls() {
   state.visualTraceSamples = [];
   state.previousTakeTrace = [];
   state.takeCompleted = false;
+  state.takeUsesMicrophone = false;
   state.activeTake = null;
   state.sessionOctaveShift = null;
   resetPitchDiagnostics();
-  state.mode = "listen";
+  state.mode = "assisted";
   state.microphoneActivationToken += 1;
   state.microphonePreparing = false;
-  document.body.classList.add("microphone-mode");
+  updatePracticeMicrophoneUI();
   setTuningMeterInactive("Listening…");
-  els.modeButtons.forEach((button) => { const active = button.dataset.mode === "listen"; button.classList.toggle("active", active); button.setAttribute("aria-checked", String(active)); });
-  els.headphoneNote.hidden = false;
+  els.modeButtons.forEach((button) => { const active = button.dataset.mode === "assisted"; button.classList.toggle("active", active); button.setAttribute("aria-checked", String(active)); });
+  els.headphoneNote.hidden = !usingMicrophone();
   els.resultsKicker.textContent = "Personalised assessment";
   $("#resultsHeading").textContent = "Your Vocal Coach";
   els.coachLevel.hidden = false;
@@ -2364,7 +2349,7 @@ function resetControls() {
   renderPracticeRangeControls();
   setSectionMessage(`Whole piece selected: bars ${range.firstMeasure}–${range.lastMeasure}.`);
   updatePosition(range.startQuarter);
-  setMode("listen");
+  setMode("assisted");
 }
 
 function resetToUpload() {
@@ -2374,7 +2359,6 @@ function resetToUpload() {
   void persistScorePreferences();
   setScoreView("vocal");
   state.scoreContext = null;
-  state.preferredMode = null;
   state.savedPreferences = null;
   void library.refresh();
   state.microphoneActivationToken += 1;
@@ -2508,7 +2492,7 @@ function wireEvents() {
   $("#settingsHearStartingNote").addEventListener("click",()=>{
     $("#setupPanel").open=false;els.hearStartingNote.focus({preventScroll:true});void hearStartingNote();
   });
-  $("#guideEnabled").addEventListener("change",()=>{state.guideByMode[state.mode].enabled=$("#guideEnabled").checked;});
+  $("#guideEnabled").addEventListener("change",()=>{state.guideSettings.enabled=$("#guideEnabled").checked;});
   els.guideVolume.addEventListener("input", () => updateVolume("guide", els.guideVolume.value));
   els.guideVoice.addEventListener("change", () => setGuideVoice(els.guideVoice.value));
   els.accompanimentList.addEventListener("change", (event) => {
@@ -2599,16 +2583,16 @@ const startingNoteDialog = createStartingNoteDialog({
   onDemoClose:()=>tutorialDemos.stop(),
   onSelect:shift=>{setOctaveShift(shift,{confirmed:true});state.startingConfirmedSession=true;},
   onBusy:busy=>{tutorial.setActive(busy);setTransportBusy(busy);},
-  onClose:listening=>{if(listening&&state.mode==='listen')audio.stopMicrophone({notify:false});else audio.targetMidiAtQuarter=targetMidiAtQuarter;},
+  onClose:()=>{audio.targetMidiAtQuarter=targetMidiAtQuarter;},
 });
 const calibrationDialog = createCalibrationDialog({
   audio,
   onBusy: busy => { tutorial.setActive(busy); setTransportBusy(busy); },
-  onCancel: () => { if (!audio.isPlaying && !audio.isPaused && !audio.isCountingIn) setMode("listen"); updateMicrophoneCheckSetting(); },
+  onCancel: skipPracticeMicrophone,
 });
 let microphoneReminderShown = false;
 function showMicrophoneReminder(reason) {
-  if (calibrationDialog.active || microphoneReminderShown || state.microphoneCheckedThisOpen || !state.score || state.microphonePreparing || audio.isPlaying || audio.isPaused || audio.isCountingIn) return;
+  if (state.microphoneDecision==='skipped' || usingMicrophone() || calibrationDialog.active || microphoneReminderShown || state.microphoneCheckedThisOpen || !state.score || state.microphonePreparing || audio.isPlaying || audio.isPaused || audio.isCountingIn) return;
   microphoneReminderShown = true;
   $("#microphoneReminderTitle").textContent = reason === "first-tour" ? "Ready for a microphone check?" : "Check your microphone for this session";
   $("#microphoneReminderDialog").showModal();
@@ -2625,7 +2609,7 @@ const tutorial = createTutorial({
   onTry:lesson=>{
     if(lesson==='starting')void hearStartingNote();
     else if(lesson==='octaves')void openStartingNote();
-    else if(lesson==='pitch'||lesson==='phrase')setMode('assisted');
+    else if(lesson==='pitch'||lesson==='phrase'){setMode('assisted');if(state.microphoneDecision!=='skipped'&&!usingMicrophone())void recheckMicrophone();}
     else if(lesson==='review')setMode('assessment');
     else if(lesson==='mixer')$('#mixerPanel').open=true;
     else if(lesson==='tempo')$('#tempoPanel').open=true;
@@ -2634,11 +2618,13 @@ const tutorial = createTutorial({
   onStudioReady: showMicrophoneReminder,
   onLayoutChange: () => requestAnimationFrame(() => { if (state.osmd && !state.rendering) void renderScore(); }),
 });
+$("#enableMicrophoneButton").addEventListener("click",()=>void recheckMicrophone());
 $("#calibrateMicrophoneButton").addEventListener("click", () => {
   $("#microphoneReminderDialog").close();
   void recheckMicrophone();
 });
-$("#skipMicrophoneButton").addEventListener("click", () => $("#microphoneReminderDialog").close());
+$("#skipMicrophoneButton").addEventListener("click", () => {$("#microphoneReminderDialog").close();skipPracticeMicrophone();});
+$("#microphoneReminderDialog").addEventListener("cancel",event=>{event.preventDefault();$("#microphoneReminderDialog").close();skipPracticeMicrophone();});
 $("#studioTutorialButton").addEventListener("click",()=>tutorial.replay());
 $("#changeOctaveButton").addEventListener("click",()=>void openStartingNote());
 

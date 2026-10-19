@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {guideSettings} from '../src/guide-settings.js';
+import {guideSettings,practiceMode} from '../src/guide-settings.js';
 import {dragRange} from '../src/practice-selection.js';
 const source=await readFile(new URL('../app.js',import.meta.url),'utf8');
 const extract=(start,end)=>source.slice(source.indexOf(start),source.indexOf(end));
@@ -15,7 +15,7 @@ test('score-view state and both accessible button states reset together',()=>{
 test('legacy saved tempo and section cannot override fresh-session defaults or calibration',()=>{
  const calibration={signalGood:true},state={savedPreferences:{tempoPercent:150,sectionStartMeasure:3,sectionEndMeasure:6,startMeasure:4,octaveShift:-12,startingOctaveChosen:true},score:{parts:[]},selectedPartId:'voice',sectionStartMeasure:null,sectionEndMeasure:null,startMeasure:1,microphoneCalibration:calibration};
  const audio={tempoPercent:100,setTempo(){throw Error('Saved tempo must not be restored');}};
- const deps={state,audio,guideSettings,renderGuideSettings(){},MODE_CONFIG:{},DEFAULT_OCTAVE_SHIFT:0,renderAccompaniment(){},renderPracticeRangeControls(){},updateSetupSummary(){},setOctaveShift(shift){state.octaveShift=shift;}};
+ const deps={state,audio,guideSettings,practiceMode,setMode(){},renderGuideSettings(){},MODE_CONFIG:{},DEFAULT_OCTAVE_SHIFT:0,renderAccompaniment(){},renderPracticeRangeControls(){},updateSetupSummary(){},setOctaveShift(shift){state.octaveShift=shift;}};
  const restore=new Function(...Object.keys(deps),extract('function restoreScorePreferences()','function scorePreferences()')+';return restoreScorePreferences;')(...Object.values(deps));
  restore();assert.equal(audio.tempoPercent,100);assert.equal(state.sectionStartMeasure,null);assert.equal(state.startMeasure,1);assert.equal(state.octaveShift,-12);assert.equal(state.microphoneCalibration,calibration);
 });

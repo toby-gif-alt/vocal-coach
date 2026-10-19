@@ -1,5 +1,7 @@
 # Interactive singing lessons, score reflow and guide octave
 
+Historical PR #14 verification. The current two-mode flow and shared guide defaults are described in [Unified practice modes](unified-practice-modes.md).
+
 Prepared from main including PR #13. The octave behaviour follows the subsequent user clarification: move the **singing target and audible vocal guide**, while leaving the written score and all accompaniment unchanged.
 
 ## Responsive notation

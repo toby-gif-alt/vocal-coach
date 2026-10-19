@@ -68,7 +68,7 @@ test('studio has navigation tutorial, a single visible transport and automatic d
   assert.match(html,/changePartButton[\s\S]*Click to change part/);
   assert.match(html,/legacy-transport" hidden aria-hidden="true"/);assert.equal((html.match(/id="transportDock"/g)||[]).length,1);
   const home=html.slice(0,html.indexOf('id="loadingView"'));assert.ok(!home.includes('downloadOfflineButton'));assert.ok(home.includes('installAppButton'));assert.ok(!html.includes('Retry offline setup'));assert.ok(!html.includes('id="offlineStatus"'));assert.ok(html.includes('Add Vocal Coach to this device'));
-  assert.match(app,/ready && guideNext && !state.startingConfirmedSession/);assert.match(app,/sessionOctaveShift !== null \|\| audio.isPlaying/);
+  assert.match(app,/listen:usingMicrophone\(\)/);assert.match(app,/sessionOctaveShift !== null \|\| audio.isPlaying/);
   assert.ok(!app.includes('OCTAVE_SELECTION_CONFIG.responseWindowMs'));assert.ok(!tour.includes('window.scrollTo'));
 });
 

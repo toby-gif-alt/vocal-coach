@@ -20,14 +20,14 @@ function playbackDouble() {
   };
 }
 
-test("Listen playback starts even when microphone acquisition would fail", async () => {
+test("Microphone-free playback starts even when microphone acquisition would fail", async () => {
   const engine = playbackDouble();
   await AudioEngine.prototype.play.call(engine, { vocalPartId: "voice", guideEnabled: true, assessmentMode: false, countInBars: 0, startQuarter: 0 });
   assert.equal(engine.transport.started, true);
   assert.equal(engine.isPlaying, true);
 });
 
-test("microphone acquisition errors are marked for the Listen fallback", async () => {
+test("microphone acquisition errors are marked for music-only fallback", async () => {
   await assert.rejects(AudioEngine.prototype.play.call(playbackDouble(), { vocalPartId: "voice", assessmentMode: true }), (error) => error.name === "NotFoundError" && error.microphoneUnavailable === true);
 });
 
@@ -42,7 +42,7 @@ test('scheduler shifts only the selected guide, preserving vocal and piano accom
  assert.equal(JSON.stringify(parts),original);
 });
 
-test('Listen and resumed playback pass the explicitly locked guide octave to scheduling',async()=>{
+test('Music-only and resumed playback pass the explicitly locked guide octave to scheduling',async()=>{
  for(const paused of [false,true]){
   const engine=playbackDouble();engine.isPaused=paused;engine.currentQuarter=4;engine.scheduleScore=settings=>engine.scheduled=settings;
   await AudioEngine.prototype.play.call(engine,{vocalPartId:'voice',guideEnabled:true,guideOctaveShift:-12,assessmentMode:false,countInBars:0});
@@ -56,4 +56,10 @@ test('review uses the immutable guide octave, with written-pitch compatibility f
  const settings=AudioEngine.prototype.reviewSettingsAt.call(engine,1,take,{melody:true,accompaniment:true});
  assert.equal(settings.guideOctaveShift,-12);assert.deepEqual(settings.enabledPartIds,['P']);
  delete take.guideOctaveShift;assert.equal(AudioEngine.prototype.reviewSettingsAt.call(engine,0,take,{melody:true}).guideOctaveShift,0);
+});
+
+test('microphone availability requires a live audio track rather than a stale calibrated stream',()=>{
+ const getter=Object.getOwnPropertyDescriptor(AudioEngine.prototype,'hasMicrophoneStream').get;
+ for(const readyState of ['live','ended'])assert.equal(getter.call({stream:{getAudioTracks:()=>[{readyState}]},analyser:{},pitchDetector:{}}),readyState==='live');
+ assert.equal(getter.call({}),false);
 });
