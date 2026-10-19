@@ -30,3 +30,30 @@ test("Listen playback starts even when microphone acquisition would fail", async
 test("microphone acquisition errors are marked for the Listen fallback", async () => {
   await assert.rejects(AudioEngine.prototype.play.call(playbackDouble(), { vocalPartId: "voice", assessmentMode: true }), (error) => error.name === "NotFoundError" && error.microphoneUnavailable === true);
 });
+
+test('scheduler shifts only the selected guide, preserving vocal and piano accompaniment and source bytes',()=>{
+ const parts=[{id:'S',name:'Soprano',notes:[{midi:72,onsetQuarters:0,durationQuarters:1}]},{id:'A',name:'Alto',notes:[{midi:60,onsetQuarters:0,durationQuarters:1}]},{id:'P',name:'Piano',notes:[{midi:48,onsetQuarters:0,durationQuarters:1}]}];
+ const original=JSON.stringify(parts);
+ for(const selected of ['S','P'])for(const shift of [-24,-12,0,12])for(const enabled of [true,false]){
+  const heard=[],engine={score:{parts,durationQuarters:1},transport:{PPQ:192,cancel(){},schedule:fn=>fn(1)},partEngines:new Map(parts.map(p=>[p.id,{classification:p.id==='P'?'piano':'vocal',instrument:{triggerAttackRelease:r=>heard.push([p.id,r.midi])}}])),onPlaybackRoute(){}};
+  AudioEngine.prototype.scheduleScore.call(engine,{vocalPartId:selected,guideEnabled:enabled,guideOctaveShift:shift,enabledPartIds:parts.filter(p=>p.id!==selected).map(p=>p.id),resumeQuarter:0,endQuarter:1,notifyEnd:false});
+  assert.deepEqual(heard,parts.filter(p=>p.id!==selected||enabled).map(p=>[p.id,p.notes[0].midi+(p.id===selected?shift:0)]));
+ }
+ assert.equal(JSON.stringify(parts),original);
+});
+
+test('Listen and resumed playback pass the explicitly locked guide octave to scheduling',async()=>{
+ for(const paused of [false,true]){
+  const engine=playbackDouble();engine.isPaused=paused;engine.currentQuarter=4;engine.scheduleScore=settings=>engine.scheduled=settings;
+  await AudioEngine.prototype.play.call(engine,{vocalPartId:'voice',guideEnabled:true,guideOctaveShift:-12,assessmentMode:false,countInBars:0});
+  assert.equal(engine.scheduled.guideOctaveShift,-12);
+ }
+});
+
+test('review uses the immutable guide octave, with written-pitch compatibility for older takes',()=>{
+ const engine={baseTempo:72,score:{durationQuarters:32}};
+ const take={bpm:72,vocalPartId:'S',octaveShift:-12,guideOctaveShift:-12,startQuarter:4,endQuarter:8,enabledPartIds:['P']};
+ const settings=AudioEngine.prototype.reviewSettingsAt.call(engine,1,take,{melody:true,accompaniment:true});
+ assert.equal(settings.guideOctaveShift,-12);assert.deepEqual(settings.enabledPartIds,['P']);
+ delete take.guideOctaveShift;assert.equal(AudioEngine.prototype.reviewSettingsAt.call(engine,0,take,{melody:true}).guideOctaveShift,0);
+});

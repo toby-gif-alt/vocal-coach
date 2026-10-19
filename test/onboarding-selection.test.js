@@ -61,7 +61,7 @@ test("first studio tutorial ends with calibration suggestion; new app sessions r
   reopened.controller.view('studio'); assert.deepEqual(reasons,['first-tour','returning']);
 });
 test("microphone suggestion is suppressed during active playback", () => {
-  const reasons=[];const t=onboarding(new Map([['vocal-coach:studio-tour:v3','done']]),reason=>reasons.push(reason));
+  const reasons=[];const t=onboarding(new Map([['vocal-coach:studio-tour:v4','done']]),reason=>reasons.push(reason));
   t.controller.active(true);t.controller.view('studio');assert.deepEqual(reasons,[]);
 });
 test('tour order follows wrapped visual rows rather than DOM sequence',()=>{

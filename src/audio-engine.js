@@ -306,6 +306,7 @@ export class AudioEngine {
   async play({
     vocalPartId,
     guideEnabled,
+    guideOctaveShift = 0,
     enabledPartIds,
     assessmentMode,
     countInBars = 1,
@@ -349,6 +350,7 @@ export class AudioEngine {
     this.scheduleScore({
       vocalPartId,
       guideEnabled,
+      guideOctaveShift,
       enabledPartIds,
       resumeQuarter: resuming ? this.currentQuarter : startQuarter,
       endQuarter,
@@ -469,6 +471,7 @@ export class AudioEngine {
   scheduleScore({
     vocalPartId,
     guideEnabled,
+    guideOctaveShift = 0,
     enabledPartIds,
     resumeQuarter = this.currentQuarter,
     endQuarter = this.score?.durationQuarters || 0,
@@ -490,13 +493,14 @@ export class AudioEngine {
         transport.schedule((time) => {
           const durationTicks = Math.max(1, quartersToTransportTicks(window.durationQuarters, ticksPerQuarter));
           const duration = `${durationTicks}i`;
+          const octaveShift = role === "guide" ? guideOctaveShift : 0;
           if (classification === "vocal") {
-            const request = guideNoteRequest(note, { duration, time });
+            const request = guideNoteRequest(note, { duration, time, octaveShift });
             if (request) channel.instrument.triggerAttackRelease(request);
           } else {
-            channel.instrument.triggerAttackRelease({ midi: note.midi, duration, time, velocity: 0.38 });
+            channel.instrument.triggerAttackRelease(guideNoteRequest(note, { duration, time, octaveShift, velocity: 0.38 }));
           }
-          this.onPlaybackRoute({ partId: part.id, partName: part.name, role, classification, midi: note.midi });
+          this.onPlaybackRoute({ partId: part.id, partName: part.name, role, classification, midi: guideNoteRequest(note, {octaveShift}).midi, writtenMidi: note.midi });
         }, when);
       }
     }
@@ -526,6 +530,7 @@ export class AudioEngine {
     return {
       vocalPartId: take?.vocalPartId,
       guideEnabled: Boolean(layers?.melody),
+      guideOctaveShift: take?.guideOctaveShift ?? 0,
       enabledPartIds: layers?.accompaniment ? [...(take?.enabledPartIds || [])] : [],
       resumeQuarter: reviewQuarterAtSeconds(seconds, bpm, take?.startQuarter, take?.endQuarter),
       endQuarter: Number(take?.endQuarter) || this.score.durationQuarters,
