@@ -18,11 +18,11 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <title>Vocal Coach — Practise from the score</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%2317382f'/%3E%3Cpath d='M14 34c7 0 7-15 14-15s7 27 14 27 7-16 8-16' fill='none' stroke='%23d7ff72' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="./styles.css?v=32" />
+    <link rel="stylesheet" href="./styles.css?v=34" />
     <script src="./vendor/osmd.js" defer></script>
     <script src="./vendor/tone.js" defer></script>
     <script src="./vendor/jszip.js" defer></script>
-    <script type="module" src="./app.js?v=32"></script>
+    <script type="module" src="./app.js?v=34"></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to the app</a>
@@ -142,7 +142,7 @@
         <header class="studio-titlebar"><h1 id="studioTitle">Untitled score</h1><p id="studioMeta" hidden></p><span id="selectedPartName" hidden></span></header>
 
         <section class="studio-layout">
-          <div class="score-column"><div class="status-card" id="statusCard" data-status="idle"><span class="status-icon">•</span><p><strong id="statusTitle">Ready when you are</strong><small id="statusCopy">Choose a mode, then press play.</small></p><button id="enableMicrophoneButton" type="button">Enable microphone</button></div>
+          <div class="score-column"><div class="status-card compact-status" id="statusCard" data-status="idle" role="status"><span class="status-icon">•</span><p><strong id="statusTitle">Ready when you are</strong><small id="statusCopy">Choose a mode, then press play.</small></p><button id="enableMicrophoneButton" type="button">Enable microphone</button></div>
             <section class="transport panel legacy-transport" hidden aria-hidden="true">
               <div class="transport-buttons"><button class="play-button" id="playButton" type="button" aria-label="Play"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7V5Z" /></svg></button><button class="transport-button" id="pauseButton" type="button" aria-label="Pause" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6v12M16 6v12" /></svg></button><button class="transport-button" id="stopButton" type="button" aria-label="Stop" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v10H7z" /></svg></button></div>
               <div class="transport-progress"><span><strong id="transportState">Ready</strong><time id="currentTime">00:00</time><small>/</small><time id="totalTime">00:00</time></span><div class="progress-track" aria-hidden="true"><i id="progressFill"></i></div></div>
@@ -151,7 +151,7 @@
             </section>
 
 <section class="score-panel panel" aria-labelledby="scoreHeading">
-              <div class="score-panel-head"><h2><button id="changePartButton" class="singing-part-heading" type="button"><strong id="scoreHeading">I am singing Voice</strong><small>Click to change part</small></button></h2><div class="score-heading-actions"><div class="score-practice-controls"><button class="starting-note-control" id="hearStartingNote" type="button"><span class="starting-note-label">♫ Hear starting note</span> <strong id="startingNoteName">—</strong></button><button id="changeOctaveButton" type="button">Change octave</button><nav class="transport-dock" id="transportDock" aria-label="Playback controls">
+              <div class="score-panel-head"><div class="singing-part-row"><h2 id="scoreHeading">I am singing Voice</h2><button id="changePartButton" type="button">Change part</button></div><div class="score-heading-actions"><div class="score-practice-controls"><button class="starting-note-control" id="hearStartingNote" type="button"><span class="starting-note-label">♫ Hear starting note</span> <strong id="startingNoteName">—</strong></button><button id="changeOctaveButton" type="button">Change octave</button><nav class="transport-dock" id="transportDock" aria-label="Playback controls">
                         <div class="count-in-display" id="countInDisplay" hidden aria-live="assertive"><small id="countInBar">Count-in</small><div id="countInBeats"></div></div><div class="dock-controls">
 
             <button id="dockRestartButton" type="button" aria-label="Restart from the beginning">⏮ Restart</button>
@@ -162,11 +162,6 @@
           <button class="follow-score-button active" id="followScoreButton" hidden type="button" aria-pressed="true"><span aria-hidden="true">↧</span><span class="sr-only">Follow score</span></button>
         </nav><details id="tempoPanel" class="tempo-panel"><summary>Tempo · <span id="tempoSummary">100%</span></summary><label class="tempo-field" for="tempoSlider"><span><strong>Tempo</strong><output id="tempoOutput">100%</output></span><input id="tempoSlider" type="range" min="50" max="150" value="100" step="5" /><span class="range-labels"><small>Slower</small><small id="bpmLabel">120 BPM</small><small>Faster</small></span></label></details><button id="listenBackButton" type="button" disabled>Listen back</button><label class="previous-take-toggle" id="previousTakeControl" hidden><input id="showPreviousTake" type="checkbox" checked /> Show previous take</label></div></div></div>
               <div class="score-secondary-controls" hidden><span id="octaveConfirmation" hidden role="status"></span><span id="measureNumber" hidden>1</span></div>
-              <div id="octaveSuggestion" class="octave-suggestion" hidden role="status" aria-live="polite">
-                <span id="octaveSuggestionCopy"></span>
-                <button id="acceptOctaveSuggestion" type="button">Change singing &amp; guide octave</button>
-                <button id="dismissOctaveSuggestion" type="button">Keep current octave</button>
-              </div>
               <section class="practice-section-setting panel" id="practiceEditor" hidden aria-labelledby="practiceSectionLabel">
               <div class="setting-label"><span id="practiceSectionLabel">Select bars to practice</span><output id="practiceRangeStatus">Whole piece</output></div>
               <div class="practice-range-fields">
@@ -271,6 +266,8 @@
     <dialog id="libraryActionDialog" class="microphone-reminder" aria-labelledby="libraryActionTitle"><form method="dialog"><h2 id="libraryActionTitle"></h2><p id="libraryActionCopy"></p><input id="libraryActionInput" aria-label="Display title" maxlength="200" hidden /><div><button id="libraryActionAccept" value="accept">Confirm</button><button id="libraryActionSecondary" value="secondary" hidden>Keep copy</button><button value="cancel">Cancel</button></div></form></dialog>
     <dialog id="installInstructionsDialog" class="microphone-reminder" aria-labelledby="installInstructionsTitle"><form method="dialog"><h2 id="installInstructionsTitle">Install Vocal Coach</h2><p id="installInstructionsCopy">Open Vocal Coach in Safari. Tap Share, then Add to Home Screen, then Add. If your browser offers Open as Web App, leave it enabled. Finish the offline download before practising without internet.</p><button>Got it</button></form></dialog>
 
+<dialog id="partPickerDialog" class="dialog part-picker" aria-labelledby="partPickerTitle"><h2 id="partPickerTitle">Change singing part</h2><p>Choose the line you want to sing.</p><div id="studioPartChoices" class="studio-part-choices"></div><form method="dialog"><button value="cancel">Cancel</button></form></dialog>
+<dialog id="octaveSuggestion" class="dialog octave-confirm-dialog" aria-labelledby="octaveSuggestionTitle"><h2 id="octaveSuggestionTitle"></h2><p id="octaveSuggestionCopy"></p><p id="octaveSuggestionQuestion"></p><div class="octave-confirm-actions"><button id="acceptOctaveSuggestion" type="button"></button><button id="dismissOctaveSuggestion" type="button"></button><button id="chooseSuggestedOctave" type="button">Choose another octave</button></div></dialog>
 <dialog id="changePartDialog" class="dialog" aria-labelledby="changePartTitle"><h2 id="changePartTitle">Change singing part?</h2><p>This will stop and finish your current take before changing parts. Its recording and trace will be cleared when you choose a new part.</p><form method="dialog"><button value="cancel">Keep singing</button><button value="change">Change part</button></form></dialog>
     <dialog id="startingNoteDialog" class="starting-note-dialog" aria-labelledby="startingNoteTitle"><button id="closeStartingNote" class="octave-close" type="button" aria-label="Close starting note selector">×</button><h2 id="startingNoteTitle">Find your starting note</h2><p>Listen to your starting note, then sing it at a comfortable pitch. Choose the octave that suits your voice.</p><button id="previewStartingNote" class="octave-hear" type="button">♬ Hear starting note</button><p id="octaveLiveLabel" aria-live="polite">Listening…</p><div class="octave-stack"><div id="octaveCards"></div><div id="octavePitchMarker" aria-hidden="true" hidden><span></span></div></div><p id="octaveSelectedCopy" role="status"></p><button id="continuePractice" type="button" disabled>Continue to practice</button></dialog>
     <dialog id="calibrationDialog" class="calibration-dialog" aria-labelledby="calibrationTitle">

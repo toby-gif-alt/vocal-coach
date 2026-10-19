@@ -1,4 +1,4 @@
-import { OCTAVE_SELECTION_CONFIG, frequencyToMidi } from "./config.js?v=20";
+import { OCTAVE_SELECTION_CONFIG, frequencyToMidi } from "./config.js?v=34";
 
 function median(values) {
   if (!values.length) return null;
@@ -80,25 +80,26 @@ export class OctaveMismatchDetector {
     const sungMidi = sample?.filteredMidi;
     const corroboratingMidi = sample?.corroboratingFrequency > 0 ? frequencyToMidi(sample.corroboratingFrequency) : null;
     if (!['preparation', 'performance'].includes(phase) || sample?.status !== 'accepted'
-      || sample.visualOnly || sample.octaveCorrection || sample.overloadActive
+      || sample.visualOnly || sample.octaveCorrection || sample.overloadActive || sample.clipped
       || !Number.isFinite(sample.clarity) || sample.clarity < 0.82
       || !Number.isFinite(sungMidi) || !Number.isFinite(writtenMidi)
       || !Number.isFinite(corroboratingMidi) || Math.abs(corroboratingMidi - sungMidi) * 100 > 80
       || !Number.isFinite(sample.capturedAt)) { this.reset(); return null; }
-    const match = closestOctaveCandidate(sungMidi, writtenMidi, OCTAVE_SELECTION_CONFIG.shifts.filter(shift=>shift!==currentShift));
+    const match = closestOctaveCandidate(sungMidi, writtenMidi);
     const shift = match.shift;
-    if (Math.abs(match.cents) > 60 || !OCTAVE_SELECTION_CONFIG.shifts.includes(shift) || this.dismissed.has(shift)) { this.reset(); return null; }
+    if (shift === currentShift || Math.abs(match.cents) > (phase === 'preparation' ? 300 : 60) || !OCTAVE_SELECTION_CONFIG.shifts.includes(shift) || this.dismissed.has(shift)) { this.reset(); return null; }
     const now = sample.capturedAt;
     if (!this.candidate || this.candidate.shift !== shift || this.candidate.phase !== phase
+      || (phase === 'preparation' && Math.abs(sungMidi - this.candidate.sungMidi) > .7)
       || now <= this.candidate.lastAt || now - this.candidate.lastAt > 1200 || now - this.candidate.startedAt > 6000) {
-      this.candidate = { shift, phase, startedAt: now, lastAt: now, supportMs: 0, frames: 0, notes: new Map() };
+      this.candidate = { shift, phase, sungMidi, startedAt: now, lastAt: now, supportMs: 0, frames: 0, notes: new Map() };
     }
     const c = this.candidate;
     c.supportMs += Math.min(100, Math.max(0, now - c.lastAt)); c.lastAt = now; c.frames++;
     c.notes.set(noteId, (c.notes.get(noteId) || 0) + 1);
     const distinctNotes = [...c.notes.values()].filter(count => count >= 6).length;
-    const enough = phase === 'preparation' ? c.supportMs >= 1600 : c.supportMs >= 1200 && distinctNotes >= 2;
-    if (!enough || c.frames < 20) return null;
-    return { shift, relativeShift: shift-currentShift, noteCount: distinctNotes };
+    const enough = phase === 'preparation' ? c.supportMs >= 500 : c.supportMs >= 1200 && distinctNotes >= 2;
+    if (!enough || c.frames < (phase === 'preparation' ? 8 : 20)) return null;
+    return { shift, relativeShift: shift-currentShift, noteCount: distinctNotes, sungMidi, writtenMidi, cents:match.cents, stableDurationMs:c.supportMs };
   }
 }

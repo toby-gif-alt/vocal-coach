@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createOnboarding, orderTourTargets, tutorialPosition } from "../src/tutorial.js";
+import { createOnboarding, tutorialPosition } from "../src/tutorial.js";
 import { draftFromRange, dragRange, validateDraft, measureAtPoint } from "../src/practice-selection.js";
 import { practiceBands } from "../src/score-overlay.js";
 
@@ -9,21 +9,16 @@ function onboarding(storage = new Map(), onStudioReady = () => {}) {
   const controller=createOnboarding({ storage:{getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value)}, schedule:(fn,delay)=>{jobs.set(++next,{fn,delay});return next;},unschedule:id=>jobs.delete(id),show:kind=>shown.push(kind),hide:()=>{},onStudioReady });
   return {controller,shown,jobs,storage,fire(){const job=[...jobs.values()][0];jobs.clear();job?.fn();}};
 }
-test("welcome waits two seconds, interaction cancels it, and first visit is remembered", () => {
-  const t=onboarding();t.controller.view('upload');assert.equal(t.shown.length,0);assert.equal([...t.jobs.values()][0].delay,2000);
-  t.controller.interact();assert.equal(t.jobs.size,0);t.fire();assert.equal(t.shown.length,0);
-  const repeat=onboarding(t.storage);repeat.controller.view('upload');assert.equal(repeat.jobs.size,0);
+test('only opening a score launches the automatic Tutorial, and completion is remembered',()=>{
+ const t=onboarding();t.controller.view('upload');assert.equal(t.jobs.size,0);assert.deepEqual(t.shown,[]);
+ t.controller.view('parts');assert.deepEqual(t.shown,[]);t.controller.view('studio');assert.deepEqual(t.shown,['studio']);
+ t.controller.skip('studio');const repeat=onboarding(t.storage);repeat.controller.view('studio');assert.deepEqual(repeat.shown,[]);
+ assert.equal(repeat.controller.replay(),true);assert.deepEqual(repeat.shown,['studio']);
 });
-test("welcome skip and studio next/skip persist separately; parts never get an automatic tour", () => {
-  const t=onboarding();t.controller.view('upload');t.fire();assert.deepEqual(t.shown,['welcome']);t.controller.skip('welcome');
-  t.controller.view('parts');assert.equal(t.shown.length,1);
-  t.controller.view('studio');assert.equal(t.shown.at(-1),'studio');t.controller.skip('studio');
-  const repeat=onboarding(t.storage);repeat.controller.view('studio');assert.equal(repeat.shown.length,0);repeat.controller.replay();assert.equal(repeat.shown[0],'studio');
-});
-test("loading cancels the timer and playback suppresses automatic and replayed tutorials", () => {
-  const t=onboarding();t.controller.view('upload');t.controller.view('loading');assert.equal(t.jobs.size,0);
-  t.controller.active(true);t.controller.view('studio');assert.equal(t.shown.length,0);assert.equal(t.controller.replay(),false);
-  t.controller.active(false);assert.equal(t.controller.replay(),true);assert.equal(t.shown.at(-1),'studio');
+test('the same Tutorial can be replayed only in an idle studio',()=>{
+ const t=onboarding();t.controller.view('upload');assert.equal(t.controller.replay(),false);
+ t.controller.active(true);t.controller.view('studio');assert.deepEqual(t.shown,[]);assert.equal(t.controller.replay(),false);
+ t.controller.active(false);assert.equal(t.controller.replay(),true);assert.deepEqual(t.shown,['studio']);
 });
 const part={durationQuarters:12,measureStarts:Array.from({length:12},(_,i)=>({measureNumber:i+1,onsetQuarters:i}))};
 const range={sectionStartMeasure:1,sectionEndMeasure:12,startMeasure:1};
@@ -61,13 +56,8 @@ test("first studio tutorial ends with calibration suggestion; new app sessions r
   reopened.controller.view('studio'); assert.deepEqual(reasons,['first-tour','returning']);
 });
 test("microphone suggestion is suppressed during active playback", () => {
-  const reasons=[];const t=onboarding(new Map([['vocal-coach:studio-tour:v4','done']]),reason=>reasons.push(reason));
+  const reasons=[];const t=onboarding(new Map([['vocal-coach:tutorial:v5','done']]),reason=>reasons.push(reason));
   t.controller.active(true);t.controller.view('studio');assert.deepEqual(reasons,[]);
-});
-test('tour order follows wrapped visual rows rather than DOM sequence',()=>{
- const item=(name,left,top)=>({name,rect:{left,top,bottom:top+44,height:44}});
- const items=[item('Mixer',0,60),item('Home',0,0),item('Full score',200,0),item('Settings',100,0),item('Modes',100,120),item('Select bars',0,120)];
- assert.deepEqual(orderTourTargets(items).map(i=>i.name),['Home','Settings','Full score','Mixer','Select bars','Modes']);
 });
 test('tutorial card stays inside viewport and avoids a highlighted control',()=>{
  for(const width of [390,834,1440]){

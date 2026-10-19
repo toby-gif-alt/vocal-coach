@@ -44,3 +44,23 @@ test('dismissal suppresses the same suggestion until the score is reset',()=>{
 test('paused and count-in singing do not create octave suggestions',()=>{
   for(const phase of ['paused','count-in','review']) assert.equal(sing(new OctaveMismatchDetector(),12,{phase}),undefined);
 });
+
+test('preparation recognises C-sharp2 against D3 within 500 ms but retains the true 100-cent error',()=>{
+ const detector=new OctaveMismatchDetector();let suggestion;
+ for(let i=0;i<=11;i++){
+  suggestion=detector.observe({phase:'preparation',writtenMidi:50,currentShift:0,noteId:'D3',sample:{status:'accepted',clarity:.96,filteredMidi:37,corroboratingFrequency:midiToFrequency(37),capturedAt:i*50}});
+  if(suggestion){assert.ok(i*50>=400&&i*50<=700);break;}
+ }
+ assert.equal(suggestion.shift,-12);assert.equal(suggestion.sungMidi,37);assert.equal(suggestion.cents,-100);
+});
+test('preparation register tolerance does not loosen recorded performance matching',()=>{
+ assert.equal(sing(new OctaveMismatchDetector(),-13,{phase:'performance'}),undefined);
+ assert.equal(sing(new OctaveMismatchDetector(),-13,{phase:'preparation',singleNote:true}).shift,-12);
+ for(const offset of [-16,-8,8,16])assert.equal(sing(new OctaveMismatchDetector(),offset,{phase:'preparation',singleNote:true}),undefined);
+});
+test('wandering pitches, clipped input and harmonics never become a fast suggestion',()=>{
+ const detector=new OctaveMismatchDetector();
+ for(let i=0;i<40;i++)assert.equal(detector.observe({phase:'preparation',writtenMidi:62,currentShift:0,noteId:'n',sample:{status:'accepted',clarity:.96,filteredMidi:i%2?49:51,corroboratingFrequency:midiToFrequency(i%2?49:51),capturedAt:i*50}}),null);
+ assert.equal(sing(new OctaveMismatchDetector(),-12,{phase:'preparation',overrides:{clipped:true}}),undefined);
+ assert.equal(sing(new OctaveMismatchDetector(),-12,{phase:'preparation',overrides:{corroboratingFrequency:midiToFrequency(79)}}),undefined);
+});
