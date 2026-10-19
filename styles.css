@@ -1096,3 +1096,5 @@ body.tutorial-demo-mixer .tutorial-card { left:var(--tutorial-left,8px)!importan
 .tutorial-pointer { animation:none; }
 
 .mixer-grid > .volume-block:first-child { border-top:0; padding-top:0; }
+
+body.tutorial-studio .tutorial-card.tutorial-centered { transform:translate(-50%,-50%); }

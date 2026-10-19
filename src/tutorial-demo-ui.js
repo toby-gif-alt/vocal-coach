@@ -18,15 +18,15 @@ export function createDemoUI(bridge){
  let samples=[],lastSample=-1,lastQuarter=-1,lastOctave=null,lastView=null,review=null,voiceGain=null,pointer=null,pointerTarget=null,pointerAnimation=null;
  const textIds=['detectedNote','detectedFrequency','centsOutput','tuningPhase'];
  const clamp=value=>Math.max(0,Math.min(1,value));
- function point(element,progress=.5){
-  if(!element)return;pointer??=Object.assign(document.createElement('span'),{className:'tutorial-pointer',textContent:'☝'});
+ function point(element,progress=.5,fromCentre=true){
+  if(!element)return;const firstPointer=!pointer,previous=pointer?.getBoundingClientRect();pointer??=Object.assign(document.createElement('span'),{className:'tutorial-pointer',textContent:'☝'});
   if(!pointer.isConnected)document.body.append(pointer);
   const r=element.getBoundingClientRect(),left=r.left+r.width*progress,top=r.top+r.height*.6;
   pointer.style.left=`${left}px`;pointer.style.top=`${top}px`;
   if(pointerTarget!==element){
    pointerAnimation?.cancel();pointerTarget=element;
    if(!matchMedia('(prefers-reduced-motion: reduce)').matches)pointerAnimation=pointer.animate([
-    {transform:`translate(${innerWidth/2-left}px,${innerHeight/2-top}px)`},
+    {transform:`translate(${firstPointer||fromCentre?innerWidth/2-left:previous.left-left}px,${firstPointer||fromCentre?innerHeight/2-top:previous.top-top}px)`},
     {transform:'translate(-20%,0)'},
    ],{duration:700,easing:'ease-out'});
   }
@@ -140,12 +140,14 @@ export function createDemoUI(bridge){
    if(kind==='octaves'&&lastOctave!==value.shift){lastOctave=value.shift;bridge.octaves().selectDemo(value.shift);point(document.querySelector(`[data-shift="${value.shift}"] .octave-card-choice`));}
    if(kind==='mixer'){
     const total=data.timeline.at(-1).end,bringIn=total*.65;
+    let movingSlider=null,movingProgress=0;
     data.parts.forEach((part,index)=>{
      const volume=Math.round(70*clamp((seconds-.4-index*bringIn/Math.max(1,data.parts.length))/Math.max(.3,bringIn/data.parts.length)));
      const reduced=index===0?Math.round(volume*(1-.6*clamp((seconds-total*.72)/(total*.15)))):volume;
      const slider=document.querySelector(`[data-part-volume="${CSS.escape(part.id)}"]`);
-     if(slider&&Number(slider.value)!==reduced){control(slider,reduced);const pane=slider.closest('.mixer-grid'),rect=slider.getBoundingClientRect(),bounds=pane.getBoundingClientRect();if(rect.bottom>bounds.bottom-12)pane.scrollTop+=rect.bottom-bounds.bottom+24;else if(rect.top<bounds.top+12)pane.scrollTop-=bounds.top-rect.top+24;point(slider,reduced/100);slider.closest('.part-mixer-row').classList.add('tutorial-mixer-target');}
+     if(slider&&Number(slider.value)!==reduced){control(slider,reduced);const pane=slider.closest('.mixer-grid'),rect=slider.getBoundingClientRect(),bounds=pane.getBoundingClientRect();if(rect.bottom>bounds.bottom-12)pane.scrollTop+=rect.bottom-bounds.bottom+24;else if(rect.top<bounds.top+12)pane.scrollTop-=bounds.top-rect.top+24;movingSlider=slider;movingProgress=reduced/100;slider.closest('.part-mixer-row').classList.add('tutorial-mixer-target');}
     });
+    if(movingSlider)point(movingSlider,movingProgress,false);
     value.message=seconds<total*.7?'Listen as each accompaniment joins the guide.':'Lower the loudest accompaniment so the guide is clearer.';
    }
    if(kind==='practice'){

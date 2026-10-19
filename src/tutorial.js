@@ -45,6 +45,9 @@ export function createTutorial({onStudioReady=()=>{},demos}={}){
  }
  function position(){
   if(card.hidden)return;
+  if(card.classList.contains('tutorial-centered')){
+   card.style.setProperty('--tutorial-left','50%');card.style.setProperty('--tutorial-top','50%');return;
+  }
   const rect=target?.getBoundingClientRect()||{left:16,right:16,top:80,bottom:80};
   const size=card.getBoundingClientRect();
   const viewport={width:innerWidth,height:innerHeight};
@@ -59,6 +62,7 @@ export function createTutorial({onStudioReady=()=>{},demos}={}){
  function render(){
   const token=++run;demos.stop();audioBlocked=false;anchor=null;
   const lesson=TUTORIAL_LESSONS[index];
+  card.classList.toggle('tutorial-centered',lesson.id==='phrase');
   target?.classList.remove('tutorial-target');target=null;
   card.hidden=false;document.body.classList.toggle('tutorial-studio',kind==='studio');
   find('#tutorialTitle').textContent=lesson.title;
