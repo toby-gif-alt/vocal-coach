@@ -38,3 +38,24 @@ test('chunk playback clips a copy of the immutable take while keeping its record
  const get=new Function('state',source+'; return reviewPlaybackTake;')({recording:{take:original},reviewChunk:{endQuarter:8}});
  assert.deepEqual(get(),{...original,endQuarter:8});assert.equal(original.endQuarter,15);assert.notEqual(get(),original);
 });
+
+import {reviewSecondsAtQuarter,reviewQuarterAtSeconds} from '../src/review-playback.js';
+test('score review seeks preserve recording origin and clamp to recorded material at every tempo',()=>{
+ for(const bpm of [60,90,120]){
+  const take={startQuarter:8,endQuarter:20,bpm};
+  const seconds=reviewSecondsAtQuarter(12,take,100);
+  assert.equal(reviewQuarterAtSeconds(seconds,bpm,8,20),12);
+  assert.equal(reviewSecondsAtQuarter(0,take,100),0);
+  assert.equal(reviewSecondsAtQuarter(99,take,2),2);
+ }
+});
+test('selecting score playback clears feedback chunk, pauses audio and waits for Play',()=>{
+ const calls=[],take={startQuarter:8,endQuarter:20,bpm:120};
+ const state={recording:{take,durationSeconds:6},reviewChunk:{startSeconds:0,endSeconds:1}};
+ const els={performanceAudio:{currentTime:0}};
+ const deps={state,els,stopPerformanceReview:()=>calls.push('pause'),markCoachingNote:item=>calls.push(['mark',item]),$:()=>({}),reviewSecondsAtQuarter,reviewQuarterAtSeconds,updateReviewScorePosition:q=>calls.push(['cursor',q]),updatePerformancePosition(){},updatePerformancePlaybackState(){},setStatus(){},startReviewPlayback:()=>calls.push('play')};
+ const source=app.slice(app.indexOf('function selectReviewScorePosition('),app.indexOf('\nfunction updateReviewLayers()'));
+ const actions=new Function(...Object.keys(deps),source+';return {selectReviewScorePosition,restartPerformanceReview};')(...Object.values(deps));
+ actions.selectReviewScorePosition(12);assert.equal(state.reviewChunk,null);assert.equal(els.performanceAudio.currentTime,2);assert.deepEqual(calls,['pause',['mark',null],['cursor',12]]);
+ state.reviewChunk={startSeconds:4};calls.length=0;actions.restartPerformanceReview();assert.equal(els.performanceAudio.currentTime,0);assert.deepEqual(calls.at(-1),'play');assert.ok(calls.some(c=>Array.isArray(c)&&c[0]==='cursor'&&c[1]===8));
+});

@@ -12,6 +12,14 @@ export function reviewQuarterAtSeconds(seconds, bpm, startQuarter = 0, endQuarte
   return Number.isFinite(Number(endQuarter)) ? Math.min(quarter, Number(endQuarter)) : quarter;
 }
 
+// Score clicks use the original recording origin, even during a feedback chunk.
+export function reviewSecondsAtQuarter(quarter,take,durationSeconds=take.durationSeconds){
+ const seconds=(Number(quarter)-take.startQuarter)*60/take.bpm;
+ const musicalEnd=Math.max(0,(take.endQuarter-take.startQuarter)*60/take.bpm);
+ const end=Number(durationSeconds)>0?Math.min(musicalEnd,Number(durationSeconds)):musicalEnd;
+ return Math.max(0,Math.min(Number.isFinite(seconds)?seconds:0,end));
+}
+
 export function reviewDriftSeconds(transportQuarter, mediaSeconds, bpm, startQuarter = 0, endQuarter = Infinity) {
   if (!(Number(bpm) > 0)) return Infinity;
   return Math.abs((Number(transportQuarter) || 0) - reviewQuarterAtSeconds(mediaSeconds, bpm, startQuarter, endQuarter)) * 60 / Number(bpm);
