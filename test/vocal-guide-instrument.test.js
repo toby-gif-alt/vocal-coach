@@ -359,3 +359,33 @@ test("long notes sustain until their requested duration and dispose releases res
   assert.ok(context.nodes.filter((node) => node.kind === "oscillator").every((node) => node.stopped.length > 0));
   assert.throws(() => guide.triggerAttackRelease({ midi: 60, duration: 1 }), /disposed/);
 });
+
+test("sample level calibration reaches playback while preserving pitch, timing, descriptor and Mixer gains", async () => {
+  const { tone, context } = createTone();
+  function buffer(amplitude) {
+    const data = Float32Array.from({ length: 48000 }, (_, i) => amplitude * Math.sin(2 * Math.PI * 440 * i / 48000));
+    return { duration: 1, length: data.length, sampleRate: 48000, numberOfChannels: 1, getChannelData: () => data };
+  }
+  const quiet = buffer(0.1);
+  const loud = buffer(0.2);
+  const guide = new VocalGuideInstrument({ tone, mode: "sampled", volume: 63, fetcher: null,
+    samples: { ooh: { C4: { buffer: quiet }, "F#4": { buffer: loud, gain: 0.8 } }, ah: { C4: { buffer: loud } } } });
+  await guide.ready;
+  const mixerGain = guide.masterGain.gain.value;
+  assert.equal(guide.sampleBuffers.get("ah")[0].levelGain, 1, "vowels have independent references");
+  for (const midi of [54, 66, 78]) {
+    const before = context.nodes.length;
+    guide.triggerAttackRelease({ midi, duration: 0.1, time: tone.now(), velocity: 0.6 });
+    const nodes = context.nodes.slice(before);
+    const source = nodes.find((node) => node.kind === "buffer-source");
+    // MIDI 54 selects the lower C4 anchor; the F#4 anchor is used at/above 66.
+    const anchorMidi = midi === 54 ? 60 : 66;
+    assert.equal(source.playbackRate.value, 2 ** ((midi - anchorMidi) / 12));
+    assert.deepEqual(source.started[0], [tone.now(), 0]);
+    const sampleGain = nodes.find((node) => node.kind === "gain" && node.connections[0] === nodes[0]);
+    assert.ok(Math.abs(sampleGain.gain.value - (midi === 54 ? 1 : 0.4)) < 0.00001);
+    assert.equal(source.buffer, midi === 54 ? quiet : loud);
+    assert.equal(guide.masterGain.gain.value, mixerGain);
+  }
+  guide.dispose();
+});

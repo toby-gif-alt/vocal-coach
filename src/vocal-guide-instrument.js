@@ -1,3 +1,5 @@
+import { sampleLevelGains } from "./sample-levels.js";
+
 const DEFAULT_VOWEL = "ooh";
 const DEFAULT_VOLUME = 70;
 const MASTER_HEADROOM = 0.36;
@@ -365,7 +367,11 @@ export class VocalGuideInstrument {
       if (!this.sampleBuffers.has(result.vowel)) this.sampleBuffers.set(result.vowel, []);
       this.sampleBuffers.get(result.vowel).push(result.anchor);
     }
-    for (const anchors of this.sampleBuffers.values()) anchors.sort((left, right) => left.midi - right.midi);
+    for (const anchors of this.sampleBuffers.values()) {
+      anchors.sort((left, right) => left.midi - right.midi);
+      const gains = sampleLevelGains(anchors.map((anchor) => anchor.buffer));
+      anchors.forEach((anchor, index) => { anchor.levelGain = gains[index]; });
+    }
     this.sampleState = this.sampleBuffers.size ? "ready" : "unavailable";
     this.sampleError = this.sampleBuffers.size ? null : lastError;
     return this.emitStatus();
@@ -536,7 +542,7 @@ export class VocalGuideInstrument {
     const envelope = this.context.createGain();
     setAudioParam(envelope.gain, MIN_GAIN);
     const sampleGain = this.context.createGain();
-    setAudioParam(sampleGain.gain, anchor.gain);
+    setAudioParam(sampleGain.gain, anchor.gain * anchor.levelGain);
     sampleGain.connect(envelope);
     envelope.connect(this.softener);
     const releaseEnd = this.scheduleEnvelope(envelope.gain, note, 0.025, 0.16);
