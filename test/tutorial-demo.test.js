@@ -42,9 +42,9 @@ test('WebAudio curve is scheduled at the same frequencies as visual frames and d
  const stop=singingTone(context,62,10,5.2,correctionCents),osc=nodes.find(n=>n.curve);
  assert.ok(Math.abs(osc.curve[0]-demoFrequency(62,-35))<.001);assert.ok(Math.abs(osc.curve.at(-1)-demoFrequency(62,2))<.001);assert.equal(osc.curveStart,10);stop();assert.ok(nodes.every(n=>n.disconnected));
 });
-test('Assessment defaults to its own 70% enabled guide; Assisted retains 92% and mode changes remain independent',()=>{
- const settings=guideSettings();assert.deepEqual(settings.assessment,{enabled:true,volume:70});assert.deepEqual(settings.assisted,{enabled:true,volume:92});settings.assessment.enabled=false;settings.assessment.volume=20;assert.equal(settings.assisted.volume,92);
- const restored=guideSettings(settings);assert.deepEqual(restored.assessment,{enabled:false,volume:20});assert.equal(guideSettings({},55).assessment.volume,70);assert.equal(guideSettings({},55).assisted.volume,55);
+test('both practice modes start from the same shared enabled 92% guide',()=>{
+ assert.deepEqual(guideSettings(),{enabled:true,volume:92});
+ const restored=guideSettings({guideSettings:{enabled:false,volume:20}});assert.deepEqual(restored,{enabled:false,volume:20});
 });
 test('immutable take retains actual guide enabled, sound and volume without transposing accompaniment',()=>{
  const take=createTakeMetadata({mode:'assessment',guideEnabled:true,guideVoice:'synthetic-ah',guideVolume:70,guideOctaveShift:-12,octaveShift:-12,partVolumes:{piano:55}});assert.equal(take.guideOctaveShift,-12);assert.equal(take.guideVolume,70);assert.equal(take.guideEnabled,true);assert.equal(take.guideVoice,'synthetic-ah');assert.ok(Object.isFrozen(take));assert.equal(take.partVolumes.piano,55);assert.equal(createTakeMetadata({guideEnabled:false,guideVolume:0}).guideVolume,0);
@@ -67,15 +67,15 @@ test('production demo adapter restores mixer, target, cursor and display without
  const ids=Object.fromEntries(['mixerPanel','tempoPanel','detectedNote','detectedFrequency','centsOutput','tuningPhase','repeatPractice','reviewCompanion','tempoSummary'].map(id=>[id,element(id)]));
  const tuningMeter=element(),performancePlayback=element(),tempoSlider=element(),tempoOutput=element(),bpmLabel=element(),guideVoice=element();
  const samples=[{midi:62}],previous=[{midi:60}],calibration={gate:.02},recording={take:createTakeMetadata({guideVolume:70})};
- const state={score:{parts:[]},guideByMode:guideSettings(),guideVoice:'human',guideVolume:92,partVolumes:{piano:65},partVoices:{piano:'human'},enabledParts:new Set(['piano']),cursorQuarter:8,lastFollowSystem:2,octaveShift:-12,samples,previousTakeTrace:previous,microphoneCalibration:calibration,recording};
+ const state={score:{parts:[]},guideSettings:guideSettings(),guideVoice:'human',partVolumes:{piano:65},partVoices:{piano:'human'},enabledParts:new Set(['piano']),cursorQuarter:8,lastFollowSystem:2,octaveShift:-12,samples,previousTakeTrace:previous,microphoneCalibration:calibration,recording};
  const calls=[],audio={tempoPercent:85,bpm:90,pausePitchSampling:()=>calls.push('pause'),setGuideVolume:v=>calls.push(['guide',v]),setGuideVoice(){},setPartVolume:(id,v)=>calls.push([id,v]),setPartEnabled(){},setPartVoice(){},setTempo(){}};
  const bridge={state,audio,els:{tuningMeter,performancePlayback,tempoSlider,tempoOutput,bpmLabel,guideVoice},$:s=>ids[s.slice(1)],renderMix(){},renderGuide(){},restoreCursor:q=>calls.push(['cursor',q]),restoreRange(){},layout(){},octaves:()=>({closeDemo(){}})};
  globalThis.document={querySelector:()=>element(),querySelectorAll:()=>[],body:element()};
  try{
   const ui=createDemoUI(bridge),snapshot=ui.capture();
-  state.guideByMode.assessment.enabled=false;state.partVolumes.piano=30;state.guideVoice='synthetic-ah';state.enabledParts.clear();tuningMeter.className='demo';ids.detectedNote.textContent='simulated';
+  state.guideSettings.enabled=false;state.partVolumes.piano=30;state.guideVoice='synthetic-ah';state.enabledParts.clear();tuningMeter.className='demo';ids.detectedNote.textContent='simulated';
   ui.restore(snapshot);ui.cleanup();
-  assert.equal(state.partVolumes.piano,65);assert.equal(state.guideByMode.assessment.enabled,true);assert.equal(state.guideVoice,'human');assert.deepEqual([...state.enabledParts],['piano']);assert.equal(state.octaveShift,-12);assert.equal(state.tutorialDemoActive,false);assert.equal(tuningMeter.className,'meter-original');assert.equal(ids.detectedNote.textContent,'detectedNote');assert.ok(calls.some(c=>Array.isArray(c)&&c[0]==='cursor'&&c[1]===8));
+  assert.equal(state.partVolumes.piano,65);assert.equal(state.guideSettings.enabled,true);assert.equal(state.guideVoice,'human');assert.deepEqual([...state.enabledParts],['piano']);assert.equal(state.octaveShift,-12);assert.equal(state.tutorialDemoActive,false);assert.equal(tuningMeter.className,'meter-original');assert.equal(ids.detectedNote.textContent,'detectedNote');assert.ok(calls.some(c=>Array.isArray(c)&&c[0]==='cursor'&&c[1]===8));
   assert.equal(state.samples,samples);assert.equal(state.previousTakeTrace,previous);assert.equal(state.microphoneCalibration,calibration);assert.equal(state.recording,recording);
  }finally{globalThis.document=previousDocument;}
 });

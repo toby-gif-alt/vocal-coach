@@ -300,7 +300,7 @@ export class AudioEngine {
   }
 
   get hasMicrophoneStream() {
-    return Boolean(this.stream && this.analyser && this.pitchDetector);
+    return Boolean(this.stream?.getAudioTracks().some(track=>track.readyState==='live') && this.analyser && this.pitchDetector);
   }
 
   async play({
@@ -656,6 +656,7 @@ export class AudioEngine {
   }
 
   async startMicrophone() {
+    if(this.stream&&!this.hasMicrophoneStream)this.stopMicrophone({notify:false});
     if (this.microphoneStartPromise) return this.microphoneStartPromise;
     if (this.stream) {
       this.onMicrophoneState("active", this.noiseGateSettings);
@@ -747,6 +748,9 @@ export class AudioEngine {
     this.pitchDetector = PitchDetector.forFloat32Array(this.analyser.fftSize);
     this.inputFrame = new Float32Array(this.analyser.fftSize);
     this.lastPitchSampleAt = 0;
+    stream.getAudioTracks().forEach(track=>track.addEventListener('ended',()=>{
+      if(this.stream===stream&&!this.hasMicrophoneStream){this.pausePitchSampling();this.onMicrophoneState('disconnected');}
+    }));
     })();
     this.microphoneStreamPromise = acquisition;
     try { await acquisition; }

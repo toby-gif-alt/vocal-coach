@@ -963,3 +963,11 @@ body.tutorial-demo-meter .score-stage { grid-template-columns:minmax(0,1fr) clam
 .octave-check { margin-top:14px; padding:12px; border-radius:10px; background:#edf4e9; }
 .octave-check p { margin:0 0 10px; font-size:13px; line-height:1.45; }
 .octave-check button { min-height:44px; border:0; border-radius:8px; padding:10px 14px; background:var(--forest); color:white; font-weight:750; cursor:pointer; }
+
+#enableMicrophoneButton { min-height:40px; padding:8px 12px; border:1px solid var(--line); border-radius:9px; background:white; color:var(--forest); font-size:13px; font-weight:750; cursor:pointer; margin-left:auto; flex-shrink:0; }
+.calibration-failure-reason { color:#8d3f24; font-size:14px; }
+@media(max-width:600px) {
+ .score-column > #statusCard:has(#enableMicrophoneButton:not([hidden])) { display:grid; grid-template-columns:24px minmax(0,1fr); gap:8px; }
+ .score-column > #statusCard:has(#enableMicrophoneButton:not([hidden])) p { grid-column:2; }
+ #enableMicrophoneButton { grid-column:2; justify-self:start; margin:0; }
+}

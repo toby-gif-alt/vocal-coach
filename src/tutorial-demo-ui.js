@@ -20,7 +20,7 @@ export function createDemoUI(bridge){
   blocked:()=>!state.score||state.finishingAssessment||state.transportPreparing||audio.isPlaying||audio.isPaused||audio.isCountingIn||state.microphonePreparing||bridge.calibration().active||bridge.octaves().active||state.reviewPlaying,
   capture(){
    state.tutorialDemoActive=true;audio.pausePitchSampling();
-   return {guideByMode:structuredClone(state.guideByMode),guideVoice:state.guideVoice,guideVolume:state.guideVolume,partVolumes:{...state.partVolumes},partVoices:{...state.partVoices},enabledParts:[...state.enabledParts],tempo:audio.tempoPercent,cursor:state.cursorQuarter,follow:state.lastFollowSystem,
+   return {guideSettings:{...state.guideSettings},guideVoice:state.guideVoice,partVolumes:{...state.partVolumes},partVoices:{...state.partVoices},enabledParts:[...state.enabledParts],tempo:audio.tempoPercent,cursor:state.cursorQuarter,follow:state.lastFollowSystem,
     panels:[$('#mixerPanel'),$('#tempoPanel')].map(e=>[e,e.open]),meter:{className:els.tuningMeter.className,style:els.tuningMeter.getAttribute('style'),label:els.tuningMeter.getAttribute('aria-label'),value:els.tuningMeter.getAttribute('aria-valuenow'),texts:textIds.map(id=>[$('#'+id),$('#'+id).textContent,$('#'+id).getAttribute('style')])},
     review:{hidden:$('#reviewCompanion').hidden,layout:document.querySelector('.studio-layout').classList.contains('has-review'),player:els.performancePlayback.hidden},repeat:$('#repeatPractice').checked};
   },
@@ -100,8 +100,8 @@ export function createDemoUI(bridge){
    }
   },
   restore(snapshot){
-   state.guideByMode=snapshot.guideByMode;state.guideVolume=snapshot.guideVolume;state.guideVoice=snapshot.guideVoice;state.partVolumes=snapshot.partVolumes;state.partVoices=snapshot.partVoices;state.enabledParts=new Set(snapshot.enabledParts);
-   audio.setGuideVolume(snapshot.guideVolume);audio.setGuideVoice(snapshot.guideVoice);
+   state.guideSettings=snapshot.guideSettings;state.guideVoice=snapshot.guideVoice;state.partVolumes=snapshot.partVolumes;state.partVoices=snapshot.partVoices;state.enabledParts=new Set(snapshot.enabledParts);
+   audio.setGuideVolume(snapshot.guideSettings.volume);audio.setGuideVoice(snapshot.guideVoice);
    for(const [id,volume]of Object.entries(snapshot.partVolumes)){audio.setPartVolume(id,volume);audio.setPartEnabled(id,state.enabledParts.has(id));}
    for(const [id,voice]of Object.entries(snapshot.partVoices))audio.setPartVoice(id,voice);
    audio.setTempo(snapshot.tempo);els.tempoSlider.value=String(snapshot.tempo);els.tempoOutput.textContent=`${snapshot.tempo}%`;$('#tempoSummary').textContent=els.tempoOutput.textContent;els.bpmLabel.textContent=`${Math.round(audio.bpm)} BPM`;
@@ -110,7 +110,7 @@ export function createDemoUI(bridge){
    const m=snapshot.meter;els.tuningMeter.className=m.className;for(const [attr,value]of [['style',m.style],['aria-label',m.label],['aria-valuenow',m.value]]){if(value===null)els.tuningMeter.removeAttribute(attr);else els.tuningMeter.setAttribute(attr,value);}for(const [e,text,style]of m.texts){e.textContent=text;if(style===null)e.removeAttribute('style');else e.setAttribute('style',style);}
    $('#repeatPractice').checked=snapshot.repeat;$('#reviewCompanion').hidden=snapshot.review.hidden;els.performancePlayback.hidden=snapshot.review.player;document.querySelector('.studio-layout').classList.toggle('has-review',snapshot.review.layout);
    bridge.restoreCursor(snapshot.cursor);state.lastFollowSystem=snapshot.follow;bridge.restoreRange();
-   state.tutorialDemoActive=false;if(audio.stream&&state.mode!=='listen')audio.startPitchSampling();
+   state.tutorialDemoActive=false;if(state.microphoneDecision==='ready'&&audio.hasMicrophoneStream)audio.startPitchSampling();
   },
   cleanup(){
    state.tutorialDemoActive=false;

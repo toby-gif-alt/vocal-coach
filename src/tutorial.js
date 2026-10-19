@@ -3,15 +3,15 @@ import {SINGING_LESSONS} from './tutorial-demo.js?v=32';
 const WELCOME_KEY = "vocal-coach:welcome:v2", STUDIO_KEY = "vocal-coach:studio-tour:v4";
 export const TOUR_STEPS = [
  ['#newScoreButton','Home','Return to your repertoire to choose another piece.'],
- ['#setupPanel > summary','Settings','Recheck your microphone, choose headphones or speakers, and set a count-in. Advanced holds maintenance and app information.'],
+ ['#setupPanel > summary','Settings','Recheck your microphone, choose headphones or speakers, and set a count-in. The singing octave moves your target and guide together.'],
  ['[data-view="vocal"]','Vocal focus','Read just the line you sing. This is the default when opening a piece.'],
  ['[data-view="full"]','Full score','See your part together with the other voices and instruments.'],
  ['#mixerPanel > summary','Mixer','Choose each accompaniment sound, turn parts on or off, and balance their levels. The vocal guide has its own controls.'],
  ['#studioTutorialButton','Tutorial','Replay this guide whenever you need it. Skip or Done remembers your choice.'],
  ['#editPracticeButton','Select bars to practice','Type bar numbers or drag across the score. Outside bars dim. Repeat is inside these options; Cancel clears the selection.'],
- ['.mode-switch','Choose your mode','Listen needs no microphone. Assisted adds a guide and pitch trace. Assessment adds coaching after your take.'],
+ ['.mode-switch','Choose your mode','Both modes play and record the same way. Assisted opens recording review; Assessment adds detailed coaching. You can skip microphone setup in either mode.'],
  ['#changePartButton','Your singing part','Click to choose another vocal line. If a take is running, you will be asked before it stops.'],
- ['#hearStartingNote','Hear starting note','In Listen, this plays your starting pitch immediately. Assisted and Assessment first help you check the microphone and choose a comfortable octave.'],
+ ['#hearStartingNote','Hear starting note','Hear your chosen first pitch, then sing it back. This works with or without a microphone.'],
  ['#changeOctaveButton','Change octave','Choose a different octave for your singing target and guide before a take. Your confirmed octave stays fixed while recording.'],
  ['#transportDock .dock-controls','Restart, Play and Stop','Click the score to place the green line, then press Play. Stop finishes a microphone take and opens review.'],
  ['#tempoPanel > summary','Tempo','Slow down or speed up this piece. Each newly opened piece starts at 100%.'],

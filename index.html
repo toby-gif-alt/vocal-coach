@@ -73,8 +73,7 @@
               <p class="setting-message guide-voice-status" id="guideVoiceStatus" role="status" aria-live="polite" hidden></p>
             </div>
 </div></details><button id="studioTutorialButton" type="button">▤ Tutorial</button><button id="editPracticeButton" type="button">Select bars to practice</button><div class="mode-switch" role="radiogroup" aria-label="Session mode">
-              <button type="button" class="active" data-mode="listen" role="radio" aria-checked="true"><strong>Listen</strong><small>No mic needed</small></button>
-              <button type="button" data-mode="assisted" role="radio" aria-checked="false"><strong>Assisted</strong><small>Guide + trace</small></button>
+              <button type="button" class="active" data-mode="assisted" role="radio" aria-checked="true"><strong>Assisted</strong><small>Record + review</small></button>
               <button type="button" data-mode="assessment" role="radio" aria-checked="false"><strong>Assessment</strong><small>Detailed coaching</small></button>
             </div></nav>
     </header>
@@ -143,7 +142,7 @@
         <header class="studio-titlebar"><h1 id="studioTitle">Untitled score</h1><p id="studioMeta" hidden></p><span id="selectedPartName" hidden></span></header>
 
         <section class="studio-layout">
-          <div class="score-column"><div class="status-card" id="statusCard" data-status="idle"><span class="status-icon">•</span><p><strong id="statusTitle">Ready when you are</strong><small id="statusCopy">Choose a mode, then press play.</small></p></div>
+          <div class="score-column"><div class="status-card" id="statusCard" data-status="idle"><span class="status-icon">•</span><p><strong id="statusTitle">Ready when you are</strong><small id="statusCopy">Choose a mode, then press play.</small></p><button id="enableMicrophoneButton" type="button">Enable microphone</button></div>
             <section class="transport panel legacy-transport" hidden aria-hidden="true">
               <div class="transport-buttons"><button class="play-button" id="playButton" type="button" aria-label="Play"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7V5Z" /></svg></button><button class="transport-button" id="pauseButton" type="button" aria-label="Pause" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6v12M16 6v12" /></svg></button><button class="transport-button" id="stopButton" type="button" aria-label="Stop" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v10H7z" /></svg></button></div>
               <div class="transport-progress"><span><strong id="transportState">Ready</strong><time id="currentTime">00:00</time><small>/</small><time id="totalTime">00:00</time></span><div class="progress-track" aria-hidden="true"><i id="progressFill"></i></div></div>
@@ -275,17 +274,17 @@
 <dialog id="changePartDialog" class="dialog" aria-labelledby="changePartTitle"><h2 id="changePartTitle">Change singing part?</h2><p>This will stop and finish your current take before changing parts. Its recording and trace will be cleared when you choose a new part.</p><form method="dialog"><button value="cancel">Keep singing</button><button value="change">Change part</button></form></dialog>
     <dialog id="startingNoteDialog" class="starting-note-dialog" aria-labelledby="startingNoteTitle"><button id="closeStartingNote" class="octave-close" type="button" aria-label="Close starting note selector">×</button><h2 id="startingNoteTitle">Find your starting note</h2><p>Listen to your starting note, then sing it at a comfortable pitch. Choose the octave that suits your voice.</p><button id="previewStartingNote" class="octave-hear" type="button">♬ Hear starting note</button><p id="octaveLiveLabel" aria-live="polite">Listening…</p><div class="octave-stack"><div id="octaveCards"></div><div id="octavePitchMarker" aria-hidden="true" hidden><span></span></div></div><p id="octaveSelectedCopy" role="status"></p><button id="continuePractice" type="button" disabled>Continue to practice</button></dialog>
     <dialog id="calibrationDialog" class="calibration-dialog" aria-labelledby="calibrationTitle">
-      <h2 id="calibrationTitle">Let's check your microphone</h2><p id="calibrationCopy" aria-live="polite"></p>
+      <h2 id="calibrationTitle">Let's check your microphone</h2><p id="calibrationCopy" aria-live="polite"></p><p id="calibrationFailureReason" class="calibration-failure-reason" role="status" hidden></p>
       <ul id="calibrationIntro"><li>Find a reasonably quiet place.</li><li>Position your device at a comfortable distance.</li><li>Use headphones where possible.</li><li>You can sing any comfortable note.</li></ul>
       <progress id="calibrationProgress" aria-label="Microphone calibration progress" hidden></progress><meter id="calibrationLevel" min="0" max="1" value="0" aria-label="Live microphone input level" hidden></meter>
-      <div class="calibration-actions"><button id="startCalibrationButton" type="button">Start microphone check</button><button id="cancelCalibrationButton" type="button">Cancel / Use Listen mode</button><button id="finishCalibrationButton" type="button" hidden>Continue to Vocal Coach</button></div>
+      <div class="calibration-actions"><button id="startCalibrationButton" type="button">Start microphone check</button><button id="cancelCalibrationButton" type="button">Continue without microphone</button><button id="finishCalibrationButton" type="button" hidden>Continue to Vocal Coach</button></div>
     </dialog>
 
     <dialog id="microphoneReminderDialog" class="microphone-reminder" aria-labelledby="microphoneReminderTitle">
       <h2 id="microphoneReminderTitle">Check your microphone</h2>
       <p id="microphoneReminderCopy">A quick room-and-voice check is recommended each time you reopen Vocal Coach, especially if your room, microphone or distance has changed.</p>
-      <p>You can keep practising in Listen without a microphone.</p>
-      <div><button id="calibrateMicrophoneButton" type="button">Calibrate microphone</button><button id="skipMicrophoneButton" type="button">Continue without mic</button></div>
+      <p>Both modes can play your music and vocal guide without a microphone.</p>
+      <div><button id="calibrateMicrophoneButton" type="button">Calibrate microphone</button><button id="skipMicrophoneButton" type="button">Continue without microphone</button></div>
     </dialog>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <noscript><p class="noscript">Vocal Coach needs JavaScript to read MusicXML and analyse pitch.</p></noscript>

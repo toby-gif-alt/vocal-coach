@@ -31,7 +31,6 @@ test("playback modes keep guide and microphone behaviour unambiguous", () => {
   assert.deepEqual(
     Object.fromEntries(Object.entries(SESSION_MODES).map(([key, value]) => [key, { guide: value.guide, microphone: value.microphone }])),
     {
-      listen: { guide: true, microphone: false },
       assisted: { guide: true, microphone: true },
       assessment: { guide: true, microphone: true },
     },
@@ -100,7 +99,7 @@ test("GitHub Pages entry point references only present local assets", async () =
   assert.match(html, /<link rel="stylesheet" href="\.\/styles\.css(?:\?v=\d+)?" \/>/);
   assert.match(html, /id="tempoSlider"[^>]+max="150"/);
   for (const level of ["low", "normal", "high"]) assert.match(html, new RegExp(`data-sensitivity="${level}"`));
-  for (const mode of ["listen", "assisted", "assessment"]) assert.match(html, new RegExp(`data-mode="${mode}"`));
+  for (const mode of ["assisted", "assessment"]) assert.match(html, new RegExp(`data-mode="${mode}"`));
   assert.match(html, /id="guideVoice"/);
   assert.match(html, /<option value="human" selected>Human voice<\/option>/);
   assert.match(html, /<option value="synthetic-ah">Synthetic Ah<\/option>/);

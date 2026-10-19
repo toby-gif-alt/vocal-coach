@@ -26,7 +26,7 @@ test('clicking during playback stops before positioning and does not restart',as
 test('Hear starting note plays the selected singing pitch without opening a dialog',async()=>{
   const fnSource=source.slice(source.indexOf('async function hearStartingNote()'),source.indexOf('\nfunction updateVolume('));
   const pitches=[],button={disabled:false};
-  const deps={audio:{previewPitch:async midi=>pitches.push(midi)},state:{mode:'listen',startingConfirmedSession:true},MODE_CONFIG:{listen:{microphone:false}},els:{hearStartingNote:button},
+  const deps={audio:{previewPitch:async midi=>pitches.push(midi)},state:{mode:'assisted',microphoneDecision:'skipped',startingConfirmedSession:true},MODE_CONFIG:{listen:{microphone:false}},els:{hearStartingNote:button},
     startingNoteForRange:()=>({midi:70}),effectiveOctaveShift:()=>-12,toast:()=>{},openStartingNote:()=>{throw Error('Preview should play directly');}};
   const preview=new Function(...Object.keys(deps),fnSource+'; return hearStartingNote;')(...Object.values(deps));
   await preview();assert.deepEqual(pitches,[58]);assert.equal(Boolean(button.disabled),false);
