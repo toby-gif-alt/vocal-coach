@@ -12,7 +12,7 @@ function setupClick(playing=false) {
     setCursorToQuarter:q=>calls.push(['cursor',q]),updatePosition:q=>calls.push(['position',q]),renderPracticeRangeControls:()=>{},
     setPlaybackState:s=>calls.push(['state',s]),setStatus:()=>{},play:()=>{throw Error('Click must never start playback');}};
   new Function(...Object.keys(deps),pointerSource+'; wirePracticePointers();')(...Object.values(deps));
-  return {click:handlers.click,state,calls};
+  return {click:handlers.click,state,calls,deps};
 }
 test('clicking the score positions the green line and waits for Play',async()=>{
   const {click,state,calls}=setupClick();await click({clientX:50,clientY:50});
@@ -30,4 +30,23 @@ test('Hear starting note plays the selected singing pitch without opening a dial
     startingNoteForRange:()=>({midi:70}),effectiveOctaveShift:()=>-12,toast:()=>{},openStartingNote:()=>{throw Error('Preview should play directly');}};
   const preview=new Function(...Object.keys(deps),'let startingCheckToken=0,startingCheckTimer=null;function endStartingCheck(){} function clearOctaveSuggestion(){} function usingMicrophone(){return false;} state.octaveMismatchDetector={clear(){}};'+fnSource+'; return hearStartingNote;')(...Object.values(deps));
   await preview();assert.deepEqual(pitches,[58]);assert.equal(Boolean(button.disabled),false);
+});
+
+test('score clicks while feedback is open seek review without changing practice range or starting playback',async()=>{
+ const h=setupClick();h.state.recording={take:{}};
+ // Build the pointer handler with a visible review and a review seek spy.
+ const calls=[],deps={...h.deps,els:{...h.deps.els,resultsPanel:{open:true},performancePlayback:{hidden:false}},selectReviewScorePosition:q=>calls.push(q)};
+ const handlers={};deps.els.scoreContainer={...h.deps.els.scoreContainer,addEventListener:(name,fn)=>handlers[name]=fn};
+ new Function(...Object.keys(deps),pointerSource+';wirePracticePointers();')(...Object.values(deps));
+ await handlers.click({clientX:50,clientY:50});assert.deepEqual(calls,[13]);
+ assert.equal(h.state.playbackStartQuarter,undefined);assert.equal(h.state.scoreSeeking,false);
+});
+
+test('main Restart clears a clicked start and practice section before resetting the transport',async()=>{
+ const state={playbackGeneration:2,playbackStartQuarter:13,sectionStartMeasure:3,sectionEndMeasure:6,startMeasure:4,samples:[1],rawSamples:[1],acceptedSamples:[1],visualTraceSamples:[1]};
+ const calls=[],repeat={checked:true};
+ const deps={state,$:()=>repeat,selectedPart:()=>({}),practiceLimits:()=>({firstMeasure:1}),currentPracticeRange:()=>({startQuarter:state.playbackStartQuarter??0,startMeasure:state.startMeasure}),audio:{hasActivePerformanceRecording:false,stop:settings=>calls.push(settings.resetQuarter),discardPerformanceRecording(){}},closeTakeFeedback(){},closeFloatingReview(){},renderPracticeRangeControls(){},usingMicrophone:()=>false,unlockSessionOctave(){},cancelAnimationFrame(){},archiveCompletedTrace(){},resetPitchDiagnostics(){},els:{sampleCount:{},resultsPanel:{}},clearPerformancePlayback(){},renderTakeTraces(){},setPlaybackState(){},setCursorToQuarter:q=>calls.push(q),updatePosition(){},setStatus(){}};
+ const fn=source.slice(source.indexOf('async function restartTransport()'),source.indexOf('\nfunction setTransportBusy('));
+ await new Function(...Object.keys(deps),fn+';return restartTransport();')(...Object.values(deps));
+ assert.equal(state.startMeasure,1);assert.equal(state.playbackStartQuarter,null);assert.equal(state.sectionStartMeasure,null);assert.equal(state.sectionEndMeasure,null);assert.equal(repeat.checked,false);assert.deepEqual(calls,[0,0]);
 });

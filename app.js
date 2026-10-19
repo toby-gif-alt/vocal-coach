@@ -52,7 +52,7 @@ import {
   sampleWithinRange,
   validateSection,
 } from "./src/practice-range.js?v=34";
-import { createTakeMetadata, reviewLayers, reviewQuarterAtSeconds, reviewVolumes } from "./src/review-playback.js?v=34";
+import { createTakeMetadata, reviewLayers, reviewQuarterAtSeconds, reviewSecondsAtQuarter, reviewVolumes } from "./src/review-playback.js?v=34";
 import {coachingReviewSequence,reviewChunkSeconds} from "./src/coaching-review.js";
 import { classifyPlaybackPart } from "./src/playback-routing.js?v=34";
 import {
@@ -173,6 +173,7 @@ const state = {
   coachingSteps: [],
   coachingStep: 0,
   reviewChunk: null,
+  reviewScoreSelected: false,
   playbackGeneration: 0,
   rangeSelectionMode: false,
   practiceDragging: false,
@@ -523,7 +524,7 @@ function renderTakeTraces() {
   });
   els.previousTakeControl.hidden = state.previousTakeTrace.length === 0;
   els.showPreviousTake.checked = state.showPreviousTake;
-  if(els.resultsPanel.open)markCoachingNote(state.coachingSteps[state.coachingStep]);
+  if(els.resultsPanel.open&&!state.reviewScoreSelected)markCoachingNote(state.coachingSteps[state.coachingStep]);
 }
 
 function archiveCompletedTrace() {
@@ -696,7 +697,7 @@ function wirePracticePointers() {
       if (measure !== null) selectScoreMeasure(measure);
       return;
     }
-    if (state.practiceDraft || state.rendering || state.microphonePreparing || state.scoreSeeking
+    if (state.tutorialDemoActive || state.practiceDraft || state.rendering || state.microphonePreparing || state.scoreSeeking
       || state.finishingAssessment || startingNoteDialog.active || calibrationDialog.active) return;
     let position = null;
     for (const [pageIndex,page] of [...els.scoreContainer.querySelectorAll('svg[id^="osmdSvgPage"]')].entries()) {
@@ -709,6 +710,9 @@ function wirePracticePointers() {
     state.scoreSeeking = true;
     try {
       if (audio.isPlaying || audio.isPaused || audio.isCountingIn) await stop();
+      if(state.recording&&(els.resultsPanel.open||!els.performancePlayback.hidden)){
+        selectReviewScorePosition(position.quarter);return;
+      }
       const range = currentPracticeRange();
       if (position.measure < range.sectionStartMeasure || position.measure > range.sectionEndMeasure) {
         state.sectionStartMeasure = null; state.sectionEndMeasure = null;
@@ -851,7 +855,7 @@ function rebuildScoreTrace() {
     renderTakeTraces();
     renderPracticeRangeOverlay();
     els.scoreContainer.dataset.mappedNotes = String(state.scoreGeometry.size);
-    if(els.resultsPanel.open)markCoachingNote(state.coachingSteps[state.coachingStep]);
+    if(els.resultsPanel.open&&!state.reviewScoreSelected)markCoachingNote(state.coachingSteps[state.coachingStep]);
   } catch (error) {
     state.scoreGeometry = new Map();
     state.measureGeometry = [];
@@ -865,7 +869,8 @@ function scheduleScoreLayout() {
     if(!state.osmd||!state.score||els.studioView.hidden)return;
     if(state.practiceDragging||state.rendering){scheduleScoreLayout();return;}
     await renderScore();
-    if(els.resultsPanel.open){const item=state.coachingSteps[state.coachingStep];markCoachingNote(item,{scroll:true});if(item)setCursorToQuarter(item.targetQuarter??item.chunk.startQuarter);}
+    if(state.reviewScoreSelected&&state.recording&&(els.resultsPanel.open||!els.performancePlayback.hidden)){updateReviewScorePosition(reviewQuarterAtSeconds(els.performanceAudio.currentTime,state.recording.take.bpm,state.recording.take.startQuarter,state.recording.take.endQuarter));}
+    else if(els.resultsPanel.open){const item=state.coachingSteps[state.coachingStep];markCoachingNote(item,{scroll:true});if(item)setCursorToQuarter(item.targetQuarter??item.chunk.startQuarter);}
     else if(state.recording&&!els.performancePlayback.hidden){updateReviewScorePosition(reviewQuarterAtSeconds(els.performanceAudio.currentTime,state.recording.take.bpm,state.recording.take.startQuarter,state.recording.take.endQuarter));}
     else if(audio.isPlaying||audio.isPaused||audio.isCountingIn)setCursorToQuarter(audio.currentQuarter);
   },100);
@@ -873,7 +878,7 @@ function scheduleScoreLayout() {
 
 function scheduleScoreTraceRefresh() {
   clearTimeout(state.overlayResizeTimer);
-  state.overlayResizeTimer = setTimeout(()=>{if(state.practiceDragging){scheduleScoreTraceRefresh();return;}rebuildScoreTrace();if(els.resultsPanel.open)markCoachingNote(state.coachingSteps[state.coachingStep],{scroll:true});}, 320);
+  state.overlayResizeTimer = setTimeout(()=>{if(state.practiceDragging){scheduleScoreTraceRefresh();return;}rebuildScoreTrace();if(els.resultsPanel.open&&!state.reviewScoreSelected)markCoachingNote(state.coachingSteps[state.coachingStep],{scroll:true});}, 320);
 }
 
 function resetCursor() {
@@ -1316,6 +1321,7 @@ function setMode(mode) {
 async function play({ skipCountIn = false } = {}) {
   if(state.tutorialDemoActive||startingNoteDialog.active||calibrationDialog.active||state.transportPreparing)return;
   if (!state.score || state.rendering || state.microphonePreparing) return;
+  if(state.recording&&(els.resultsPanel.open||!els.performancePlayback.hidden)){startReviewPlayback();return;}
   cancelScoreSelection();
   closeTakeFeedback({listen:false});closeFloatingReview();
   $("#setupPanel").open = false; $("#mixerPanel").open = false;
@@ -1437,7 +1443,12 @@ async function stop({ keepSamples = true, completeAssessment = true, automatic =
 }
 
 async function restartTransport() {
+  closeTakeFeedback({listen:false});closeFloatingReview();
+  state.playbackGeneration+=1;
+  state.playbackStartQuarter=null;state.sectionStartMeasure=null;state.sectionEndMeasure=null;
+  state.startMeasure=practiceLimits(selectedPart()).firstMeasure;$('#repeatPractice').checked=false;
   const range = currentPracticeRange();
+  renderPracticeRangeControls();
   if (audio.hasActivePerformanceRecording) await audio.finishPerformanceRecording();
   audio.stop({ reset: true, resetQuarter: range.startQuarter, microphone: !usingMicrophone() });
   unlockSessionOctave();
@@ -1824,6 +1835,7 @@ function closeFloatingReview({restoreFocus=false}={}) {
   if(restoreFocus)$("#listenBackButton").focus({preventScroll:true});
 }
 function returnReviewPlayer() {
+  state.reviewScoreSelected=false;
   stopPerformanceReview({resetCursorPosition:false});
   state.reviewChunk=null;
   els.scoreContainer?.querySelectorAll(".coaching-current").forEach(marker=>marker.classList.remove("coaching-current"));
@@ -1869,6 +1881,7 @@ function markCoachingNote(item,{scroll=false}={}) {
   }
 }
 function renderCoachingStep() {
+  state.reviewScoreSelected=false;
   const item=state.coachingSteps[state.coachingStep];
   stopPerformanceReview({resetCursorPosition:false});
   els.resultsPanel.scrollTop=0;
@@ -2058,6 +2071,7 @@ async function finishAssessment() {
 }
 
 function clearPerformancePlayback() {
+  state.reviewScoreSelected=false;
   stopPerformanceReview({ resetCursorPosition: false });
   state.recording = null;
   state.coachingSteps=[];state.reviewChunk=null;
@@ -2231,17 +2245,23 @@ function seekPerformanceReview() {
   updatePerformancePosition();
 }
 
+function selectReviewScorePosition(quarter) {
+  if(!state.recording)return;
+  stopPerformanceReview({resetCursorPosition:false});
+  state.reviewChunk=null;state.reviewScoreSelected=true;
+  markCoachingNote(null);
+  $('#performancePlaybackHeading').textContent='Listen to your take';
+  const take=state.recording.take;
+  els.performanceAudio.currentTime=reviewSecondsAtQuarter(quarter,take,state.recording.durationSeconds);
+  updateReviewScorePosition(reviewQuarterAtSeconds(els.performanceAudio.currentTime,take.bpm,take.startQuarter,take.endQuarter));
+  updatePerformancePosition();updatePerformancePlaybackState();
+  setStatus('idle','Ready to listen','Press Play to hear your take from the green line. Playback stays within your recorded take.');
+}
+
 function restartPerformanceReview() {
   if (!state.recording) return;
-  const wasPlaying = !els.performanceAudio.paused && !els.performanceAudio.ended;
-  els.performanceAudio.currentTime = state.reviewChunk?.startSeconds??0;
-  updateReviewScorePosition(state.reviewChunk?.startQuarter??state.recording.take.startQuarter);
-  updatePerformancePosition();
-  if (wasPlaying) {
-    void audio.resynchroniseReview(els.performanceAudio.currentTime, reviewPlaybackTake(), currentReviewLayers(), currentReviewVolumes());
-  } else {
-    els.performanceAudio.play().catch(() => toast("The captured audio could not play."));
-  }
+  selectReviewScorePosition(state.recording.take.startQuarter);
+  startReviewPlayback();
 }
 
 function updateReviewLayers() {
@@ -2257,6 +2277,11 @@ function updatePerformancePlaybackState() {
   els.performancePlay.disabled = playing || !state.recording;
   els.performancePause.disabled = !playing;
   $("#performanceStop").disabled = !state.recording;
+  if(els.resultsPanel.open||!els.performancePlayback.hidden){
+    els.dockPlayPauseButton.textContent=playing?'⏸ Pause':'▶ Play';
+    els.dockPlayPauseButton.setAttribute('aria-label',playing?'Pause':'Play');
+    els.dockStopButton.disabled=!state.recording;
+  }
 }
 
 function updatePerformancePosition() {
@@ -2579,8 +2604,8 @@ function wireEvents() {
   });
   els.playButton.addEventListener("click", play); els.pauseButton.addEventListener("click", pause); els.stopButton.addEventListener("click", () => { void stop(); });
   els.dockRestartButton.addEventListener("click", () => { void restartTransport(); });
-  els.dockPlayPauseButton.addEventListener("click", () => { if (audio.isPlaying) pause(); else void play(); });
-  els.dockStopButton.addEventListener("click", () => { void stop(); });
+  els.dockPlayPauseButton.addEventListener("click", () => { if(state.reviewPlaying)els.performanceAudio.pause();else if (audio.isPlaying) pause(); else void play(); });
+  els.dockStopButton.addEventListener("click", () => { if(state.recording&&(els.resultsPanel.open||!els.performancePlayback.hidden))stopReviewPlayback();else void stop(); });
   els.followScoreButton.addEventListener("click", toggleScoreFollow);
   els.performancePlay.addEventListener("click", startReviewPlayback);
   $("#performanceStop").addEventListener("click",stopReviewPlayback);
