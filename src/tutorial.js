@@ -62,7 +62,7 @@ export function createTutorial({onStudioReady=()=>{},demos}={}){
  function render(){
   const token=++run;demos.stop();audioBlocked=false;anchor=null;
   const lesson=TUTORIAL_LESSONS[index];
-  card.classList.toggle('tutorial-centered',lesson.id==='phrase');
+  card.classList.toggle('tutorial-centered',['phrase','tempo'].includes(lesson.id));
   target?.classList.remove('tutorial-target');target=null;
   card.hidden=false;document.body.classList.toggle('tutorial-studio',kind==='studio');
   find('#tutorialTitle').textContent=lesson.title;
