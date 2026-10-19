@@ -62,7 +62,7 @@ test('feedback embeds a silent chunk player, then returns it to full review with
  const recording={url:'blob:take',take:{startQuarter:4,endQuarter:8,bpm:60}},state={recording,coachingSteps:[]},calls=[];
  const panel={hidden:true,open:false,show(){this.open=true;calls.push('feedback');},close(){this.open=false;}},player={hidden:true},nodes={};
  const node=id=>nodes[id]??= {focus(){},append(p){p.location=id==='#reviewCompanion'?'companion':'feedback';}};
- const fn=functions('function closeFloatingReview(', 'async function changeSingingPart()', {state,syncReviewLayout(){},usingMicrophone:()=>false,MODE_CONFIG:{},audio:{},els:{resultsPanel:panel,performancePlayback:player,performanceAudio:{currentTime:0},coachObservations:{replaceChildren(){}}},
+ const fn=functions('function closeFloatingReview(', 'function changeSingingPart()', {state,syncReviewLayout(){},usingMicrophone:()=>false,MODE_CONFIG:{},audio:{},els:{resultsPanel:panel,performancePlayback:player,performanceAudio:{currentTime:0},coachObservations:{replaceChildren(){}}},
   $:node,document:{body:{append:p=>{p.location='body';}}},updatePerformancePosition(){},updatePerformancePlaybackState(){},stopPerformanceReview:()=>calls.push('stop review')});
  fn.showTakeFeedback();assert.equal(calls[0],'feedback');assert.equal(player.location,'feedback');assert.equal(player.hidden,false);
  fn.closeTakeFeedback();assert.equal(panel.open,false);assert.equal(player.location,'companion');assert.equal(player.hidden,false);assert.equal(state.recording,recording);
@@ -70,23 +70,23 @@ test('feedback embeds a silent chunk player, then returns it to full review with
  fn.openFloatingReview();assert.equal(player.hidden,false);assert.equal(state.recording,recording);
 });
 test('Listen back cannot open while a live take is playing',()=>{
- const player={hidden:true};const fn=functions('function closeFloatingReview(', 'async function changeSingingPart()', {state:{recording:{}},MODE_CONFIG:{},audio:{isPlaying:true},els:{performancePlayback:player},$:()=>({focus(){}}),stopPerformanceReview(){}});
+ const player={hidden:true};const fn=functions('function closeFloatingReview(', 'function changeSingingPart()', {state:{recording:{}},MODE_CONFIG:{},audio:{isPlaying:true},els:{performancePlayback:player},$:()=>({focus(){}}),stopPerformanceReview(){}});
  fn.openFloatingReview();assert.equal(player.hidden,true);
 });
 test('Hear previews immediately even before octave confirmation and never opens a selector',async()=>{
- const fnSource=source.slice(source.indexOf('async function hearStartingNote()'),source.indexOf('\nfunction updateVolume('));
+ const fnSource=source.slice(source.indexOf('async function hearStartingNote()'),source.indexOf('\nfunction renderGuideSettings('));
  const calls=[],state={mode:'assisted',microphoneDecision:'skipped',startingConfirmedSession:false},audio={previewPitch:async midi=>calls.push(midi)};
  const deps={state,audio,MODE_CONFIG:{listen:{microphone:false}},calibrationDialog:{},els:{hearStartingNote:{disabled:false}},
   openStartingNote:async()=>{calls.push('selector');return true;},startingNoteForRange:()=>({midi:70}),effectiveOctaveShift:()=>-24,toast(){}};
- const hear=new Function(...Object.keys(deps),fnSource+'; return hearStartingNote;')(...Object.values(deps));
+ const hear=new Function(...Object.keys(deps),'let startingCheckToken=0,startingCheckTimer=null;function endStartingCheck(){} function clearOctaveSuggestion(){} function usingMicrophone(){return false;} state.octaveMismatchDetector={clear(){}};'+fnSource+'; return hearStartingNote;')(...Object.values(deps));
  await hear();await hear();assert.deepEqual(calls,[46,46]);assert.equal(state.startingConfirmedSession,false);
  state.startingConfirmedSession=false;await hear();assert.equal(calls.at(-1),46);
 });
 test('starting-note preview in either practice mode never requests a microphone',async()=>{
- const fnSource=source.slice(source.indexOf('async function hearStartingNote()'),source.indexOf('\nfunction updateVolume('));
+ const fnSource=source.slice(source.indexOf('async function hearStartingNote()'),source.indexOf('\nfunction renderGuideSettings('));
  for(const mode of ['assisted','assessment']){
   const pitches=[],deps={state:{mode,microphoneDecision:'skipped'},audio:{previewPitch:async midi=>pitches.push(midi)},els:{hearStartingNote:{}},startingNoteForRange:()=>({midi:70}),effectiveOctaveShift:()=>-24,toast(){}};
-  const hear=new Function(...Object.keys(deps),fnSource+';return hearStartingNote;')(...Object.values(deps));await hear();assert.deepEqual(pitches,[46]);
+  const hear=new Function(...Object.keys(deps),'let startingCheckToken=0,startingCheckTimer=null;function endStartingCheck(){} function clearOctaveSuggestion(){} function usingMicrophone(){return false;} state.octaveMismatchDetector={clear(){}};'+fnSource+';return hearStartingNote;')(...Object.values(deps));await hear();assert.deepEqual(pitches,[46]);
  }
 });
 test('standalone migration preserves old hidden included scores, while normal browser ignores them',async()=>{

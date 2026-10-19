@@ -971,3 +971,118 @@ body.tutorial-demo-meter .score-stage { grid-template-columns:minmax(0,1fr) clam
  .score-column > #statusCard:has(#enableMicrophoneButton:not([hidden])) p { grid-column:2; }
  #enableMicrophoneButton { grid-column:2; justify-self:start; margin:0; }
 }
+
+/* Tutorial and preparation controls share the compact studio language. */
+.singing-part-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.singing-part-row h2 { margin:0; font-size:clamp(14px,1.3vw,18px); }
+#changePartButton,.score-practice-controls #changeOctaveButton { min-height:44px; padding:9px 12px; border:1px solid var(--line); border-radius:10px; background:var(--cream); color:var(--forest); font-family:inherit; font-size:13px; font-weight:700; cursor:pointer; }
+#changePartButton:hover,#changeOctaveButton:hover { background:#e8f0e4; }
+#changePartButton:focus-visible,#changeOctaveButton:focus-visible { outline:3px solid #b4933b; outline-offset:3px; }
+.studio-part-choices { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:10px; margin:20px 0; }
+.studio-part-choices button { border:1px solid var(--line); border-radius:10px; padding:16px; background:var(--cream); font-weight:700; cursor:pointer; }
+.studio-part-choices button[aria-pressed="true"] { border:2px solid var(--forest); background:#e2eddc; }
+.octave-confirm-dialog { max-width:500px; border:1px solid #b7c8ae; border-radius:18px; padding:24px; box-shadow:0 20px 80px #17382f40; }
+.octave-confirm-dialog h2 { font-size:24px; }.octave-confirm-dialog p { line-height:1.65; }
+.octave-confirm-actions { display:flex; flex-wrap:wrap; gap:10px; }.octave-confirm-actions button { padding:12px; border:1px solid var(--line); border-radius:10px; cursor:pointer; }
+#acceptOctaveSuggestion { background:var(--forest); color:white; }
+.starting-check { outline:3px solid #b4933b; outline-offset:4px; }
+#statusCard.compact-status { display:flex; align-items:center; gap:8px; padding:0; margin:0 0 6px; background:none; border:0; box-shadow:none; font-size:12px; }
+#statusCard.compact-status:not(.has-message) > p,#statusCard.compact-status:not(.has-message) > .status-icon { display:none; }
+#statusCard.compact-status p { margin:0; }#statusCard.compact-status small { display:inline; margin-left:8px; }
+#statusCard.compact-status:has(#enableMicrophoneButton[hidden]):not(.has-message) { display:none; }
+#statusCard.compact-status button { padding:7px 10px; min-height:36px; border:1px solid var(--line); border-radius:8px; background:var(--cream); }
+.tutorial-pointer { position:fixed; z-index:195; pointer-events:none; font-size:28px; filter:drop-shadow(0 2px 2px #fff); transform:translate(-20%,0); animation:tutorial-press .8s ease-in-out infinite; }
+@keyframes tutorial-press { 50% { transform:translate(-20%,-5px) scale(.92); } }
+.tutorial-review-example { position:relative; padding:8px; background:#f8faf6; border:2px solid #b4933b; border-radius:12px; max-height:70dvh; overflow:auto; }
+.tutorial-review-example .feedback-dialog { position:static!important; width:100%!important; margin:0; padding:12px; box-shadow:none; border:0; max-height:none; }
+.tutorial-review-example .performance-playback { position:static; width:100%; margin:0; padding:12px; box-shadow:none; }
+.demo-review-label { font-size:12px; color:#775714; font-weight:800; padding:6px; }
+.tutorial-review-example .panel-close { display:none; }
+.tutorial-review-example .coach-card { display:block; padding:12px; }
+.tutorial-studio .tutorial-card { z-index:200; max-height:42dvh; width:min(330px,calc(100vw - 16px)); }
+.tutorial-card:focus-within { outline:1px solid #bbc9b5; }
+@media(max-width:700px) {
+ .tutorial-studio .tutorial-card { position:fixed; left:8px!important; top:auto!important; bottom:8px; width:calc(100vw - 16px); max-height:34dvh; }
+ .tutorial-studio .score-viewport { max-height:32dvh; }
+ .tutorial-studio .review-companion { max-height:32dvh; overflow:auto; margin-bottom:34dvh; }
+ .tutorial-review-example { max-height:31dvh; }
+ .tutorial-demo-mixer #mixerPanel .mixer-grid { max-height:36dvh!important; }
+ #statusCard.compact-status small { display:none; }
+}
+@media(prefers-reduced-motion:reduce){.tutorial-pointer{animation:none;}.tutorial-studio *{scroll-behavior:auto!important;}}
+.tutorial-octaves #closeStartingNote,.tutorial-octaves #previewStartingNote,.tutorial-octaves #continuePractice,.tutorial-octaves .octave-preview { display:none; }
+.singing-part-row { flex-wrap:nowrap; flex-shrink:0; }
+#changePartButton { white-space:nowrap; }
+.score-panel-head { grid-template-columns:max-content minmax(0,1fr); }
+.singing-part-row h2 { white-space:nowrap; }
+.part-picker,#changePartDialog { width:min(460px,calc(100vw - 32px)); padding:24px; border-radius:18px; }
+.part-picker h2,#changePartDialog h2 { padding:0; margin:0; font-family:inherit; font-size:clamp(22px,5vw,28px); line-height:1.2; letter-spacing:-.025em; font-weight:750; }
+.part-picker > p,#changePartDialog > p { margin:10px 0 20px; font-size:15px; line-height:1.5; color:var(--ink-soft); }
+.part-picker .studio-part-choices { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin:0 0 20px; }
+.part-picker .studio-part-choices button { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:62px; padding:14px; font-size:16px; line-height:1.3; text-align:left; overflow-wrap:anywhere; }
+.part-picker .studio-part-choices small { font-size:11px; font-weight:650; color:var(--forest); }
+.part-picker form,#changePartDialog form { display:flex; justify-content:flex-end; gap:10px; padding:0; }
+.part-picker form button,#changePartDialog form button { min-height:42px; padding:9px 18px; border:1px solid var(--line); border-radius:9px; background:white; font:inherit; cursor:pointer; }
+@media(max-width:380px){.part-picker{padding:20px;}.part-picker .studio-part-choices button{font-size:14px;padding:12px;}.part-picker .studio-part-choices small{font-size:10px;}}
+/* A compact teaching layout leaves notation, the active example and navigation
+   visible together on phones; OSMD still reflows at the actual column width. */
+@media(max-width:700px){
+ body.tutorial-studio .topbar { padding-block:4px; }
+ body.tutorial-studio .studio-header-controls { gap:4px; }
+ body.tutorial-studio .studio-header-controls > button,body.tutorial-studio .studio-header-controls summary,body.tutorial-studio .view-switch button,body.tutorial-studio .mode-switch button { min-height:30px; padding:4px 6px; font-size:10px; }
+ body.tutorial-studio .studio-titlebar { margin-block:5px; }
+ body.tutorial-studio .studio-titlebar h1 { font-size:15px; }
+ body.tutorial-studio #statusCard { display:none; }
+ body.tutorial-studio .score-panel { padding:10px; }
+ body.tutorial-studio .score-panel-head { gap:5px; }
+ body.tutorial-studio .score-panel-head h2 { font-size:13px; }
+ body.tutorial-studio .singing-part-row { gap:8px; }
+ body.tutorial-studio .score-heading-actions { gap:4px; }
+ body.tutorial-studio .score-panel-head button,body.tutorial-studio #tempoPanel > summary { min-height:32px; padding:5px 7px; font-size:11px; }
+ body.tutorial-studio .score-stage { gap:5px; }
+ body.tutorial-studio .tuning-meter { padding:5px 8px; max-height:90px; min-height:0; gap:8px; }
+ body.tutorial-studio .tuning-readout { min-width:90px; }
+ body.tutorial-studio .tuning-readout strong { font-size:24px; }
+ body.tutorial-studio .tuning-scale { height:75px; min-height:0; margin-block:0; flex:1; }
+ body.tutorial-studio .tuning-direction,body.tutorial-studio .tuning-frequency { display:none; }
+ body.tutorial-studio .score-viewport { min-height:140px; max-height:23dvh; }
+ body.tutorial-studio .tutorial-card { max-height:31dvh; padding:12px; }
+ body.tutorial-studio .tutorial-card h2 { font-size:18px; margin:4px 0; }
+ body.tutorial-studio .tutorial-card p { font-size:12px; line-height:1.4; margin:5px 0; }
+ body.tutorial-studio .tutorial-card #demoStatus { min-height:0; }
+ body.tutorial-studio .tutorial-card #demoPitch { font-size:11px; margin:4px 0; }
+ body.tutorial-studio .tutorial-actions button { min-height:38px; padding:6px 9px; font-size:12px; }
+ body.tutorial-studio #practiceEditor { padding:8px; margin-block:5px; }
+ body.tutorial-studio #practiceEditor .setting-label { font-size:11px; margin-bottom:4px; }
+ body.tutorial-studio .practice-range-fields { margin-block:4px; }
+ body.tutorial-studio .practice-range-fields input { height:30px; width:60px; padding:4px; }
+ body.tutorial-studio #sectionValidation { font-size:10px; margin:3px 0; }
+ body.tutorial-studio .practice-range-actions { margin-top:4px; font-size:11px; }
+ body.tutorial-studio .studio-layout.has-review { height:auto; min-height:0; display:flex; flex-direction:column; }
+ body.tutorial-studio .review-companion { max-height:25dvh; margin-bottom:32dvh; }
+ body.tutorial-studio:has(.tutorial-review-example) .tuning-meter { display:none; }
+ body.tutorial-studio:has(.tutorial-review-example) .score-viewport { min-height:100px; max-height:17dvh; }
+}
+@media(max-width:700px){
+ body.tutorial-studio #studioView #statusCard { display:none!important; }
+ body.tutorial-studio .studio-header-controls > button,body.tutorial-studio .studio-header-controls > details > summary,body.tutorial-studio .studio-header-controls .view-switch button,body.tutorial-studio .studio-header-controls .mode-switch button { min-height:30px!important; padding:4px 6px!important; font-size:10px!important; }
+ body.tutorial-studio .score-panel-head button,body.tutorial-studio #tempoPanel > summary { min-height:32px!important; padding:5px 7px!important; font-size:11px!important; }
+ .starting-note-dialog.tutorial-octaves { padding:16px; }
+ .starting-note-dialog.tutorial-octaves h2 { font-size:22px; }
+ .starting-note-dialog.tutorial-octaves .octave-card-choice { padding:10px; min-height:58px; }
+ .starting-note-dialog.tutorial-octaves .octave-card-choice strong { font-size:26px; }
+ .starting-note-dialog.tutorial-octaves .octave-card-choice small { display:none; }
+}
+@media(max-width:700px){
+ .tutorial-review-example .performance-playback-head .kicker,.tutorial-review-example .performance-playback-head > span,.tutorial-review-example .performance-seek { display:none; }
+ .tutorial-review-example .performance-playback-head h3 { font-size:16px; margin:0; }
+ .tutorial-review-example .performance-layers { display:flex; flex-wrap:wrap; gap:3px; margin:4px 0; padding:4px; }
+ .tutorial-review-example .performance-layers legend { display:none; }
+ .tutorial-review-example .performance-layers label { min-height:24px; font-size:10px; padding:3px 5px; }
+ .tutorial-review-example .performance-buttons button { min-height:30px; padding:4px 6px; font-size:10px; }
+ .tutorial-review-example .performance-mixer { gap:3px; margin-top:4px; }
+ .tutorial-review-example .performance-mixer label { font-size:10px; gap:3px; }
+ .tutorial-review-example .review-volumes summary { font-size:11px; padding:3px; }
+}
+
+#changePartDialog button[value="change"] { background:var(--forest); color:white; }

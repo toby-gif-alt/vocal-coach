@@ -867,7 +867,7 @@ export class AudioEngine {
       }
       const previousMidi = this.pitchTracker.recentHarmonicReference(capturedAt)?.midi;
       const rawMidi = frequency > 0 ? frequencyToMidi(frequency) : null;
-      const ambiguous = shouldCorroboratePitch(rawMidi,previousMidi,targetMidi);
+      const ambiguous = this.octaveSetupActive || shouldCorroboratePitch(rawMidi,previousMidi,targetMidi);
       const corroborating = ambiguous ? detectAutocorrelationPitch(extendedWindow ? this.lowInputFrame : this.inputFrame, sampleRate) : { frequency: null };
       const scoreQuarter = this.currentQuarter;
       const rawFrame = {

@@ -24,10 +24,10 @@ test('clicking during playback stops before positioning and does not restart',as
   assert.equal(calls[0],'stop');assert.deepEqual(calls.at(-1),['state','stopped']);
 });
 test('Hear starting note plays the selected singing pitch without opening a dialog',async()=>{
-  const fnSource=source.slice(source.indexOf('async function hearStartingNote()'),source.indexOf('\nfunction updateVolume('));
+  const fnSource=source.slice(source.indexOf('async function hearStartingNote()'),source.indexOf('\nfunction renderGuideSettings('));
   const pitches=[],button={disabled:false};
   const deps={audio:{previewPitch:async midi=>pitches.push(midi)},state:{mode:'assisted',microphoneDecision:'skipped',startingConfirmedSession:true},MODE_CONFIG:{listen:{microphone:false}},els:{hearStartingNote:button},
     startingNoteForRange:()=>({midi:70}),effectiveOctaveShift:()=>-12,toast:()=>{},openStartingNote:()=>{throw Error('Preview should play directly');}};
-  const preview=new Function(...Object.keys(deps),fnSource+'; return hearStartingNote;')(...Object.values(deps));
+  const preview=new Function(...Object.keys(deps),'let startingCheckToken=0,startingCheckTimer=null;function endStartingCheck(){} function clearOctaveSuggestion(){} function usingMicrophone(){return false;} state.octaveMismatchDetector={clear(){}};'+fnSource+'; return hearStartingNote;')(...Object.values(deps));
   await preview();assert.deepEqual(pitches,[58]);assert.equal(Boolean(button.disabled),false);
 });

@@ -1,5 +1,5 @@
-import {frequencyToMidi,midiToFrequency,AUDIO_CONFIG} from './config.js?v=20';
-import {closestOctaveCandidate} from './octave-selection.js?v=29';
+import {frequencyToMidi,midiToFrequency,AUDIO_CONFIG} from './config.js?v=34';
+import {closestOctaveCandidate} from './octave-selection.js?v=34';
 export const OCTAVE_CARDS=[12,0,-12,-24];
 const descriptions={12:'One octave higher',0:'Written octave','-12':'One octave lower','-24':'Two octaves lower'};
 export function pitchName(midi) {
@@ -62,9 +62,9 @@ export function createStartingNoteDialog({audio,getStarting,getShift,onSelect,on
   hear.addEventListener('click',()=>void play(starting.midi+currentShift(),hear));done.addEventListener('click',()=>close(true));document.querySelector('#closeStartingNote').addEventListener('click',()=>close());dialog.addEventListener('cancel',e=>{e.preventDefault();close();});
   return {get active(){return !!pending;},
     async open({listen=false,suggested=null,chosen=false,demonstration:demo=false}={}) {
-      if(pending)return pending;demonstration=demo;demoShift=getShift();starting=getStarting();if(!starting)return false;const attempt=++token;unsupportedAt=-Infinity;selected=chosen;listening=listen;model.reset();marker.hidden=true;hear.disabled=false;done.disabled=!selected;
+      if(pending)return pending;for(const button of dialog.querySelectorAll('button'))button.removeAttribute('tabindex');demonstration=demo;demoShift=getShift();starting=getStarting();if(!starting)return false;const attempt=++token;unsupportedAt=-Infinity;selected=chosen;listening=listen;model.reset();marker.hidden=true;hear.disabled=false;done.disabled=!selected;
       pending=new Promise(r=>{resolve=r;});const completion=pending;render(currentShift(),suggested);document.querySelector('#octaveSelectedCopy').textContent=chosen?`Selected ${pitchName(starting.midi+currentShift())}. You can keep this octave or choose another.`:'Choose a card, then continue to practice.';
-      showLabel(demo?'Demonstration — temporary octave choices':listen?'Starting microphone…':'Choose an octave manually. Enable the microphone for live pitch.');if(demo){dialog.classList.add('tutorial-octaves');dialog.show();}else{dialog.showModal();onBusy(true);}
+      showLabel(demo?'Demonstration — temporary octave choices':listen?'Starting microphone…':'Choose an octave manually. Enable the microphone for live pitch.');if(demo){dialog.classList.add('tutorial-octaves');dialog.show();for(const button of dialog.querySelectorAll('button'))button.tabIndex=-1;}else{dialog.showModal();onBusy(true);}
       if(listen){audio.octaveSetupActive=true;try{await audio.startMicrophoneMonitoring(()=>null);if(attempt!==token)return completion;showLabel('Listening…');}catch{if(attempt===token){listening=false;showLabel('Microphone unavailable — preview and choose an octave manually.');}}}
       if(!demo&&attempt===token)timer=setInterval(()=>{if(performance.now()>mutedUntil&&model.current(performance.now())===null){marker.hidden=true;if(listen&&performance.now()-unsupportedAt>320)showLabel('Listening…');cards.querySelectorAll('.near,.suggested,.live-region').forEach(row=>row.classList.remove('near','suggested','live-region'));}},100);
       return completion;
