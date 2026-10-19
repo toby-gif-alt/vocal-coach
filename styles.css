@@ -1086,3 +1086,13 @@ body.tutorial-demo-meter .score-stage { grid-template-columns:minmax(0,1fr) clam
 }
 
 #changePartDialog button[value="change"] { background:var(--forest); color:white; }
+
+/* Tutorial cards have a steady centre-first anchor, moved only to reveal a subject. */
+body.tutorial-studio .tutorial-card,
+body.tutorial-studio:has(.tutorial-octaves[open]) .tutorial-card,
+body.tutorial-demo-mixer .tutorial-card { left:var(--tutorial-left,8px)!important; top:var(--tutorial-top,8px)!important; bottom:auto; right:auto; }
+.tutorial-card .tutorial-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }
+.tutorial-card #demoPitch { min-height:18px; }
+.tutorial-pointer { animation:none; }
+
+.mixer-grid > .volume-block:first-child { border-top:0; padding-top:0; }

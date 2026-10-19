@@ -2,7 +2,7 @@ import {colourForCents,midiToFrequency} from './config.js?v=34';
 import {pitchName} from './starting-note.js?v=34';
 import {pointForSample,traceSegments} from './score-overlay.js?v=34';
 import {playbackRoutes} from './playback-routing.js?v=34';
-import {correctionCents,singingTone,demoPhrase} from './tutorial-demo.js?v=34';
+import {correctionCents,singingTone,demoPhrase,phraseReviewPlan} from './tutorial-demo.js?v=34';
 const NS='http://www.w3.org/2000/svg';
 const svg=(name,attrs)=>{const e=document.createElementNS(NS,name);for(const [k,v] of Object.entries(attrs))e.setAttribute(k,String(v));return e;};
 export function renderTutorialTrace(container,geometry,samples){
@@ -15,13 +15,21 @@ export function renderTutorialTrace(container,geometry,samples){
 // recordings, assessment arrays and preference stores are never written here.
 export function createDemoUI(bridge){
  const {state,audio,els,$}=bridge;
- let samples=[],lastSample=-1,lastQuarter=-1,lastOctave=null,lastView=null,review=null,voiceGain=null,pointer=null;
+ let samples=[],lastSample=-1,lastQuarter=-1,lastOctave=null,lastView=null,review=null,voiceGain=null,pointer=null,pointerTarget=null,pointerAnimation=null;
  const textIds=['detectedNote','detectedFrequency','centsOutput','tuningPhase'];
  const clamp=value=>Math.max(0,Math.min(1,value));
  function point(element,progress=.5){
   if(!element)return;pointer??=Object.assign(document.createElement('span'),{className:'tutorial-pointer',textContent:'☝'});
   if(!pointer.isConnected)document.body.append(pointer);
-  const r=element.getBoundingClientRect();pointer.style.left=`${r.left+r.width*progress}px`;pointer.style.top=`${r.top+r.height*.6}px`;
+  const r=element.getBoundingClientRect(),left=r.left+r.width*progress,top=r.top+r.height*.6;
+  pointer.style.left=`${left}px`;pointer.style.top=`${top}px`;
+  if(pointerTarget!==element){
+   pointerAnimation?.cancel();pointerTarget=element;
+   if(!matchMedia('(prefers-reduced-motion: reduce)').matches)pointerAnimation=pointer.animate([
+    {transform:`translate(${innerWidth/2-left}px,${innerHeight/2-top}px)`},
+    {transform:'translate(-20%,0)'},
+   ],{duration:700,easing:'ease-out'});
+  }
  }
  function control(element,value){if(!element)return;const existing=element.type==='checkbox'?element.checked:element.value;if(String(existing)===String(value))return;if(element.type==='checkbox')element.checked=value;else element.value=String(value);element.dispatchEvent(new Event(element.type==='checkbox'?'change':'input',{bubbles:true}));}
  function mode(value){state.mode=value;els.modeButtons.forEach(button=>{const selected=button.dataset.mode===value;button.classList.toggle('active',selected);button.setAttribute('aria-checked',String(selected));});}
@@ -97,32 +105,10 @@ export function createDemoUI(bridge){
    }
    if(kind==='tempo'){$('#tempoPanel').open=true;control(els.tempoSlider,100);}
    data.timeline=demoPhrase(notes,kind,data.bpm);
+   if(kind==='phrase')Object.assign(data,phraseReviewPlan(notes,data.bpm));
    if(kind==='practice'){
     $('#practiceEditor').hidden=false;$('#editPracticeButton').setAttribute('aria-expanded','true');els.sectionFrom.value='';els.sectionTo.value='';$('#repeatPractice').checked=false;
     data.timeline=data.timeline.map(e=>({...e,start:e.start+2.2,end:e.end+2.2}));
-   }
-   if(kind==='assisted'||kind==='assessment'){
-    mode(kind);const take=demoPhrase(notes,'phrase',data.bpm),length=take.at(-1).end;
-    const intro=2*60/data.bpm,reviewStart=intro+length+.7;
-    data.timeline=take.map(e=>({...e,start:e.start+intro,end:e.end+intro}));
-    data.countInDuration=intro;data.reviewStart=reviewStart;
-    if(kind==='assisted')data.timeline.push(...take.map(e=>({...e,start:e.start+reviewStart,end:e.end+reviewStart,review:true})));
-    else{
-     let time=reviewStart;
-     data.observations=Array.from({length:5},(_,i)=>{
-      const note=notes[Math.min(notes.length-1,Math.floor(i*notes.length/5))];
-      const tone=i%2===1?'positive':'improvement';
-      return {note,tone,title:tone==='positive'?'A clear, steady note':'Let the note settle towards the centre',body:tone==='positive'?'This simulated singer holds the pitch close to the target.':'This simulated singer starts slightly flat. Hear the bar and notice the pitch rising.'};
-     });
-     data.observations.forEach((observation,i)=>{
-      const bar=part.vocalTimeline.filter(n=>n.measureNumber===observation.note.measureNumber).slice(0,8);
-      const segment=demoPhrase(bar,'phrase',data.bpm);
-      data.timeline.push(...segment.map(e=>({...e,start:e.start+time,end:e.end+time,review:true,observation:i})));
-      time+=segment.at(-1).end;
-     });
-     data.fullReviewStart=time;
-     data.timeline.push(...take.map(e=>({...e,start:e.start+time,end:e.end+time,review:true,observation:5})));
-    }
    }
    bridge.layout();return data;
   },
@@ -171,7 +157,6 @@ export function createDemoUI(bridge){
      const regions=[...els.scoreContainer.querySelectorAll('.score-measure-region')],region=regions.find(r=>Number(r.dataset.measureNumber)===(seconds<1?first:last));point(region,clamp((seconds-.4)/1.2));
      bridge.previewRange(first,seconds<1?first:last);$('#practiceRangeStatus').textContent=`Selected: bars ${first}–${seconds<1?first:last}`;
     }else{$('#repeatPractice').checked=true;point($('#repeatPractice'));}
-    if(seconds>=2.2&&innerWidth<=700){$('#practiceEditor').hidden=true;$('#editPracticeButton').setAttribute('aria-expanded','false');pointer?.remove();pointer=null;}
    }
    if(kind==='tempo'&&value.note){control(els.tempoSlider,value.pass===0?100:Math.round(100-30*clamp((seconds-data.timeline.find(e=>e.pass===1).start)/.3)));point(els.tempoSlider,value.pass===0?.5:.2);}
    if(Number.isFinite(value.midi)&&value.voiced!==false){
@@ -182,12 +167,17 @@ export function createDemoUI(bridge){
     els.countInDisplay.hidden=false;$('#countInBar').textContent=`Example count-in · ${Math.max(1,2-Math.floor(seconds/(60/data.bpm)))}`;point($('#dockPlayPauseButton'));
    }else if(kind==='assisted'||kind==='assessment')els.countInDisplay.hidden=true;
    if(value.note){
-    if(value.scoreQuarter<lastQuarter)samples=[];lastQuarter=value.scoreQuarter;
-    if(value.voiced!==false&&seconds-lastSample>=.035){samples.push({...value});lastSample=seconds;renderTutorialTrace(els.scoreContainer,state.scoreGeometry,samples);}
+    if(!value.review&&value.scoreQuarter<lastQuarter)samples=[];lastQuarter=value.scoreQuarter;
+    if(!value.review&&value.voiced!==false&&seconds-lastSample>=.035){samples.push({...value});lastSample=seconds;renderTutorialTrace(els.scoreContainer,state.scoreGeometry,samples);}
+    // Opening review reflows the notation; redraw the original take on its new geometry.
+    if(value.review&&samples.length)renderTutorialTrace(els.scoreContainer,state.scoreGeometry,samples);
     bridge.cursor(value.scoreQuarter,value.note);
     if(value.review){
-     if(!review)makeReview(kind==='assessment',data);value.target='.tutorial-review-example';
-     if(kind==='assessment'){
+     const reviewMode=value.mode||kind;
+     if(state.mode!==reviewMode||!review){mode(reviewMode);makeReview(reviewMode==='assessment',data);data.modeChangedAt=seconds;}
+     value.target=seconds-data.modeChangedAt<1?`[data-mode="${reviewMode}"]`:'.tutorial-review-example';
+     if(seconds-data.modeChangedAt<1){point(document.querySelector(value.target));value.message=`Select ${reviewMode==='assisted'?'Assisted to listen back':'Assessment for feedback in score order'}. Your singing line stays visible.`;}
+     if(reviewMode==='assessment'){
       const observation=data.observations[value.observation];
       const list=review.querySelector('#demo-coachObservations');
       if(list.dataset.step!==String(value.observation)){
@@ -211,6 +201,10 @@ export function createDemoUI(bridge){
     }
    }
   },
+  refresh(){if(samples.length)renderTutorialTrace(els.scoreContainer,state.scoreGeometry,samples);},
+  finish(){
+   if(review){review.querySelector('#demo-performancePlay').innerHTML='▶ <span>Example complete</span>';review.querySelector('.performance-playback-head > span').textContent='Repeat the tutorial example to hear it again';}
+  },
   async restore(snapshot){
    state.guideSettings=snapshot.guideSettings;state.guideVoice=snapshot.guideVoice;state.partVolumes=snapshot.partVolumes;state.partVoices=snapshot.partVoices;state.enabledParts=new Set(snapshot.enabledParts);
    audio.setGuideVolume(snapshot.guideSettings.volume);audio.setGuideVoice(snapshot.guideVoice);
@@ -229,7 +223,7 @@ export function createDemoUI(bridge){
    state.tutorialDemoActive=false;if(state.microphoneDecision==='ready'&&audio.hasMicrophoneStream)audio.startPitchSampling();
   },
   cleanup(){
-   pointer?.remove();pointer=null;review?.remove();review=null;
+   pointerAnimation?.cancel();pointerAnimation=null;pointerTarget=null;pointer?.remove();pointer=null;review?.remove();review=null;
    samples=[];lastQuarter=-1;els.countInDisplay.hidden=true;
    document.querySelectorAll('.tutorial-demo-trace').forEach(e=>e.remove());document.querySelectorAll('.tutorial-mixer-target').forEach(e=>e.classList.remove('tutorial-mixer-target'));document.body.classList.remove('tutorial-demo-meter','tutorial-demo-mixer');bridge.mark(null);bridge.octaves().closeDemo();bridge.layout();
   },

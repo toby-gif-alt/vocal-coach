@@ -414,7 +414,7 @@ function restoreScorePreferences() {
   for (const part of state.score.parts.filter(p=>p.id!==state.selectedPartId)) {
     if (Number.isFinite(prefs.partVolumes?.[part.id])) {state.partVolumes[part.id]=Math.max(0,Math.min(100,prefs.partVolumes[part.id]));audio.setPartVolume(part.id,state.partVolumes[part.id]);}
     if (prefs.partVoices?.[part.id]) {state.partVoices[part.id]=normaliseGuideVoice(prefs.partVoices[part.id]);audio.setPartVoice(part.id,state.partVoices[part.id]);}
-    if (Array.isArray(prefs.enabledParts)) {if(prefs.enabledParts.includes(part.id))state.enabledParts.add(part.id);else state.enabledParts.delete(part.id);audio.setPartEnabled(part.id,state.enabledParts.has(part.id));}
+    if (Array.isArray(prefs.enabledParts)) {if(prefs.enabledParts.includes(part.id)||prefs.selectedPartId===part.id)state.enabledParts.add(part.id);else state.enabledParts.delete(part.id);audio.setPartEnabled(part.id,state.enabledParts.has(part.id));}
   }
   renderAccompaniment();renderPracticeRangeControls();setMode(state.mode);updateSetupSummary();
 }

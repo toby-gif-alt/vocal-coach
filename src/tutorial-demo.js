@@ -4,13 +4,11 @@ export const TUTORIAL_LESSONS=Object.freeze([
  {id:'starting',target:'#hearStartingNote',title:'Hear your starting note',copy:'Before singing, listen to your starting note. You can sing it back and use the pitch meter to check your voice.'},
  {id:'octaves',target:'#changeOctaveButton',title:'Choose your singing octave',copy:'Choose a comfortable register. The singing target and vocal guide change octave; the score and accompaniment stay as written.'},
  {id:'pitch',target:'#tuningMeter',title:'From flat to in tune',copy:'Listen and watch the singer gently raise their pitch towards the centre.'},
- {id:'phrase',target:'.score-viewport',title:'See your singing on the score',copy:'The line shows how your voice moves through the music. Its position shows your pitch, and the colour shows how accurately you’re singing.'},
+ {id:'phrase',target:'.score-viewport',title:'See your singing on the score',copy:'Watch your singing line, then see Assisted playback and Assessment feedback. Your line stays on the score while you listen back.'},
  {id:'mixer',target:'#mixerPanel',title:'Balance your music',copy:'Bring the other parts in one at a time, then lower an accompaniment so your guide is easier to hear.'},
  {id:'tempo',target:'#tempoPanel',title:'Slow down the music',copy:'If a passage is difficult, slow it down. You can bring the speed back up when you’re ready.'},
  {id:'practice',target:'#editPracticeButton',title:'Practise a short section',copy:'Enter bar numbers or drag across the score. Repeat plays your selected bars again.'},
  {id:'views',target:'[data-view="vocal"]',title:'See the music your way',copy:'Vocal Focus shows your melody. Full Score shows how your part fits with the other voices and instruments.'},
- {id:'assisted',target:'[data-mode="assisted"]',title:'Practise with Assisted',copy:'Assisted helps you practise your singing and listen back to what you performed.'},
- {id:'assessment',target:'[data-mode="assessment"]',title:'Improve with Assessment',copy:'Assessment works like Assisted, but afterward it tells you what went well and what to improve.'},
 ]);
 export function correctionCents(seconds){
  const progress=Math.max(0,Math.min(1,(seconds-2.4)/2));
@@ -32,6 +30,20 @@ export function demoPhrase(notes,kind='phrase',bpm=80){
  }
  return entries;
 }
+// One sung take, followed by both review flows, retaining the original trace.
+export function phraseReviewPlan(notes,bpm=80){
+ const take=demoPhrase(notes,'phrase',bpm),timeline=[...take],length=take.at(-1)?.end||1;
+ let time=length+1;
+ const append=(entries,extra)=>{timeline.push(...entries.map(e=>({...e,start:e.start+time,end:e.end+time,review:true,...extra})));time+=entries.at(-1)?.end||1;};
+ append(take,{mode:'assisted'});time+=1;
+ const observations=Array.from({length:5},(_,i)=>{
+  const note=notes[Math.min(notes.length-1,Math.floor(i*notes.length/5))],tone=i%2===1?'positive':'improvement';
+  return {note,tone,title:tone==='positive'?'A clear, steady note':'Let the note settle towards the centre',body:tone==='positive'?'This simulated singer holds the pitch close to the target.':'This simulated singer starts slightly flat. Hear the bar and notice the pitch rising.'};
+ });
+ observations.forEach((observation,i)=>append(demoPhrase(notes.filter(n=>n.measureNumber===observation.note.measureNumber),'phrase',bpm),{mode:'assessment',observation:i}));
+ const fullReviewStart=time;append(take,{mode:'assessment',observation:5});
+ return {timeline,observations,fullReviewStart};
+}
 export function demoFrame(kind,seconds,data){
  const target=data.targetMidi;
  if(kind==='pitch'){
@@ -47,7 +59,7 @@ export function demoFrame(kind,seconds,data){
  const progress=Math.min(1,Math.max(0,(seconds-entry.start)/(entry.end-entry.start)));
  const voiceProgress=Math.min(1,Math.max(0,(seconds-entry.start)/Math.max(.001,entry.duration)));
  const cents=entry.index%3===0?-35:entry.index%3===1?-35+37*voiceProgress:2;
- return {voiced:seconds-entry.start<entry.duration,target:data.displayTarget,note:entry.note,targetId:entry.note.id,targetMidi:entry.note.midi+data.shift,midi:entry.note.midi+data.shift+cents/100,cents,frequency:demoFrequency(entry.note.midi+data.shift,cents),colour:colourForCents(cents),scoreQuarter:entry.note.onsetQuarters+(entry.endQuarter-entry.note.onsetQuarters)*progress,scoreSeconds:seconds,index:entry.index,pass:entry.pass,review:entry.review,observation:entry.observation,message:entry.review?'Example playback — simulated singing':kind==='tempo'?(entry.pass===0?'The melody at 100%.':'The same melody more slowly at 70%.'):kind==='practice'?`The selected bars repeat · pass ${entry.pass+1} of 2.`:'The line shows the pitch and accuracy of the simulated singer.'};
+ return {voiced:seconds-entry.start<entry.duration,target:data.displayTarget,note:entry.note,targetId:entry.note.id,targetMidi:entry.note.midi+data.shift,midi:entry.note.midi+data.shift+cents/100,cents,frequency:demoFrequency(entry.note.midi+data.shift,cents),colour:colourForCents(cents),scoreQuarter:entry.note.onsetQuarters+(entry.endQuarter-entry.note.onsetQuarters)*progress,scoreSeconds:seconds,index:entry.index,pass:entry.pass,review:entry.review,mode:entry.mode,observation:entry.observation,message:entry.review?'Example playback — simulated singing':kind==='tempo'?(entry.pass===0?'The melody at 100%.':'The same melody more slowly at 70%.'):kind==='practice'?`The selected bars repeat · pass ${entry.pass+1} of 2.`:'The line shows the pitch and accuracy of the simulated singer.'};
 }
 // Continuous audio uses the same cents function and audio-context clock as the
 // visual frames. Its graph is output-only: never connected to a microphone.
@@ -90,10 +102,10 @@ export function createTutorialDemos(adapter,{request=requestAnimationFrame,cance
     await adapter.display(kind,value,data,seconds,()=>token===generation);
     if(token!==generation)return;
     onUpdate({...value,seconds,duration});
-    if(seconds>=duration){stop();await restoring;if(token+1===generation)onUpdate({done:true,message:'Example complete. Continue when you’re ready.'});return;}
+    if(seconds>=duration){frame=null;disposeAudio?.();disposeAudio=null;adapter.finish?.(kind,data);onUpdate({done:true,message:'Example complete. Repeat it or continue when you’re ready.'});return;}
     frame=request(tick);
    };frame=request(tick);return true;
   }catch(error){if(token===generation){stop();onUpdate({done:true,message:error.message||'This example could not play. Use Back and Next to try again.'});}return false;}
  }
- return {get active(){return active;},run,stop,unlock};
+ return {get active(){return active;},run,stop,unlock,refresh(){if(active)adapter.refresh?.();}};
 }

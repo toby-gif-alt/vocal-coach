@@ -5,6 +5,7 @@ const TUTORIAL_KEY='vocal-coach:tutorial:v5';
 export function tutorialPosition(target,card,viewport,blockers=[]) {
  const gap=12,edge=8;
  const candidates=[
+  {left:(viewport.width-card.width)/2,top:(viewport.height-card.height)/2},
   {left:edge,top:viewport.height-card.height-edge},
   {left:viewport.width-card.width-edge,top:viewport.height-card.height-edge},
   {left:target.right+gap,top:target.top},
@@ -32,10 +33,10 @@ export function createOnboarding({storage,show,hide,onStudioReady=()=>{}}){
 }
 
 export function createTutorial({onStudioReady=()=>{},demos}={}){
- let kind='studio',index=0,target=null,run=0,audioBlocked=false;
+ let kind='studio',index=0,target=null,run=0,audioBlocked=false,anchor=null;
  const card=document.createElement('section');card.className='tutorial-card';card.hidden=true;
  card.setAttribute('role','dialog');card.setAttribute('aria-labelledby','tutorialTitle');
- card.innerHTML='<div class="tutorial-lesson-body"><small id="tutorialProgress"></small><h2 id="tutorialTitle"></h2><p id="tutorialCopy"></p><p id="demoLabel">Demonstration — simulated singing</p><p id="demoStatus" role="status"></p><output id="demoPitch"></output></div><div class="tutorial-actions"><button type="button" data-tour="skip">Skip tutorial</button><button type="button" data-tour="back">Back</button><button type="button" data-tour="next">Next →</button></div>';
+ card.innerHTML='<div class="tutorial-lesson-body"><small id="tutorialProgress"></small><h2 id="tutorialTitle"></h2><p id="tutorialCopy"></p><p id="demoLabel">Demonstration — simulated singing</p><p id="demoStatus" role="status"></p><output id="demoPitch"></output></div><div class="tutorial-actions"><button type="button" data-tour="skip">Skip tutorial</button><button type="button" data-tour="back">Back</button><button type="button" data-tour="repeat">Repeat</button><button type="button" data-tour="next">Next →</button></div>';
  document.body.append(card);const find=selector=>card.querySelector(selector);
  const visible=e=>e&&!e.closest('[hidden]')&&e.getBoundingClientRect().width>0;
  function highlight(selector){
@@ -46,14 +47,17 @@ export function createTutorial({onStudioReady=()=>{},demos}={}){
   if(card.hidden)return;
   const rect=target?.getBoundingClientRect()||{left:16,right:16,top:80,bottom:80};
   const size=card.getBoundingClientRect();
-  // A stable bottom corner leaves the score and top popovers in place.
-  const blockers=[document.querySelector('.score-viewport'),document.querySelector('#tuningMeter')].filter(visible).map(e=>e.getBoundingClientRect());
-  const point=tutorialPosition(rect,size,{width:innerWidth,height:innerHeight},blockers);
-  card.style.left=`${point.left}px`;card.style.top=`${point.top}px`;
+  const viewport={width:innerWidth,height:innerHeight};
+  // Stay put within a lesson unless its current subject would be covered.
+  const overlaps=p=>p.left<rect.right&&p.left+size.width>rect.left&&p.top<rect.bottom&&p.top+size.height>rect.top;
+  if(!anchor||overlaps(anchor)||anchor.left+size.width>innerWidth-8||anchor.top+size.height>innerHeight-8)
+   anchor=tutorialPosition(rect,size,viewport);
+  const point=anchor;
+  card.style.setProperty('--tutorial-left',`${point.left}px`);card.style.setProperty('--tutorial-top',`${point.top}px`);
  }
  function hide(){run++;demos.stop();target?.classList.remove('tutorial-target');target=null;card.hidden=true;document.body.classList.remove('tutorial-studio');}
  function render(){
-  const token=++run;demos.stop();audioBlocked=false;
+  const token=++run;demos.stop();audioBlocked=false;anchor=null;
   const lesson=TUTORIAL_LESSONS[index];
   target?.classList.remove('tutorial-target');target=null;
   card.hidden=false;document.body.classList.toggle('tutorial-studio',kind==='studio');
@@ -81,8 +85,9 @@ export function createTutorial({onStudioReady=()=>{},demos}={}){
  card.addEventListener('click',event=>{
   const action=event.target.closest('[data-tour]')?.dataset.tour;
   if(action==='skip'){complete();return;}
-  if(!['back','next'].includes(action))return;
+  if(!['back','next','repeat'].includes(action))return;
   demos.unlock();
+  if(action==='repeat'){render();return;}
   if(action==='next'&&audioBlocked){render();return;}
   if(action==='next'&&index===TUTORIAL_LESSONS.length-1){complete();return;}
   index=Math.max(0,index+(action==='back'?-1:1));render();
@@ -98,6 +103,6 @@ export function createTutorial({onStudioReady=()=>{},demos}={}){
   }
  };
  document.addEventListener('keydown',keys,true);window.addEventListener('resize',position);
- return {showView:name=>controller.view(name),setActive:value=>controller.active(value),replay(){demos.unlock();return controller.replay();},refreshOverview:position,
+ return {showView:name=>controller.view(name),setActive:value=>controller.active(value),replay(){demos.unlock();return controller.replay();},refreshOverview(){demos.refresh?.();position();},
  destroy(){controller.destroy();document.removeEventListener('keydown',keys,true);window.removeEventListener('resize',position);card.remove();}};
 }

@@ -72,3 +72,7 @@ test('redesigned tour is offered once to a user who completed the previous versi
  assert.deepEqual(t.shown,['studio']);t.controller.skip('studio');
  const reopened=onboarding(t.storage);reopened.controller.view('studio');assert.deepEqual(reopened.shown,[]);
 });
+
+test('tutorial defaults to the centre when its subject is unobstructed',()=>{
+ assert.deepEqual(tutorialPosition({left:10,right:110,top:20,bottom:60},{width:300,height:240},{width:1440,height:900}),{left:570,top:330});
+});
