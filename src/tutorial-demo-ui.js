@@ -93,7 +93,7 @@ export function createDemoUI(bridge){
    if(kind==='octaves')void bridge.octaves().open({listen:false,chosen:true,demonstration:true});
    if(kind==='mixer'){
     $('#mixerPanel').open=true;document.body.classList.add('tutorial-demo-mixer');
-    for(const p of data.parts){control(document.querySelector(`[data-part-enabled="${CSS.escape(p.id)}"]`),true);control(document.querySelector(`[data-part-volume="${CSS.escape(p.id)}"]`),0);}
+    for(const p of data.parts){control(document.querySelector(`[data-part-enabled="${CSS.escape(p.id)}"]`),true);control(document.querySelector(`[data-part-volume="${CSS.escape(p.id)}"]`),0);audio.setPartEnabled(p.id,true);audio.setPartVolume(p.id,0);}
    }
    if(kind==='tempo'){$('#tempoPanel').open=true;control(els.tempoSlider,100);}
    data.timeline=demoPhrase(notes,kind,data.bpm);
