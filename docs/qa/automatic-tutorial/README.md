@@ -2,11 +2,11 @@
 
 ## Changes
 
-The navigation tour and separate Singing Lessons have been replaced by one ten-lesson Tutorial. Opening a score offers it once; completing or skipping stores `vocal-coach:tutorial:v5`. Earlier tour completions deliberately do not suppress this redesigned experience. There is no second welcome tutorial. Tutorial replays from lesson one while the studio is idle.
+The navigation tour and separate Singing Lessons have been replaced by one eight-lesson Tutorial. Opening a score offers it once; completing or skipping stores `vocal-coach:tutorial:v5`. Earlier tour completions deliberately do not suppress this redesigned experience. There is no second welcome tutorial. Tutorial replays from lesson one while the studio is idle.
 
-Every lesson starts its example automatically. Back restarts the previous example, Next advances, Done finishes the last lesson, and Skip/Escape stop the example. An autoplay-blocked first visit shows the visual explanation and uses Next to unlock and restart the audible example. Lessons never advance themselves.
+Every lesson starts its example automatically. Repeat restarts the current example. When sound finishes, its demonstrated panel, settings and singing trace remain visible until navigation; natural completion no longer restores the screen. Cards prefer the centre and retain their anchor within each lesson unless they cover the demonstrated subject. Pointers travel from the viewport centre to each new subject, respecting reduced motion. Back restarts the previous example, Next advances, Done finishes the last lesson, and Skip/Escape stop the example. An autoplay-blocked first visit shows the visual explanation and uses Next to unlock and restart the audible example. Lessons never advance themselves.
 
-The examples use the current score and real guide/accompaniment instruments. Mixer inputs change actual channel gains, tempo changes actual control values and musical scheduling, practice selection dims outside bars and plays two passes, and view selection re-renders OSMD. Assisted/Assessment use labelled simulated singing and isolated copies of the production review surfaces. Assessment demonstrates three improvements and two positives in score order, corresponding bar playback, then full-example playback and volume controls. Demo controls are illustrative; Tutorial navigation remains the only active navigation. No recording is created or saved.
+The examples use the current score and real guide/accompaniment instruments. Mixer inputs change actual channel gains, tempo changes actual control values and musical scheduling, practice selection dims outside bars and plays two passes, and view selection re-renders OSMD. The score-trace lesson sings once and then shows Assisted playback, Assessment feedback and full playback while retaining the original trace. Separate Assisted/Assessment lessons 9 and 10 have been removed. Both modes use labelled simulated singing and isolated copies of the production review surfaces. Assessment demonstrates three improvements and two positives in score order, corresponding bar playback, then full-example playback and volume controls. Demo controls are illustrative; Tutorial navigation remains the only active navigation. No recording is created or saved.
 
 Cancellation restores Mixer settings, octave choice, tempo, range/Repeat, view, mode, cursor, tuner text and any existing review. A paused real review is detached from temporary demo gain changes and restored afterward. Pending loads and score renders cannot restart a cancelled example. Stopping an inactive Tutorial does not touch a real take's count-in or review.
 
@@ -21,7 +21,7 @@ Change part now opens an in-place vocal-part picker, preserving each part's save
 All requested commands passed, with `npm run check` run under Node 20:
 
 - `npm run generate`
-- `npm run check`: **257 tests passed**, no failures/skips
+- `npm run check`: **261 tests passed**, no failures/skips
 - `npm run build`
 - `npm run offline:check`: **170 verified assets, 14.6 MB**
 - `git diff --check`
@@ -30,13 +30,19 @@ New/updated checks cover one-time onboarding/migration, lesson ordering and auto
 
 The explicit written **D3 / sung C♯2** regression suggests **D2 after 500 ms** of stable input while retaining **−100 cents** of pitch error. The same one-semitone discrepancy does not pass the stricter recorded-performance octave detector.
 
+The Mixer now lists **My part** before accompaniment. Switching singing parts explicitly re-enables the former singing part as accompaniment; deliberate mutes on other parts are preserved. Browser reproduction Bass → Alto confirmed Bass remained checked.
+
+## Latest refinement checks
+
+Desktop browser verification confirmed 118 original trace points persisted through Assisted playback and into Assessment; Assessment became selected and showed chronological observations. Phone layout (390 × 844) kept the Mixer above the tutorial with all four navigation actions visible. Automated regression tests cover held completion, Repeat restoration/restart, centre-first placement, and the combined review timeline. The older screenshots below for tempo, practice and part selection document the preceding validation; Assessment, full review and mobile Tutorial images have been refreshed.
+
 ## Browser checks
 
 Chrome was checked at desktop (1440 × 900 app area), tablet (834 px wide), and phone (390 × 844), using the included four-part Chorus score. Checks included:
 
 - First-use launch directly into lesson one; completion/Skip suppresses relaunch; Tutorial replays.
 - Back/Next rapid transitions through every lesson, including cancellation during view rendering; no browser errors observed.
-- Microphone-free examples: the QA getUserMedia counter remained **0 requests** across all ten lessons.
+- Microphone-free examples: the QA getUserMedia counter remained **0 requests** across the Tutorial.
 - Real Web Audio output measured above silence during examples (observed peak window RMS about **0.1235**). Mixer sliders brought parts up independently; tempo visibly reached **70%**; Repeat visibly reached **pass 2 of 2** with dimmed outside bars.
 - Full Score rendered Soprano, Alto, Tenor, Bass and Piano, matching its selected button, before returning to Vocal Focus.
 - Assisted example review and five Assessment observations, marked notes/bar playback, full-example playback controls, and cleanup on completion/Skip.

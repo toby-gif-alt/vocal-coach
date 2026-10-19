@@ -32,3 +32,11 @@ test('an octave confirmation is deferred during a recorded take',()=>{
  const fn=new Function('state','audio','$','document','pitchName',text+';return renderOctaveSuggestion;')(state,audio,$,{querySelector:()=>null},midi=>String(midi));
  fn();assert.equal(shown,0);audio.isPlaying=false;state.sessionOctaveShift=null;fn();assert.equal(shown,1);assert.equal($('#acceptOctaveSuggestion').textContent,'Switch to 38');
 });
+
+test('changing singing part restores the former target as accompaniment while retaining deliberate mutes',()=>{
+ const start=app.indexOf('function restoreScorePreferences()'),end=app.indexOf('\nfunction scorePreferences()',start);
+ const state={savedPreferences:{selectedPartId:'bass',enabledParts:['alto','piano'],octaveByPart:{}},selectedPartId:'alto',score:{parts:[{id:'bass'},{id:'alto'},{id:'tenor'},{id:'piano'}]},enabledParts:new Set(['bass','tenor','piano']),partVolumes:{},partVoices:{}};
+ const enabled=[];const deps={state,audio:{setPartEnabled:(id,on)=>enabled.push([id,on])},practiceMode:x=>x,guideSettings:()=>({}),renderGuideSettings(){},setGuideVoice(){},setCountInBars(){},DEFAULT_OCTAVE_SHIFT:0,setOctaveShift(){},normaliseGuideVoice:x=>x,renderAccompaniment(){},renderPracticeRangeControls(){},setMode(){},updateSetupSummary(){}};
+ new Function(...Object.keys(deps),app.slice(start,end)+';restoreScorePreferences();')(...Object.values(deps));
+ assert.deepEqual([...state.enabledParts].sort(),['bass','piano']);assert.ok(enabled.some(([id,on])=>id==='bass'&&on));
+});

@@ -27,8 +27,8 @@ function harness(){
  const demo=createTutorialDemos(adapter,{request:fn=>{callback=fn;return 1;},cancel:()=>{callback=null;}});
  return {demo,adapter,calls,async tick(seconds){now=seconds;await callback?.();}};
 }
-test('demo does not start itself, and completion stops sound before restoring exactly once',async()=>{
- const h=harness();assert.equal(h.demo.active,false);assert.deepEqual(h.calls,[]);await h.demo.run('pitch');assert.equal(h.demo.active,true);await h.tick(1);await h.tick(7);assert.equal(h.demo.active,false);assert.equal(h.calls.filter(c=>c==='restore').length,1);assert.ok(h.calls.indexOf('stop audio')<h.calls.indexOf('restore'));h.demo.stop();assert.equal(h.calls.filter(c=>c==='restore').length,1);
+test('completion stops audio and holds demonstration until navigation restores exactly once',async()=>{
+ const h=harness();assert.equal(h.demo.active,false);assert.deepEqual(h.calls,[]);await h.demo.run('pitch');assert.equal(h.demo.active,true);await h.tick(1);await h.tick(7);assert.equal(h.demo.active,true);assert.equal(h.calls.filter(c=>c==='restore').length,0);assert.ok(h.calls.includes('stop audio'));h.demo.stop();assert.ok(h.calls.indexOf('stop audio')<h.calls.indexOf('restore'));assert.equal(h.calls.filter(c=>c==='restore').length,1);
 });
 test('Skip/Escape while asynchronous samples load cannot restart a cancelled demo',async()=>{
  const h=harness();let ready;h.adapter.prepare=()=>new Promise(resolve=>ready=resolve);const pending=h.demo.run('phrase');await Promise.resolve();h.demo.stop();ready({...data,context:{currentTime:0}});assert.equal(await pending,false);assert.equal(h.demo.active,false);assert.ok(!h.calls.includes('audio'));assert.equal(h.calls.filter(c=>c==='restore').length,1);
@@ -80,9 +80,9 @@ test('production demo adapter restores mixer, target, cursor and display without
  }finally{globalThis.document=previousDocument;}
 });
 
-test('one ordered tutorial covers all ten lessons and ends with Assessment',async()=>{
+test('one ordered tutorial folds both review modes into the score lesson',async()=>{
  const {TUTORIAL_LESSONS}=await import('../src/tutorial-demo.js');
- assert.deepEqual(TUTORIAL_LESSONS.map(l=>l.id),['starting','octaves','pitch','phrase','mixer','tempo','practice','views','assisted','assessment']);
+ assert.deepEqual(TUTORIAL_LESSONS.map(l=>l.id),['starting','octaves','pitch','phrase','mixer','tempo','practice','views']);
  const tutorial=await readFile(new URL('../src/tutorial.js',import.meta.url),'utf8');
  for(const removed of ['TOUR_STEPS','SINGING_LESSONS','Watch demo','Replay demo','Try it','onTry','stage='])assert.ok(!tutorial.includes(removed));
  assert.ok(tutorial.includes('demos.run(lesson.id'));assert.ok(tutorial.includes('audioBlocked'));
@@ -118,4 +118,20 @@ test('trace and sung correction stop at the note end while the cursor continues 
  assert.equal(demoFrame('phrase',.2,testData).voiced,true);
  assert.equal(demoFrame('phrase',1,testData).voiced,false);
  assert.ok(demoFrame('phrase',1,testData).scoreQuarter>note.durationQuarters);
+});
+
+test('score lesson sings once then demonstrates both modes in score order with full playback last',async()=>{
+ const {phraseReviewPlan}=await import('../src/tutorial-demo.js');
+ const plan=phraseReviewPlan(notes,80);
+ assert.equal(plan.timeline.filter(e=>!e.review).length,notes.length);
+ assert.deepEqual([...new Set(plan.timeline.filter(e=>e.review).map(e=>e.mode))],['assisted','assessment']);
+ assert.deepEqual(plan.observations.map(o=>o.note.onsetQuarters),[8,9,10,11,12]);
+ assert.equal(plan.timeline.at(-1).observation,5);
+ assert.ok(plan.timeline.every((e,i,a)=>!i||e.start>=a[i-1].end));
+});
+test('Repeat restarts a held example and Skip still restores once',async()=>{
+ const h=harness();await h.demo.run('pitch');await h.tick(7);
+ await h.demo.run('pitch');assert.equal(h.calls.filter(c=>c==='restore').length,1);
+ assert.equal(h.calls.filter(c=>c==='audio').length,2);await h.demo.stop();
+ assert.equal(h.calls.filter(c=>c==='restore').length,2);
 });
