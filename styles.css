@@ -821,7 +821,7 @@ body:not(.studio-active) .studio-header-controls > .view-switch,body:not(.studio
 .mixer-grid .volume-block { border-top:1px solid var(--line); padding-top:18px; display:grid; gap:16px; }
 .mixer-grid .volume-field { margin:0; }
 .mixer-grid .volume-field strong,.mixer-grid .guide-voice-field { font-size:15px; }
-.studio-header-controls .tempo-panel > .tempo-field { position:fixed; z-index:160; width:min(340px,calc(100vw - 16px)); }
+.tempo-panel > .tempo-field { position:fixed; right:auto; z-index:160; width:min(340px,calc(100vw - 16px)); }
 .score-column > .status-card { margin:0 0 10px; padding:8px 12px; }
 .score-column > .status-card p { margin:0; }.score-column > .status-card small { font-size:12px; }
 .score-container.is-selecting { touch-action:none; user-select:none; -webkit-user-select:none; }
@@ -1098,3 +1098,6 @@ body.tutorial-demo-mixer .tutorial-card { left:var(--tutorial-left,8px)!importan
 .mixer-grid > .volume-block:first-child { border-top:0; padding-top:0; }
 
 body.tutorial-studio .tutorial-card.tutorial-centered { transform:translate(-50%,-50%); }
+
+#tempoSummary { display:inline-block; min-width:4ch; font-variant-numeric:tabular-nums; }
+.tempo-panel .tempo-field input { height:28px; margin:8px 0; }

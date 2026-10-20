@@ -2600,7 +2600,7 @@ function wireEvents() {
     const duration = (range.endQuarter - range.startQuarter) * 60 / audio.bpm;
     els.totalTime.textContent = formatTime(duration);
     els.dockTotalTime.textContent = formatTime(duration);
-    updatePosition(range.startQuarter);
+    updatePosition(state.cursorQuarter>=0?state.cursorQuarter:range.startQuarter);
   });
   els.playButton.addEventListener("click", play); els.pauseButton.addEventListener("click", pause); els.stopButton.addEventListener("click", () => { void stop(); });
   els.dockRestartButton.addEventListener("click", () => { void restartTransport(); });
