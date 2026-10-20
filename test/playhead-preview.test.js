@@ -50,3 +50,13 @@ test('main Restart clears a clicked start and practice section before resetting 
  await new Function(...Object.keys(deps),fn+';return restartTransport();')(...Object.values(deps));
  assert.equal(state.startMeasure,1);assert.equal(state.playbackStartQuarter,null);assert.equal(state.sectionStartMeasure,null);assert.equal(state.sectionEndMeasure,null);assert.equal(repeat.checked,false);assert.deepEqual(calls,[0,0]);
 });
+
+test('adjusting tempo preserves a selected score position while refreshing playback duration',()=>{
+ const start=source.indexOf('  els.tempoSlider.addEventListener("input", () => {'),end=source.indexOf('\n  });',start)+6;
+ let input;const positions=[];const state={cursorQuarter:13};
+ const els={tempoSlider:{value:'70',addEventListener:(name,fn)=>input=fn},tempoOutput:{},bpmLabel:{},totalTime:{},dockTotalTime:{}};
+ const audio={setTempo(value){this.bpm=120*Number(value)/100;}};
+ const deps={state,els,audio,$:()=>({}),currentPracticeRange:()=>({startQuarter:0,endQuarter:20}),formatTime:s=>s,updatePosition:q=>positions.push(q)};
+ new Function(...Object.keys(deps),source.slice(start,end))(...Object.values(deps));input();
+ assert.equal(audio.bpm,84);assert.deepEqual(positions,[13]);assert.equal(els.tempoOutput.textContent,'70%');assert.equal(els.totalTime.textContent,20*60/84);
+});
