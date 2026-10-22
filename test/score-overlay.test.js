@@ -169,3 +169,10 @@ test("separate notes around a rest remain separate with left-edge geometry", () 
   assert.equal(traceSegments(samples, geometry).length, 0);
   assert.equal(pointForSample(geometry.get("after-rest"), samples[1]).x, 294);
 });
+
+test('transposing instruments map traces to written noteheads while targets keep sounding pitches',()=>{
+ const system={},measure=graphicalMeasure({system,qStart:0,qEnd:4,x:0,y:4,width:80,number:1,entries:[staffEntry({quarter:0,x:10,notes:[graphicalNote({x:10,y:10,midi:60}),graphicalNote({x:10,y:8,midi:62})]})]});
+ const note={id:'clarinet',midi:60,writtenMidi:62,onsetQuarters:0,durationQuarters:4,measureNumber:1,staff:'1'};
+ const geometry=buildScoreGeometry(osmdFor([measure],[{MusicSystems:[system]}]),[note],0);
+ assert.equal(geometry.get('clarinet')[0].y,80);assert.equal(note.midi,60);
+});

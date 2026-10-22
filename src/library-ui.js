@@ -16,7 +16,7 @@ export function createLibraryUI({onOpen,onOpenBuiltIn,onRemoveCurrent,notify}) {
   function render() {list.replaceChildren();const query=search.value.toLowerCase();
     for(const record of records.filter(r=>`${r.title} ${r.composer} ${r.filename}`.toLowerCase().includes(query))) {
       const row=document.createElement('article');row.className='library-score';const heading=document.createElement('h3');heading.textContent=record.title;
-      const meta=document.createElement('p');meta.textContent=[record.source==='included'?'Included':'My score',record.composer,record.filename,record.selectedPartName?`Singing: ${record.selectedPartName}`:'Choose vocal part when opening'].filter(Boolean).join(' · ');
+      const meta=document.createElement('p');meta.textContent=[record.source==='included'?'Included':record.attribution?.name||'My score',record.attribution?.licence,record.composer,record.filename,record.selectedPartName?`Singing: ${record.selectedPartName}`:'Choose vocal part when opening'].filter(Boolean).join(' · ');
       const actions=document.createElement('div');
       for(const [action,label] of [['open','Open'],['rename','Rename'],['export','Download to this device'],['remove','Remove']]) {const b=document.createElement('button');b.type='button';b.textContent=label;b.dataset.action=action;b.dataset.scoreId=record.id;b.setAttribute('aria-label',`${label} ${record.title}`);actions.append(b);}
       row.append(heading,meta,actions);list.append(row);
@@ -64,15 +64,16 @@ export function createLibraryUI({onOpen,onOpenBuiltIn,onRemoveCurrent,notify}) {
   return {store,refresh,
     async setIncluded(entries){catalogue.included=entries;await refresh();},
     async openChoice(id){const record=records.find(r=>r.id===id);if(record)await open(record);},
-    async importFile(file) {
+    async importFile(file,source=null) {
       const score=await readScoreFile(file);
       try {
-        const hash=await fileHash(file),existing=await store.findHash(hash);
+        const hash=await fileHash(file),existing=(source&&(await store.list()).find(r=>r.sourceId===source.id))||await store.findHash(hash);
+        if(existing&&source)return {score,record:existing};
         if(existing){const choice=await ask({title:'This score is already saved',copy:`You already have “${existing.title}”. Open it or save a separate copy?`,accept:'Open existing',secondary:'Keep a separate copy'});
           if(choice.action==='cancel'||!['accept','secondary'].includes(choice.action))return null;
           if(choice.action==='accept')return {score,record:existing};
         }
-        const record=scoreRecord(file,score,hash);await store.add(record);await refresh();
+        const record={...scoreRecord(file,score,hash),...(source?{sourceId:source.id,attribution:source}: {})};await store.add(record);await refresh();
         try{await navigator.storage?.persist?.();}catch{}
         return {score,record};
       }catch(error){notify(`${storageMessage(error)} Opened for this session only; it has not been saved.`);return {score,record:null};}

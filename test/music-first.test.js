@@ -57,7 +57,7 @@ test('production SVG renderer dims only outside bars, replaces bands after reren
  }finally{globalThis.document=old;}
 });
 const source=await readFile(new URL('../app.js',import.meta.url),'utf8');
-function functions(from,to,deps){return new Function(...Object.keys(deps),source.slice(source.indexOf(from),source.indexOf(to))+'; return {openFloatingReview,closeFloatingReview,showTakeFeedback,closeTakeFeedback};')(...Object.values(deps));}
+function functions(from,to,deps){deps.recordingMatchesScore??=()=>true;return new Function(...Object.keys(deps),source.slice(source.indexOf(from),source.indexOf(to))+'; return {openFloatingReview,closeFloatingReview,showTakeFeedback,closeTakeFeedback};')(...Object.values(deps));}
 test('feedback embeds a silent chunk player, then returns it to full review without deleting the take',()=>{
  const recording={url:'blob:take',take:{startQuarter:4,endQuarter:8,bpm:60}},state={recording,coachingSteps:[]},calls=[];
  const panel={hidden:true,open:false,show(){this.open=true;calls.push('feedback');},close(){this.open=false;}},player={hidden:true},nodes={};

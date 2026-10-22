@@ -27,6 +27,7 @@ export function reviewDriftSeconds(transportQuarter, mediaSeconds, bpm, startQua
 
 export function createTakeMetadata({
   tempoPercent,
+  transposeSemitones,
   bpm,
   octaveShift,
   enabledPartIds,
@@ -46,6 +47,7 @@ export function createTakeMetadata({
 } = {}) {
   return Object.freeze({
     tempoPercent: Number(tempoPercent) || 100,
+    transposeSemitones: Number(transposeSemitones) || 0,
     bpm: Number(bpm) || 120,
     octaveShift: Number(octaveShift) || 0,
     enabledPartIds: Object.freeze([...(enabledPartIds || [])]),
