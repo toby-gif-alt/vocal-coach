@@ -230,14 +230,14 @@ export function buildScoreGeometry(osmd, timeline, instrumentIndex) {
     const systems = staffSystems.get(staffNumber) || [];
     const noteEnd = note.onsetQuarters + note.durationQuarters;
     const onsetSystem = systems.find((system) => note.onsetQuarters >= system.qStart - EPSILON && note.onsetQuarters < system.qEnd + EPSILON);
-    const onsetPoint = onsetSystem ? matchingGraphicalPoint(onsetSystem, note.onsetQuarters, note.midi) : null;
+    const onsetPoint = onsetSystem ? matchingGraphicalPoint(onsetSystem, note.onsetQuarters, note.writtenMidi??note.midi) : null;
     const onsetOffset = onsetPoint && onsetSystem ? onsetPoint.y - onsetSystem.staffY : 50;
     const regions = [];
     for (const system of systems) {
       const qStart = Math.max(note.onsetQuarters, system.qStart);
       const qEnd = Math.min(noteEnd, system.qEnd);
       if (qEnd - qStart <= EPSILON) continue;
-      const continuationPoint = matchingGraphicalPoint(system, qStart, note.midi);
+      const continuationPoint = matchingGraphicalPoint(system, qStart, note.writtenMidi??note.midi);
       const xStart = qStart <= note.onsetQuarters + EPSILON && onsetPoint && system === onsetSystem
         ? onsetPoint.xLeft
         : continuationPoint?.xCenter ?? xForQuarter(system, qStart, "start");

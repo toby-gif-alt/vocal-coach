@@ -1,3 +1,5 @@
+import {createFindMusic} from './src/find-music.js';
+import {transposeValue} from './src/score-preparation.js';
 import {createTutorialDemos} from "./src/tutorial-demo.js?v=34";
 import {createDemoUI} from "./src/tutorial-demo-ui.js?v=34";
 import {guideSettings,practiceMode} from "./src/guide-settings.js?v=34";
@@ -39,7 +41,7 @@ import {
   GUIDE_VOICE_STORAGE_KEY,
   normaliseGuideVoice,
 } from "./src/guide-playback.js?v=34";
-import { measureAtQuarter, noteAtQuarter, readScoreFile, readScoreUrl, suggestVocalPart } from "./src/musicxml.js?v=34";
+import { parseMusicXml, measureAtQuarter, noteAtQuarter, readScoreFile, readScoreUrl, suggestVocalPart } from "./src/musicxml.js?v=34";
 import { closestOctaveCandidate, OctaveMismatchDetector } from "./src/octave-selection.js?v=34";
 import { detectAutocorrelationPitch, PitchDiagnosticSummary, StablePitchTracker } from "./src/pitch-tracker.js?v=34";
 import {
@@ -100,6 +102,7 @@ const els = {
 
 const state = {
   score: null,
+  transposeBusy: false,
   scoreContext: null,
   savedPreferences: null,
   selectedPartId: null,
@@ -291,7 +294,9 @@ async function loadScore(loader, context = null) {
   els.loadingTitle.textContent = "Finding parts and phrases…";
   els.loadingMessage.textContent = "MusicXML keeps the voice and accompaniment as separate musical data.";
   try {
-    state.score = await loader();
+    const loaded=await loader();
+    const transpose=transposeValue(state.savedPreferences?.transposeSemitones??0);
+    state.score=transpose?parseMusicXml(loaded.originalXml||loaded.xmlText,loaded.title,transpose):loaded;
     if (context?.record?.title || context?.displayTitle) state.score.title = context.record?.title || context.displayTitle;
     state.samples = [];
     state.rawSamples = [];
@@ -393,6 +398,8 @@ async function enterStudio() {
   renderAccompaniment();
   resetControls();
   restoreScorePreferences();
+  restoreWorkingPreferences();
+  renderTransposeSettings();
   showView("studio",{onboarding:false});
   await renderScore();
   tutorial.setActive(false);
@@ -419,12 +426,24 @@ function restoreScorePreferences() {
   }
   renderAccompaniment();renderPracticeRangeControls();setMode(state.mode);updateSetupSummary();
 }
+function restoreWorkingPreferences(){
+ const prefs=state.savedPreferences;if(!prefs)return;
+ if(Number.isFinite(prefs.tempoPercent)){
+  audio.setTempo(Math.max(50,Math.min(150,prefs.tempoPercent)));els.tempoSlider.value=String(audio.tempoPercent);els.tempoOutput.textContent=`${audio.tempoPercent}%`;$('#tempoSummary').textContent=els.tempoOutput.textContent;els.bpmLabel.textContent=`${Math.round(audio.bpm)} BPM`;
+ }
+ if(prefs.scoreView)setScoreView(prefs.scoreView);
+ if(prefs.sectionStartMeasure!=null&&prefs.sectionEndMeasure!=null&&validateSection(selectedPart(),prefs.sectionStartMeasure,prefs.sectionEndMeasure).valid){
+  state.sectionStartMeasure=prefs.sectionStartMeasure;state.sectionEndMeasure=prefs.sectionEndMeasure;
+  state.startMeasure=Number.isInteger(prefs.startMeasure)&&prefs.startMeasure>=prefs.sectionStartMeasure&&prefs.startMeasure<=prefs.sectionEndMeasure?prefs.startMeasure:prefs.sectionStartMeasure;
+ }
+ $('#repeatPractice').checked=!!prefs.repeatPractice;renderPracticeRangeControls();
+}
 function scorePreferences() {
-  return {guideSettings:{...state.guideSettings},selectedPartId:state.selectedPartId,octaveByPart:{...state.octaveByPart,[state.selectedPartId]:{shift:state.octaveShift,chosen:state.startingOctaveChosen}},startingOctaveChosen:state.startingOctaveChosen,mode:state.mode,guideVoice:state.guideVoice,countInBars:state.countInBars,octaveShift:state.octaveShift,tempoPercent:audio.tempoPercent,
+  return {transposeSemitones:state.score?.transposeSemitones||0,repeatPractice:$("#repeatPractice").checked,scoreView:state.scoreView,guideSettings:{...state.guideSettings},selectedPartId:state.selectedPartId,octaveByPart:{...state.octaveByPart,[state.selectedPartId]:{shift:state.octaveShift,chosen:state.startingOctaveChosen}},startingOctaveChosen:state.startingOctaveChosen,mode:state.mode,guideVoice:state.guideVoice,countInBars:state.countInBars,octaveShift:state.octaveShift,tempoPercent:audio.tempoPercent,
     sectionStartMeasure:state.sectionStartMeasure,sectionEndMeasure:state.sectionEndMeasure,startMeasure:state.startMeasure,partVolumes:{...state.partVolumes},partVoices:{...state.partVoices},enabledParts:[...state.enabledParts]};
 }
 async function persistScorePreferences() {
-  if (state.tutorialDemoActive || !state.scoreContext || !state.score || !state.selectedPartId || els.studioView.hidden) return;
+  if (state.tutorialDemoActive || state.transposeBusy || !state.scoreContext || !state.score || !state.selectedPartId || els.studioView.hidden) return;
   const context=state.scoreContext;
   const patch={selectedPartId:state.selectedPartId,selectedPartName:selectedPart()?.name,settings:scorePreferences(),lastOpenedAt:new Date().toISOString()};
   try {if(context.record) await library.store.update(context.record.id,patch);else if(context.builtin)await library.store.setting(`builtin:${context.builtin}`,patch);}
@@ -444,6 +463,40 @@ async function openBuiltIn(entry) {
   return loadScore(()=>readScoreUrl(entry.file,entry.title),{builtin:entry.file,displayTitle:entry.title,...settings});
 }
 async function renderBuiltInOptions() { await library.setIncluded(state.repertoire); }
+
+function recordingMatchesScore(){return !state.recording||(state.recording.take.transposeSemitones||0)===(state.score?.transposeSemitones||0);}
+function renderTransposeSettings(){
+ const score=state.score,n=score?.transposeSemitones||0;
+ $('#transposeOriginalKey').textContent=score?.originalKey||'Not specified';
+ $('#transposeNewKey').textContent=score?.newKey||'Not specified';
+ $('#transposeOutput').textContent=`${n>0?'+':n<0?'−':''}${Math.abs(n)} semitone${Math.abs(n)===1?'':'s'}`;
+ $('#transposeDown').disabled=state.transposeBusy||n<=-12;$('#transposeUp').disabled=state.transposeBusy||n>=12;$('#transposeReset').disabled=state.transposeBusy||n===0;
+ $('#transposeReviewNotice').hidden=recordingMatchesScore();
+ $('#transposeReviewNotice').textContent=recordingMatchesScore()?'':`Your recording uses ${state.recording.take.transposeSemitones||0} semitones. Restore that transposition to listen back.`;
+ $('#listenBackButton').disabled=!state.recording||!recordingMatchesScore();
+}
+async function applyTransposition(value){
+ if(!state.score||state.transposeBusy||state.rendering||state.tutorialDemoActive||state.transportPreparing||state.microphonePreparing||state.finishingAssessment||calibrationDialog.active||startingNoteDialog.active)return;
+ if(audio.hasActivePerformanceRecording||(state.takeUsesMicrophone&&(audio.isPlaying||audio.isPaused||audio.isCountingIn))){toast('Finish or stop your take before changing key.');return;}
+ const old=state.score,quarter=state.cursorQuarter,tempo=audio.tempoPercent;
+ let candidate;
+ try{candidate=parseMusicXml(old.originalXml,old.title,transposeValue(value));candidate.title=old.title;}catch(error){toast(error.message);return;}
+ if(candidate.transposeSemitones===old.transposeSemitones)return;
+ state.transposeBusy=true;renderTransposeSettings();endStartingCheck();audio.pausePitchSampling();
+ try{
+  if(audio.isPlaying||audio.isPaused||audio.isCountingIn)await stop({completeAssessment:false});
+  closeTakeFeedback({listen:false});closeFloatingReview();
+  state.score=candidate;audio.setScore(candidate,{preserveSettings:true});audio.setSelectedPart(state.selectedPartId);audio.setTempo(tempo);
+  state.osmd=null;state.cursor=null;state.scoreGeometry=new Map();state.measureGeometry=[];
+  await renderScore();if(state.scoreRenderError)throw state.scoreRenderError;
+  state.visualTraceSamples=[];state.previousTakeTrace=[];renderTakeTraces();
+  state.octaveMismatchDetector.reset();clearOctaveSuggestion();
+  setCursorToQuarter(quarter>=0?quarter:currentPracticeRange().startQuarter);updatePosition(state.cursorQuarter);
+  renderPracticeRangeControls();renderGuideSettings();
+ }catch(error){
+  state.score=old;audio.setScore(old,{preserveSettings:true});audio.setSelectedPart(state.selectedPartId);audio.setTempo(tempo);state.osmd=null;await renderScore();setCursorToQuarter(quarter);toast('Key unchanged. '+error.message);
+ }finally{state.transposeBusy=false;renderTransposeSettings();if(usingMicrophone()&&audio.hasMicrophoneStream)audio.startPitchSampling();await persistScorePreferences();}
+}
 
 function selectedPart() {
   return state.score?.parts.find((part) => part.id === state.selectedPartId) || null;
@@ -518,8 +571,8 @@ function setCursorToQuarter(quarter) {
 }
 
 function renderTakeTraces() {
-  renderScoreTrace(els.scoreContainer, state.scoreGeometry, state.visualTraceSamples, {
-    previousSamples: state.previousTakeTrace,
+  renderScoreTrace(els.scoreContainer, state.scoreGeometry, recordingMatchesScore()?state.visualTraceSamples:[], {
+    previousSamples: recordingMatchesScore()?state.previousTakeTrace:[],
     showPrevious: state.showPreviousTake,
   });
   els.previousTakeControl.hidden = state.previousTakeTrace.length === 0;
@@ -801,12 +854,13 @@ function setScoreView(view) {
 async function renderScore() {
   if (state.rendering || !state.score) return;
   const preservedQuarter = state.cursorQuarter >= 0 ? state.cursorQuarter : currentPracticeRange().startQuarter;
-  state.rendering = true;
+  state.rendering = true;state.scoreRenderError=null;
   els.scoreContainer.setAttribute("aria-busy", "true");
   try {
     const OSMD = window.opensheetmusicdisplay?.OpenSheetMusicDisplay;
     if (!OSMD) throw new Error("The notation renderer did not load. Check your connection and refresh.");
     if (!state.osmd) {
+      els.scoreContainer.replaceChildren();
       state.osmd = new OSMD(els.scoreContainer, {
         autoResize: false,
         backend: "svg",
@@ -834,6 +888,7 @@ async function renderScore() {
     setCursorToQuarter(preservedQuarter);
     els.scoreHeading.textContent = `I am singing ${selectedPart().name}`;
   } catch (error) {
+    state.scoreRenderError=error;
     console.error(error);
     els.scoreContainer.innerHTML = `<p class="score-error">${escapeHtml(error.message || "The score could not be rendered.")}</p>`;
     toast(error.message || "The score could not be rendered.");
@@ -1345,6 +1400,7 @@ async function play({ skipCountIn = false } = {}) {
     state.visualTraceSamples = [];
     resetPitchDiagnostics();
     state.activeTake = createTakeMetadata({
+      transposeSemitones:state.score.transposeSemitones||0,
       tempoPercent: audio.tempoPercent,
       bpm: audio.bpm,
       octaveShift: takeOctaveShift,
@@ -1846,6 +1902,7 @@ function returnReviewPlayer() {
 }
 function openFloatingReview() {
   if (!state.recording) return;
+  if(!recordingMatchesScore()){toast('Restore the key used for this recording before listening back.');return;}
   if (audio.isPlaying || audio.isPaused || audio.isCountingIn || state.microphonePreparing) return;
   returnReviewPlayer();
   els.performancePlayback.hidden = false;
@@ -1928,7 +1985,7 @@ function stopReviewPlayback() {
   updatePerformancePosition();updatePerformancePlaybackState();
 }
 function startReviewPlayback() {
-  if(!state.recording)return;
+  if(!state.recording||!recordingMatchesScore())return;
   const chunk=state.reviewChunk;
   if(chunk&&(els.performanceAudio.currentTime<chunk.startSeconds||els.performanceAudio.currentTime>=chunk.endSeconds-.01))els.performanceAudio.currentTime=chunk.startSeconds;
   els.performanceAudio.play().catch(()=>toast("The captured audio could not play."));
@@ -2149,7 +2206,7 @@ function updateReviewVolume(kind, value) {
 }
 
 async function startPerformanceReview() {
-  if (!state.recording || els.performanceAudio.paused) return;
+  if (!state.recording || !recordingMatchesScore() || els.performanceAudio.paused) return;
   const token = ++state.reviewActivationToken;
   state.reviewPlaying = true;
   setTuningMeterInactive("Recorded take — live microphone paused");
@@ -2488,6 +2545,9 @@ function runPitchSelfTest() {
 }
 
 function wireEvents() {
+ $('#transposeDown').addEventListener('click',()=>void applyTransposition((state.score?.transposeSemitones||0)-1));
+ $('#transposeUp').addEventListener('click',()=>void applyTransposition((state.score?.transposeSemitones||0)+1));
+ $('#transposeReset').addEventListener('click',()=>void applyTransposition(0));
   document.addEventListener("click",event=>{if(document.body.classList.contains("tutorial-studio")&&!event.target.closest(".tutorial-card")){event.preventDefault();event.stopImmediatePropagation();}},true);
   for(const panel of [$("#setupPanel"),$("#mixerPanel"),$("#tempoPanel")]) {
     const position=()=>{
@@ -2687,6 +2747,7 @@ $("#changeOctaveButton").addEventListener("click",()=>void openStartingNote());
 const library = createLibraryUI({ onOpen: openSavedScore, onOpenBuiltIn: openBuiltIn, notify: toast,
   onRemoveCurrent: async id => { if (state.scoreContext?.record?.id === id) resetToUpload(); },
 });
+createFindMusic({library,onOpen:openSavedScore});
 setupPWA({ canUpdate: () => !state.tutorialDemoActive && !audio.isPlaying && !audio.isPaused && !audio.isCountingIn && !state.reviewPlaying && !calibrationDialog.active && !startingNoteDialog.active });
 let preferenceSaveTimer;
 document.addEventListener("input", event => { if(event.target.closest?.("#studioView,#studioHeaderControls")){clearTimeout(preferenceSaveTimer);preferenceSaveTimer=setTimeout(()=>void persistScorePreferences(),150);} });

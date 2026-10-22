@@ -100,10 +100,11 @@ export class AudioEngine {
     return this.tone.getTransport ? this.tone.getTransport() : this.tone.Transport;
   }
 
-  setScore(score) {
-    this.stop({ reset: true, microphone: true });
+  setScore(score,{preserveSettings=false}={}) {
+    this.stop({ reset: true, microphone: !preserveSettings });
     this.disposePlaybackEngines();
     this.score = score;
+    if(preserveSettings)return;
     this.partVolumes = new Map((score?.parts || []).map((part) => [part.id, PLAYBACK_CONFIG.defaultPartVolume]));
     this.partVoices = new Map((score?.parts || []).map((part) => [part.id, DEFAULT_GUIDE_VOICE]));
     this.enabledPartIds = new Set((score?.parts || []).map((part) => part.id));

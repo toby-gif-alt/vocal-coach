@@ -1,5 +1,7 @@
 export const MAX_SCORE_BYTES=20*1024*1024,MAX_XML_BYTES=25*1024*1024;
 export function validateScoreFile(file) {
+  if(/\.mscz$/i.test(file?.name||''))throw Error('Open this MSCZ file in MuseScore Studio and export MusicXML, then import the MusicXML file here.');
+  if(/\.pdf$/i.test(file?.name||''))throw Error('PDF cannot currently be imported as editable notation. Choose MusicXML or MXL instead.');
   if(!file||! /\.(musicxml|xml|mxl)$/i.test(file.name||''))throw Error('Choose a .musicxml, .xml or .mxl score.');
   if(!file.size||file.size>MAX_SCORE_BYTES)throw Error('Choose a score smaller than 20 MB.');
   const mime=(file.type||'').split(';')[0].toLowerCase();

@@ -6,16 +6,18 @@ import {
   measureDurationQuarters,
 } from "./timing.js";
 
+import {prepareScoreXml,children} from './score-preparation.js';
+
 const VOCAL_WORDS = /\b(voice|vocal|singer|soprano|mezzo|alto|contralto|countertenor|tenor|baritone|bass|melody|choir|chorus)\b/i;
 const ACCOMPANIMENT_WORDS = /\b(piano|keyboard|organ|guitar|accompaniment|orchestra|strings|violin|cello|flute|clarinet|drum|percussion)\b/i;
 const STEP_OFFSETS = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
 
 function directChild(parent, name) {
-  return [...(parent?.children || [])].find((element) => element.localName === name) || null;
+  return [...(parent?.children || children(parent))].find((element) => element.localName === name) || null;
 }
 
 function directChildren(parent, name) {
-  return [...(parent?.children || [])].filter((element) => element.localName === name);
+  return [...(parent?.children || children(parent))].filter((element) => element.localName === name);
 }
 
 function descendants(parent, name) {
@@ -27,14 +29,16 @@ function textOf(parent, name, fallback = "") {
 }
 
 function numberOf(parent, name, fallback = 0) {
-  const value = Number(textOf(parent, name, ""));
+  const raw=textOf(parent,name,"");
+  if(raw==='')return fallback;
+  const value = Number(raw);
   return Number.isFinite(value) ? value : fallback;
 }
 
 function parseXml(text) {
   validateXMLText(text);
   const documentNode = new DOMParser().parseFromString(text, "application/xml");
-  const parserError = documentNode.querySelector("parsererror");
+  const parserError = descendants(documentNode,"parsererror")[0];
   if (parserError) throw new Error("This file is not valid MusicXML.");
   const root = documentNode.documentElement;
   if (!root || !["score-partwise", "score-timewise"].includes(root.localName)) {
@@ -68,7 +72,7 @@ async function unzipMxl(source) {
 function parseContainer(text) {
   validateXMLText(text);
   const documentNode = new DOMParser().parseFromString(text, "application/xml");
-  if (documentNode.querySelector("parsererror")) throw new Error("The MXL container is invalid.");
+  if (descendants(documentNode,"parsererror").length) throw new Error("The MXL container is invalid.");
   return documentNode;
 }
 
@@ -95,7 +99,10 @@ export async function readScoreUrl(url, fallbackName = "Sample score") {
   return parseMusicXml(xmlText, fallbackName);
 }
 
-export function parseMusicXml(xmlText, fallbackName = "Untitled score") {
+export function parseMusicXml(sourceXml, fallbackName = "Untitled score", transposeSemitones=0) {
+  const prepared=prepareScoreXml(sourceXml,transposeSemitones);
+  transposeSemitones=prepared.transposeSemitones;
+  const xmlText=prepared.xmlText;
   const documentNode = parseXml(xmlText);
   const root = documentNode.documentElement;
   const title = textOf(directChild(root, "work"), "work-title", "")
@@ -121,7 +128,7 @@ export function parseMusicXml(xmlText, fallbackName = "Untitled score") {
   });
   shareTimeSignatures(parts, initialTimeSignature);
   const durationQuarters = Math.max(0, ...parts.map((part) => part.durationQuarters));
-  return { xmlText, documentNode, title, creator, originalTempo, initialTimeSignature, durationQuarters, parts };
+  return { originalXml:sourceXml, transposeSemitones, originalKey:prepared.originalKey, newKey:prepared.newKey, cleanup:prepared.cleanup, xmlText, documentNode, title, creator, originalTempo, initialTimeSignature, durationQuarters, parts };
 }
 
 function shareTimeSignatures(parts, initialTimeSignature) {
@@ -169,6 +176,7 @@ function parsePart(partElement, meta, tempo, initialTimeSignature = { beats: 4, 
   let beats = initialTimeSignature.beats || 4;
   let beatType = initialTimeSignature.beatType || 4;
   let transposition = 0;
+  const staffTranspositions=new Map();
   let partQuarter = 0;
   const rawNotes = [];
   const measureStarts = [];
@@ -191,7 +199,7 @@ function parsePart(partElement, meta, tempo, initialTimeSignature = { beats: 4, 
     });
     const measureTiming = createMeasureCursor();
 
-    for (const element of measureElement.children) {
+    for (const element of children(measureElement)) {
       if (element.localName === "attributes") {
         divisions = numberOf(element, "divisions", divisions) || divisions;
         const time = directChild(element, "time");
@@ -200,8 +208,10 @@ function parsePart(partElement, meta, tempo, initialTimeSignature = { beats: 4, 
           beats = beatsText.split("+").reduce((sum, value) => sum + (Number(value) || 0), 0) || beats;
         }
         beatType = numberOf(time, "beat-type", beatType) || beatType;
-        const transpose = directChild(element, "transpose");
-        transposition = numberOf(transpose, "chromatic", transposition);
+        for(const transpose of directChildren(element,'transpose')){
+          const value=numberOf(transpose,'chromatic',0)+12*numberOf(transpose,'octave-change',0);
+          if(transpose.hasAttribute('number'))staffTranspositions.set(transpose.getAttribute('number'),value);else transposition=value;
+        }
         continue;
       }
       if (element.localName === "backup") {
@@ -233,7 +243,7 @@ function parsePart(partElement, meta, tempo, initialTimeSignature = { beats: 4, 
       const step = textOf(pitch, "step", "C");
       const alter = numberOf(pitch, "alter", 0);
       const octave = numberOf(pitch, "octave", 4);
-      const midi = (octave + 1) * 12 + (STEP_OFFSETS[step] ?? 0) + alter + transposition;
+      const midi = (octave + 1) * 12 + (STEP_OFFSETS[step] ?? 0) + alter + (staffTranspositions.get(textOf(element,'staff','1'))??transposition);
       const ties = directChildren(element, "tie").map((tie) => tie.getAttribute("type")).filter(Boolean);
       const onsetQuarters = partQuarter + onsetInMeasure;
       rawNotes.push({
@@ -242,6 +252,7 @@ function parsePart(partElement, meta, tempo, initialTimeSignature = { beats: 4, 
         writtenPitch: `${step}${alter === 1 ? "♯" : alter === -1 ? "♭" : ""}${octave}`,
         displayPitch: midiToName(midi),
         midi,
+        writtenMidi:(octave+1)*12+(STEP_OFFSETS[step]??0)+alter,
         frequency: midiToFrequency(midi),
         onsetQuarters,
         durationQuarters,
